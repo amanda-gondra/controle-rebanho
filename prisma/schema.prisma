@@ -1,0 +1,58 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Sexo {
+  MACHO
+  FEMEA
+}
+
+enum Categoria {
+  BEZERRO
+  NOVILHO
+  BOI
+  VACA
+}
+
+enum Status {
+  ATIVO
+  VENDIDO
+  MORTO
+}
+
+enum PrecisaoNascimento {
+  DIA_MES_ANO   // viram nascer
+  MES_ANO       // nasceu no pasto, sem o dia
+  DESCONHECIDA  // idade no olhômetro
+}
+
+model Animal {
+  id                 String    @id @default(uuid())
+  brinco             String    @unique
+  sexo               Sexo
+  raca               String?
+  categoria          Categoria
+  status             Status    @default(ATIVO)
+  dataNascimento     DateTime?
+  precisaoNascimento PrecisaoNascimento @default(DESCONHECIDA)
+  observacoes        String?
+  pesagens           Pesagem[]
+  criadoEm           DateTime  @default(now())
+  atualizadoEm       DateTime  @updatedAt
+}
+
+model Pesagem {
+  id        String   @id @default(uuid())
+  animalId  String
+  animal    Animal   @relation(fields: [animalId], references: [id])
+  data      DateTime
+  pesoKg    Decimal  @db.Decimal(6,2)
+  criadoEm  DateTime @default(now())
+}

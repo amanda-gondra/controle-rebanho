@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: rebanho-db
+    restart: always
+    environment:
+      POSTGRES_USER: rebanho
+      POSTGRES_PASSWORD: rebanho123
+      POSTGRES_DB: rebanho
+    ports:
+      - "5433:5432"
+    volumes:
+      - rebanho_data:/var/lib/postgresql/data
+ 
+volumes:
+  rebanho_data:
