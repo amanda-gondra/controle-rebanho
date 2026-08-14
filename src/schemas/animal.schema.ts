@@ -20,3 +20,8 @@ export const createAnimalSchema = z
 
 // The TypeScript type comes from the schema itself: a single source of truth.
 export type CreateAnimalInput = z.infer<typeof createAnimalSchema>;
+
+// Valida o parâmetro :id da URL (tem que ser um UUID válido)
+export const animalIdParamSchema = z.object({
+  id: z.string().uuid("ID inválido."),
+});

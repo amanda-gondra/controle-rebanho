@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma.js";
-import { createAnimalSchema } from "../schemas/animal.schema.js";
+import {
+  createAnimalSchema,
+  animalIdParamSchema,
+} from "../schemas/animal.schema.js";
 
 export async function animalRoutes(app: FastifyInstance) {
   // POST /animals — register a new animal
@@ -16,5 +19,18 @@ export async function animalRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
     });
     return animals;
+  });
+
+  // GET /animals/:id — get one animal by id
+  app.get("/animals/:id", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+
+    const animal = await prisma.animal.findUnique({ where: { id } });
+
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    return animal;
   });
 }
