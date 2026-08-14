@@ -43,3 +43,29 @@ Content-Type: application/json
   "breed": "Angus",
   "notes": "Raça corrigida"
 }
+### Registrar uma pesagem
+POST http://localhost:3333/animals/9a825337-d149-4fa3-84e4-ad7d67a1355e/pesagens
+Content-Type: application/json
+
+{
+  "date": "2024-06-01",
+  "weightKg": 180.5
+}
+
+### Segunda pesagem (mais tarde, mais pesado)
+POST http://localhost:3333/animals/9a825337-d149-4fa3-84e4-ad7d67a1355e/pesagens
+Content-Type: application/json
+
+{
+  "date": "2024-09-01",
+  "weightKg": 240
+}
+
+### Terceira pesagem
+POST http://localhost:3333/animals/9a825337-d149-4fa3-84e4-ad7d67a1355e/pesagens
+Content-Type: application/json
+
+{
+  "date": "2024-12-01",
+  "weightKg": 300
+}

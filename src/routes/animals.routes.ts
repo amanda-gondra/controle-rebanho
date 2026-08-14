@@ -7,6 +7,10 @@ import {
   updateStatusSchema,
   updateAnimalSchema,
 } from "../schemas/animal.schema.js";
+import {
+   createWeighingSchema } from "../schemas/weighing.schema.js";
+import {
+   calculateWeightGain } from "../services/weighing.service.js";
 
 export async function animalRoutes(app: FastifyInstance) {
   // POST /animals — register a new animal
@@ -80,4 +84,68 @@ export async function animalRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  // POST /animals/:id/pesagens — register a weighing for an animal
+  app.post("/animals/:id/pesagens", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+    const data = createWeighingSchema.parse(request.body);
+
+    // confere se o animal existe antes de registrar a pesagem
+    const animal = await prisma.animal.findUnique({ where: { id } });
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    // cria a pesagem já ligada a esse animal
+    const weighing = await prisma.weighing.create({
+      data: {
+        date: data.date,
+        weightKg: data.weightKg,
+        animalId: id,
+      },
+    });
+
+    return reply.status(201).send(weighing);
+  });
+
+  // GET /animals/:id/pesagens — list an animal's weighings (newest first)
+  app.get("/animals/:id/pesagens", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+
+    // confere se o animal existe
+    const animal = await prisma.animal.findUnique({ where: { id } });
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    // busca as pesagens desse animal, da mais recente pra mais antiga
+    const weighings = await prisma.weighing.findMany({
+      where: { animalId: id },
+      orderBy: { date: "desc" },
+    });
+
+    return weighings;
+  });
+
+  // GET /animals/:id/ganho-peso — weight gain and average daily gain (ADG)
+  app.get("/animals/:id/ganho-peso", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+
+    // confere se o animal existe
+    const animal = await prisma.animal.findUnique({ where: { id } });
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    // chama o serviço que faz o cálculo
+    const result = await calculateWeightGain(id);
+
+    // se não deu pra calcular (menos de 2 pesagens), responde claro
+    if (!result) {
+      return reply.status(422).send({
+        message: "At least two weighings are required to calculate weight gain.",
+      });
+    }
+
+    return result;
+  });
 }
