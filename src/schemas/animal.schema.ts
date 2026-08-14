@@ -31,3 +31,23 @@ export const listAnimalsQuerySchema = z.object({
   status: z.enum(["ACTIVE", "SOLD", "DEAD"]).optional(),
   category: z.enum(["CALF", "YEARLING", "STEER", "COW"]).optional(),
 });
+
+// Valida o corpo do PATCH de status (só aceita um status válido)
+export const updateStatusSchema = z.object({
+  status: z.enum(["ACTIVE", "SOLD", "DEAD"]),
+});
+
+// Valida a edição de um animal — todos os campos opcionais (menos a tag, que não se edita aqui)
+export const updateAnimalSchema = z
+  .object({
+    sex: z.enum(["MALE", "FEMALE"]),
+    category: z.enum(["CALF", "YEARLING", "STEER", "COW"]),
+    breed: z.string().min(1),
+    birthDate: z.coerce
+      .date()
+      .max(new Date(), "Birth date cannot be in the future."),
+    birthPrecision: z.enum(["DAY_MONTH_YEAR", "MONTH_YEAR", "UNKNOWN"]),
+    notes: z.string(),
+  })
+  .partial()
+  .strict();

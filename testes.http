@@ -26,3 +26,20 @@ Content-Type: application/json
 
 ### Listar animais
 GET http://localhost:3333/animals
+
+### Mudar status (vender um animal)
+PATCH http://localhost:3333/animals/9a825337-d149-4fa3-84e4-ad7d67a1355e/status
+Content-Type: application/json
+
+{
+  "status": "SOLD"
+}
+
+### Editar dados de um animal
+PUT http://localhost:3333/animals/9a825337-d149-4fa3-84e4-ad7d67a1355e
+Content-Type: application/json
+
+{
+  "breed": "Angus",
+  "notes": "Raça corrigida"
+}

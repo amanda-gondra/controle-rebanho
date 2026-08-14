@@ -4,6 +4,8 @@ import {
   createAnimalSchema,
   animalIdParamSchema,
   listAnimalsQuerySchema,
+  updateStatusSchema,
+  updateAnimalSchema,
 } from "../schemas/animal.schema.js";
 
 export async function animalRoutes(app: FastifyInstance) {
@@ -38,4 +40,44 @@ export async function animalRoutes(app: FastifyInstance) {
 
     return animal;
   });
+
+  // PATCH /animals/:id/status — change an animal's status
+  app.patch("/animals/:id/status", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+    const { status } = updateStatusSchema.parse(request.body);
+
+    // confere se o animal existe antes de tentar atualizar
+    const animal = await prisma.animal.findUnique({ where: { id } });
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    // atualiza só o status
+    const updated = await prisma.animal.update({
+      where: { id },
+      data: { status },
+    });
+
+    return updated;
+  });
+
+  // PUT /animals/:id — update an animal's data
+  app.put("/animals/:id", async (request, reply) => {
+    const { id } = animalIdParamSchema.parse(request.params);
+    const data = updateAnimalSchema.parse(request.body);
+
+    // confere se existe antes de atualizar
+    const animal = await prisma.animal.findUnique({ where: { id } });
+    if (!animal) {
+      return reply.status(404).send({ message: "Animal not found." });
+    }
+
+    const updated = await prisma.animal.update({
+      where: { id },
+      data,
+    });
+
+    return updated;
+  });
+
 }
