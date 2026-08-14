@@ -1,0 +1,13 @@
+### Cadastrar um animal
+POST http://localhost:3333/animals
+Content-Type: application/json
+
+{
+  "tag": "BR-001",
+  "sex": "MALE",
+  "category": "CALF",
+  "breed": "Nelore",
+  "birthPrecision": "MONTH_YEAR",
+  "birthDate": "2024-03-01",
+  "notes": "Primeiro animal cadastrado"
+}
