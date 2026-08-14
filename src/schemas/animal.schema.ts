@@ -25,3 +25,9 @@ export type CreateAnimalInput = z.infer<typeof createAnimalSchema>;
 export const animalIdParamSchema = z.object({
   id: z.string().uuid("ID inválido."),
 });
+
+// Valida os filtros opcionais da listagem (?status=...&category=...)
+export const listAnimalsQuerySchema = z.object({
+  status: z.enum(["ACTIVE", "SOLD", "DEAD"]).optional(),
+  category: z.enum(["CALF", "YEARLING", "STEER", "COW"]).optional(),
+});

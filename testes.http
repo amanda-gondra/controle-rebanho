@@ -2,6 +2,7 @@
 POST http://localhost:3333/animals
 Content-Type: application/json
 
+
 {
   "tag": "BR-001",
   "sex": "MALE",
@@ -11,3 +12,17 @@ Content-Type: application/json
   "birthDate": "2024-03-01",
   "notes": "Primeiro animal cadastrado"
 }
+
+### Cadastrar um segundo animal (pra testar filtro)
+POST http://localhost:3333/animals
+Content-Type: application/json
+
+{
+  "tag": "BR-002",
+  "sex": "FEMALE",
+  "category": "COW",
+  "breed": "Nelore"
+}
+
+### Listar animais
+GET http://localhost:3333/animals

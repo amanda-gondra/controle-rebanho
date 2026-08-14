@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import {
   createAnimalSchema,
   animalIdParamSchema,
+  listAnimalsQuerySchema,
 } from "../schemas/animal.schema.js";
 
 export async function animalRoutes(app: FastifyInstance) {
@@ -13,11 +14,15 @@ export async function animalRoutes(app: FastifyInstance) {
     return reply.status(201).send(animal);
   });
 
-  // GET /animals — list all animals (newest first)
-  app.get("/animals", async () => {
+  // GET /animals — list animals, with optional filters
+  app.get("/animals", async (request) => {
+    const { status, category } = listAnimalsQuerySchema.parse(request.query);
+
     const animals = await prisma.animal.findMany({
+      where: { status, category },
       orderBy: { createdAt: "desc" },
     });
+
     return animals;
   });
 
