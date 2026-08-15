@@ -3,6 +3,8 @@ import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -17,6 +19,15 @@ const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
 // Zod como fonte única: valida as requisições E alimenta a documentação
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
+
+// Segurança: cabeçalhos de proteção
+await app.register(helmet);
+
+// Segurança: limite de requisições (100 por minuto por IP)
+await app.register(rateLimit, {
+  max: 100,
+  timeWindow: "1 minute",
+});
 
 // Documentação (Swagger / OpenAPI) — registrada ANTES das rotas
 await app.register(swagger, {
