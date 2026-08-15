@@ -7,9 +7,10 @@ export const createAnimalSchema = z
     sex: z.enum(["MALE", "FEMALE"]),
     category: z.enum(["CALF", "YEARLING", "STEER", "COW"]),
     breed: z.string().min(1).optional(),
-    birthDate: z.coerce
+    birthDate: z
+      .iso
       .date()
-      .max(new Date(), "Birth date cannot be in the future.")
+      .refine((d) => new Date(d) <= new Date(), "Birth date cannot be in the future.")
       .optional(),
     birthPrecision: z
       .enum(["DAY_MONTH_YEAR", "MONTH_YEAR", "UNKNOWN"])
@@ -43,9 +44,10 @@ export const updateAnimalSchema = z
     sex: z.enum(["MALE", "FEMALE"]),
     category: z.enum(["CALF", "YEARLING", "STEER", "COW"]),
     breed: z.string().min(1),
-    birthDate: z.coerce
+    birthDate: z
+      .iso
       .date()
-      .max(new Date(), "Birth date cannot be in the future."),
+      .refine((d) => new Date(d) <= new Date(), "Birth date cannot be in the future."),
     birthPrecision: z.enum(["DAY_MONTH_YEAR", "MONTH_YEAR", "UNKNOWN"]),
     notes: z.string(),
   })

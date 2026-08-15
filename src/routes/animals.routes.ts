@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
 import {
   createAnimalSchema,
@@ -7,145 +8,208 @@ import {
   updateStatusSchema,
   updateAnimalSchema,
 } from "../schemas/animal.schema.js";
-import {
-   createWeighingSchema } from "../schemas/weighing.schema.js";
-import {
-   calculateWeightGain } from "../services/weighing.service.js";
+import { createWeighingSchema } from "../schemas/weighing.schema.js";
+import { calculateWeightGain } from "../services/weighing.service.js";
 
 export async function animalRoutes(app: FastifyInstance) {
-  // POST /animals — register a new animal
-  app.post("/animals", async (request, reply) => {
-    const data = createAnimalSchema.parse(request.body);
-    const animal = await prisma.animal.create({ data });
-    return reply.status(201).send(animal);
-  });
+  const r = app.withTypeProvider<ZodTypeProvider>();
 
-  // GET /animals — list animals, with optional filters
-  app.get("/animals", async (request) => {
-    const { status, category } = listAnimalsQuerySchema.parse(request.query);
-
-    const animals = await prisma.animal.findMany({
-      where: { status, category },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return animals;
-  });
-
-  // GET /animals/:id — get one animal by id
-  app.get("/animals/:id", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-
-    const animal = await prisma.animal.findUnique({ where: { id } });
-
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    return animal;
-  });
-
-  // PATCH /animals/:id/status — change an animal's status
-  app.patch("/animals/:id/status", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-    const { status } = updateStatusSchema.parse(request.body);
-
-    // confere se o animal existe antes de tentar atualizar
-    const animal = await prisma.animal.findUnique({ where: { id } });
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    // atualiza só o status
-    const updated = await prisma.animal.update({
-      where: { id },
-      data: { status },
-    });
-
-    return updated;
-  });
-
-  // PUT /animals/:id — update an animal's data
-  app.put("/animals/:id", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-    const data = updateAnimalSchema.parse(request.body);
-
-    // confere se existe antes de atualizar
-    const animal = await prisma.animal.findUnique({ where: { id } });
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    const updated = await prisma.animal.update({
-      where: { id },
-      data,
-    });
-
-    return updated;
-  });
-
-  // POST /animals/:id/pesagens — register a weighing for an animal
-  app.post("/animals/:id/pesagens", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-    const data = createWeighingSchema.parse(request.body);
-
-    // confere se o animal existe antes de registrar a pesagem
-    const animal = await prisma.animal.findUnique({ where: { id } });
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    // cria a pesagem já ligada a esse animal
-    const weighing = await prisma.weighing.create({
-      data: {
-        date: data.date,
-        weightKg: data.weightKg,
-        animalId: id,
+  // POST /animals
+  r.post(
+    "/animals",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Cadastra um novo animal",
+        body: createAnimalSchema,
       },
-    });
-
-    return reply.status(201).send(weighing);
-  });
-
-  // GET /animals/:id/pesagens — list an animal's weighings (newest first)
-  app.get("/animals/:id/pesagens", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-
-    // confere se o animal existe
-    const animal = await prisma.animal.findUnique({ where: { id } });
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    // busca as pesagens desse animal, da mais recente pra mais antiga
-    const weighings = await prisma.weighing.findMany({
-      where: { animalId: id },
-      orderBy: { date: "desc" },
-    });
-
-    return weighings;
-  });
-
-  // GET /animals/:id/ganho-peso — weight gain and average daily gain (ADG)
-  app.get("/animals/:id/ganho-peso", async (request, reply) => {
-    const { id } = animalIdParamSchema.parse(request.params);
-
-    // confere se o animal existe
-    const animal = await prisma.animal.findUnique({ where: { id } });
-    if (!animal) {
-      return reply.status(404).send({ message: "Animal not found." });
-    }
-
-    // chama o serviço que faz o cálculo
-    const result = await calculateWeightGain(id);
-
-    // se não deu pra calcular (menos de 2 pesagens), responde claro
-    if (!result) {
-      return reply.status(422).send({
-        message: "At least two weighings are required to calculate weight gain.",
+    },
+    async (request, reply) => {
+      const { birthDate, ...rest } = request.body;
+      const animal = await prisma.animal.create({
+        data: {
+          ...rest,
+          ...(birthDate ? { birthDate: new Date(birthDate) } : {}),
+        },
       });
-    }
+      return reply.status(201).send(animal);
+    },
+  );
 
-    return result;
-  });
+  // GET /animals
+  r.get(
+    "/animals",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Lista os animais (com filtros)",
+        querystring: listAnimalsQuerySchema,
+      },
+    },
+    async (request) => {
+      const { status, category } = request.query;
+      return prisma.animal.findMany({
+        where: { status, category },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  );
+
+  // GET /animals/:id
+  r.get(
+    "/animals/:id",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Busca um animal pelo id",
+        params: animalIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      return animal;
+    },
+  );
+
+  // PUT /animals/:id
+  r.put(
+    "/animals/:id",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Edita os dados de um animal",
+        params: animalIdParamSchema,
+        body: updateAnimalSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      const { birthDate, ...rest } = request.body;
+      const updated = await prisma.animal.update({
+        where: { id: request.params.id },
+        data: {
+          ...rest,
+          ...(birthDate ? { birthDate: new Date(birthDate) } : {}),
+        },
+      });
+      return updated;
+    },
+  );
+
+  // PATCH /animals/:id/status
+  r.patch(
+    "/animals/:id/status",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Muda o status (vendido/morto)",
+        params: animalIdParamSchema,
+        body: updateStatusSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      const updated = await prisma.animal.update({
+        where: { id: request.params.id },
+        data: { status: request.body.status },
+      });
+      return updated;
+    },
+  );
+
+  // POST /animals/:id/pesagens
+  r.post(
+    "/animals/:id/pesagens",
+    {
+      schema: {
+        tags: ["Pesagens"],
+        summary: "Registra uma pesagem",
+        params: animalIdParamSchema,
+        body: createWeighingSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      const weighing = await prisma.weighing.create({
+        data: {
+          date: new Date(request.body.date),
+          weightKg: request.body.weightKg,
+          animalId: request.params.id,
+        },
+      });
+      return reply.status(201).send(weighing);
+    },
+  );
+
+  // GET /animals/:id/pesagens
+  r.get(
+    "/animals/:id/pesagens",
+    {
+      schema: {
+        tags: ["Pesagens"],
+        summary: "Histórico de pesagens do animal",
+        params: animalIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      return prisma.weighing.findMany({
+        where: { animalId: request.params.id },
+        orderBy: { date: "desc" },
+      });
+    },
+  );
+
+  // GET /animals/:id/ganho-peso
+  r.get(
+    "/animals/:id/ganho-peso",
+    {
+      schema: {
+        tags: ["Pesagens"],
+        summary: "Ganho de peso e GMD do animal",
+        params: animalIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      const result = await calculateWeightGain(request.params.id);
+      if (!result) {
+        return reply.status(422).send({
+          message:
+            "At least two weighings are required to calculate weight gain.",
+        });
+      }
+      return result;
+    },
+  );
 }
