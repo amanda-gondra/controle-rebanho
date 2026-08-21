@@ -49,7 +49,7 @@ model Animal {
 model Weighing {
   id        String   @id @default(uuid())
   animalId  String
-  animal    Animal   @relation(fields: [animalId], references: [id])
+  animal    Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
   date      DateTime
   weightKg  Decimal  @db.Decimal(6, 2)
   createdAt DateTime @default(now())

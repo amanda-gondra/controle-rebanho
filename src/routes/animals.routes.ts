@@ -48,10 +48,18 @@ export async function animalRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { status, category } = request.query;
-      return prisma.animal.findMany({
+      const animals = await prisma.animal.findMany({
         where: { status, category },
         orderBy: { createdAt: "desc" },
+        include: {
+          weighings: { orderBy: { date: "desc" }, take: 1 },
+        },
       });
+
+      return animals.map(({ weighings, ...animal }) => ({
+        ...animal,
+        currentWeightKg: weighings[0] ? Number(weighings[0].weightKg) : null,
+      }));
     },
   );
 
@@ -103,6 +111,32 @@ export async function animalRoutes(app: FastifyInstance) {
         },
       });
       return updated;
+    },
+  );
+
+  // DELETE /animals/:id
+  r.delete(
+    "/animals/:id",
+    {
+      schema: {
+        tags: ["Animais"],
+        summary: "Exclui um animal (e as pesagens dele)",
+        params: animalIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const animal = await prisma.animal.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!animal) {
+        return reply.status(404).send({ message: "Animal not found." });
+      }
+      // apaga as pesagens primeiro (são "filhas" do animal), depois o animal
+      await prisma.weighing.deleteMany({
+        where: { animalId: request.params.id },
+      });
+      await prisma.animal.delete({ where: { id: request.params.id } });
+      return reply.status(204).send();
     },
   );
 

@@ -5,6 +5,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import cors from "@fastify/cors";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -27,6 +28,12 @@ await app.register(helmet);
 await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute",
+});
+
+// Libera o acesso do frontend (CORS)
+await app.register(cors, {
+  origin: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 });
 
 // Documentação (Swagger / OpenAPI) — registrada ANTES das rotas
