@@ -3,3 +3,10 @@ node_modules
 .env
 
 /generated/prisma
+
+# Ferramentas de IA e editor (não fazem parte do projeto)
+.agents/
+.claude/
+.windsurf/
+.vscode/
+skills-lock.json

@@ -1,193 +1,220 @@
-# 🐂 Gestão de Rebanho — API
+<div align="center">
 
-API para gestão de rebanho de gado de corte, com cadastro dos animais por brinco, histórico de pesagens e cálculo automático de ganho de peso e ganho médio diário (GMD).
-Desenvolvida para transformar registros de campo em dados organizados sobre o desempenho dos animais, apoiando o acompanhamento do rebanho e a tomada de decisões baseada em dados.
+  <img src="web/public/logo.png" alt="Logo Rebanho" width="90" />
 
-![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![Fastify](https://img.shields.io/badge/Fastify-000000?style=for-the-badge&logo=fastify&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+# Rebanho
 
----
+**Sistema de controle de rebanho de gado de corte** — cadastro dos animais, registro de pesagens e acompanhamento do ganho de peso e do **ganho médio diário (GMD)** ao longo do tempo.
 
-##  Sobre o projeto
+<sub>Um histórico organizado para acompanhar o desempenho dos animais e apoiar decisões baseadas em dados.</sub>
 
-Na pecuária, o acompanhamento do rebanho ainda pode depender de anotações manuais, planilhas dispersas ou até da memória do produtor. Sem um histórico organizado, torna-se difícil acompanhar a evolução de cada animal e tomar decisões com base em dados confiáveis.
-
-Esta API foi desenvolvida para centralizar o cadastro dos animais e seu histórico de pesagens, mantendo os dados organizados e disponíveis ao longo do tempo. A partir dessas informações, o sistema calcula automaticamente indicadores como ganho de peso e ganho médio diário (GMD).
-
-O objetivo é transformar registros de campo em informações úteis para a tomada de decisão. Com um histórico consistente, o produtor consegue identificar quais animais apresentam melhor desempenho, acompanhar sua evolução e avaliar os resultados do manejo com maior segurança.
-
-A solução foi pensada para atender produtores de diferentes perfis e níveis de experiência. Por isso, prioriza uma experiência simples, com linguagem acessível e processos que reduzem a necessidade de cálculos manuais ou planilhas complexas.
-
-Mais do que registrar pesagens, a proposta é construir um histórico confiável que permita compreender o desempenho do rebanho e apoiar decisões baseadas em dados.
+</div>
 
 ---
 
-## ⚙️ Funcionalidades
+## 📖 Sobre o projeto
 
-- **Cadastro de animais** identificados pelo brinco (único), com sexo, raça, categoria e status.
-- **Data de nascimento com precisão variável** decisão baseada em uma necessidade identificada com um produtor rural. No campo, nem sempre o dia exato do nascimento é conhecido; por isso, o sistema permite registrar a data com precisão de dia, mês ou apenas ano, sem exigir uma informação que não seja conhecida.
-- **Listagem** com filtros por status e por categoria.
-- **Edição** dos dados e **mudança de status** (vendido / morto).
-- **Registro de pesagens** de cada animal ao longo do tempo.
-- **Histórico de pesagens** de um animal.
-- **Cálculo de ganho de peso e GMD** (ganho médio diário) a partir das pesagens.
-- **Documentação interativa** da API (Swagger) para explorar e testar as rotas pelo navegador.
-- **Validação de dados** e **tratamento de erros** centralizado.
+Na pecuária de corte, acompanhar a evolução de cada animal depende de informações registradas ao longo do tempo. Sem um histórico organizado, torna-se difícil saber, com dados concretos, como cada animal está evoluindo e tomar decisões com base em informações confiáveis.
+
+O **Rebanho** foi desenvolvido para uso em uma propriedade rural, centralizando o cadastro dos animais, identificados pelo **brinco**, e todo o seu histórico de **pesagens**. A partir desses registros, o sistema calcula automaticamente o **ganho de peso** e o **ganho médio diário (GMD)**, além de apresentar a evolução do peso ao longo do tempo.
+
+O objetivo é transformar registros de campo em informações úteis para acompanhar o desempenho individual dos animais e apoiar a tomada de decisão.
+
+O sistema também prioriza a experiência do usuário final, com linguagem clara e mensagens compreensíveis, evitando a exposição de códigos de erro ou detalhes técnicos desnecessários na interface.
 
 ---
 
-##  Tecnologias
+## ✨ Funcionalidades
 
-- **Node.js** + **TypeScript**
-- **Fastify** — framework web
-- **PostgreSQL** — banco de dados (rodando via **Docker**)
-- **Prisma** — ORM (acesso ao banco)
-- **Zod** — validação dos dados (fonte única: valida e também gera a documentação)
-- **Swagger / OpenAPI** — documentação interativa da API
+* **Cadastro de animais** com identificação por brinco único, sexo, categoria, raça e observações.
+* **Data de nascimento com precisão variável**, permitindo registrar a informação conforme o nível de precisão disponível: dia/mês/ano, mês/ano ou desconhecida.
+* **Registro de pesagens** por animal, mantendo um histórico completo ao longo do tempo.
+* **Cálculo automático de ganho de peso e GMD** (ganho médio diário).
+* **Visualização da evolução do peso** de cada animal por meio de gráficos.
+* **Filtros de animais** por status e categoria.
+* **Atualização de status** para situações como venda ou morte, preservando o histórico do animal.
+* **Interface responsiva**, adaptada para computador e dispositivos móveis.
+* **Mensagens e estados vazios orientados ao usuário**, evitando a exposição de informações técnicas desnecessárias.
+
+---
+
+## 🛠️ Tecnologias
+
+### Backend
+
+* **Node.js** — ambiente de execução
+* **TypeScript** — linguagem principal
+* **Fastify** — framework para construção da API REST
+* **PostgreSQL** — banco de dados relacional
+* **Prisma** — ORM para acesso ao banco de dados
+* **Zod** — validação e definição dos contratos de dados
+* **Swagger / OpenAPI** — documentação interativa da API
+* **Vitest** — testes automatizados
+* **Helmet + Rate Limit** — segurança e proteção das requisições
+
+### Frontend
+
+* **React + TypeScript**
+* **Vite**
+* **Tailwind CSS**
+* **React Router** — navegação entre páginas
+* **Recharts** — visualização dos dados
+* **Lucide** — biblioteca de ícones
+
+---
+
+## 📸 Telas
+
+> Prints do sistema serão adicionados em breve.
+
+<!--
+Sugestões:
+- Lista do rebanho
+- Ficha do animal
+- Gráfico de evolução do peso
+- Cadastro de animal
+-->
 
 ---
 
 ## 🗂️ Estrutura do projeto
 
-```
-src/
-├── server.ts                    # sobe o servidor, registra as rotas e trata os erros
-├── lib/
-│   └── prisma.ts                # conexão única com o banco
-├── schemas/                     # validação (Zod)
-│   ├── animal.schema.ts
-│   └── weighing.schema.ts
-├── routes/
-│   └── animals.routes.ts        # rotas de animais e pesagens
-└── services/
-    └── weighing.service.ts      # regra de negócio: cálculo do ganho de peso e GMD
+```text
+controle-rebanho/
+│
+├── src/                         # Backend — API Fastify
+│   ├── server.ts                # Inicialização do servidor e configuração global
+│   │
+│   ├── lib/                     # Configurações e integrações
+│   │   └── prisma.ts            # Conexão com o banco de dados
+│   │
+│   ├── schemas/                 # Validação dos dados
+│   ├── routes/                  # Rotas HTTP
+│   └── services/                # Regras de negócio
+│
+├── prisma/                      # Schema, migrações e seed do banco
+│
+└── web/                         # Frontend — React + Vite
+    └── src/
+        ├── pages/               # Páginas da aplicação
+        ├── components/          # Componentes reutilizáveis
+        ├── services/            # Comunicação com a API
+        └── types/               # Tipos e contratos
 ```
 
-Cada pasta tem uma responsabilidade única — a rota recebe o pedido, o schema valida, o serviço calcula e o Prisma acessa o banco. Isso mantém o código organizado e fácil de evoluir.
+A estrutura separa as responsabilidades entre as diferentes camadas da aplicação: as rotas recebem as requisições, os schemas validam os dados, os services concentram as regras de negócio e o Prisma realiza a comunicação com o banco de dados.
 
 ---
 
-##  Como rodar o projeto
+## 🚀 Como rodar localmente
 
 ### Pré-requisitos
-- [Node.js](https://nodejs.org) (versão LTS)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (para o banco de dados)
 
-### Passo a passo
+* Node.js
+* Docker
+* Git
 
-1. **Clone o repositório**
-   ```bash
-   git clone https://github.com/amanda-gondra/controle-rebanho.git
-   cd controle-rebanho
-   ```
+### 1. Clone o repositório
 
-2. **Instale as dependências**
-   ```bash
-   npm install
-   ```
+```bash
+git clone SEU_REPOSITORIO
+cd controle-rebanho
+```
 
-3. **Suba o banco de dados** (com o Docker Desktop aberto)
-   ```bash
-   docker compose up -d
-   ```
+### 2. Suba o banco de dados
 
-4. **Crie o arquivo `.env`** na raiz do projeto com a conexão do banco:
-   ```
-   DATABASE_URL="postgresql://rebanho:rebanho123@localhost:5433/rebanho?schema=public"
-   ```
+```bash
+docker compose up -d
+```
 
-5. **Rode a migração** (cria as tabelas no banco)
-   ```bash
-   npx prisma migrate dev
-   ```
+### 3. Configure e execute o backend
 
-6. **Inicie o servidor**
-   ```bash
-   npm run dev
-   ```
+Na raiz do projeto:
 
-O servidor sobe em `http://localhost:3333`.
+```bash
+npm install
+```
+
+Crie o arquivo `.env` utilizando o `.env.example` como referência e configure a variável `DATABASE_URL`.
+
+Em seguida, execute:
+
+```bash
+npx prisma migrate dev
+npm run dev
+```
+
+O backend estará disponível em `http://localhost:3333`, e a documentação interativa da API estará disponível em `/docs`.
+
+### 4. Configure e execute o frontend
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+O frontend será iniciado na porta configurada pelo Vite.
 
 ---
 
-## 📚 Documentação da API
+## 🧾 Principais rotas da API
 
-Com o servidor rodando, acesse a documentação interativa (Swagger) no navegador:
+| Método   | Rota                      | Descrição                               |
+| -------- | ------------------------- | --------------------------------------- |
+| `POST`   | `/animals`                | Cadastra um novo animal                 |
+| `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
+| `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |
+| `PUT`    | `/animals/:id`            | Atualiza os dados de um animal          |
+| `PATCH`  | `/animals/:id/status`     | Atualiza o status do animal             |
+| `DELETE` | `/animals/:id`            | Exclui um animal                        |
+| `POST`   | `/animals/:id/pesagens`   | Registra uma nova pesagem               |
+| `GET`    | `/animals/:id/pesagens`   | Retorna o histórico de pesagens         |
+| `GET`    | `/animals/:id/ganho-peso` | Retorna o ganho de peso e o GMD         |
 
-```
-http://localhost:3333/docs
-```
-
-Lá é possível ver todas as rotas, os dados que cada uma espera, e **testar cada uma** direto pelo navegador (botão "Try it out").
-
----
-
-## 🔗 Endpoints
-
-### Animais
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/animals` | Cadastra um novo animal |
-| `GET` | `/animals` | Lista os animais (filtros: `?status=` e `?category=`) |
-| `GET` | `/animals/:id` | Busca um animal pelo id |
-| `PUT` | `/animals/:id` | Edita os dados de um animal |
-| `PATCH` | `/animals/:id/status` | Muda o status (vendido / morto) |
-
-### Pesagens e desempenho
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/animals/:id/pesagens` | Registra uma pesagem |
-| `GET` | `/animals/:id/pesagens` | Histórico de pesagens do animal |
-| `GET` | `/animals/:id/ganho-peso` | Ganho de peso total e GMD do animal |
-
-**Exemplo de resposta** de `GET /animals/:id/ganho-peso`:
-```json
-{
-  "firstWeightKg": 180.5,
-  "lastWeightKg": 300,
-  "totalGainKg": 119.5,
-  "days": 183,
-  "averageDailyGainKg": 0.653
-}
-```
+A documentação completa e interativa da API está disponível na rota `/docs`.
 
 ---
 
 ## 💡 Decisões de projeto
 
-- **Validação como fonte única:** os schemas do Zod são responsáveis tanto pela validação das requisições quanto pela geração da documentação do Swagger, centralizando as regras em um único lugar e evitando duplicação.
-- **Tratamento de erros centralizado:** um único mecanismo define as respostas para cada tipo de erro, mantendo um padrão consistente na API — dados inválidos (400), recurso não encontrado (404), brinco duplicado (409) e dados insuficientes para o cálculo (422) sem expor detalhes internos da aplicação.
-- **Data de nascimento com precisão variável:** decisão baseada em uma necessidade identificada no contexto real da pecuária. Nem sempre o produtor possui o dia exato do nascimento de um animal. Por isso, o sistema permite registrar a data conforme o nível de precisão disponível — dia/mês/ano, mês/ano ou desconhecida — evitando a inserção de informações estimadas ou incorretas.
-- **Mensagens pensadas para o usuário final:** embora a API utilize códigos HTTP para representar diferentes situações, a camada de apresentação será responsável por traduzi-los em mensagens claras e compreensíveis. Por exemplo, em vez de exibir apenas um erro 422, o frontend poderá informar que ainda não há pesagens suficientes para calcular o ganho de peso.
+* **Validação como fonte única:** os schemas do Zod são responsáveis pela validação das requisições e pela definição dos contratos utilizados na documentação da API, centralizando as regras e reduzindo duplicações.
+
+* **Tratamento de erros centralizado:** um único mecanismo define as respostas para diferentes situações, mantendo um padrão consistente para dados inválidos, recursos não encontrados, registros duplicados e dados insuficientes para cálculo.
+
+* **Data de nascimento com precisão variável:** decisão baseada em uma necessidade identificada no contexto da pecuária. Nem sempre o dia exato do nascimento de um animal é conhecido; por isso, o sistema permite registrar a informação conforme o nível de precisão disponível, sem exigir dados estimados ou incorretos.
+
+* **Experiência orientada ao usuário final:** embora o backend utilize códigos HTTP para representar diferentes situações, a interface traduz essas respostas em mensagens claras e compreensíveis. Por exemplo, quando não há pesagens suficientes para calcular o desempenho, o usuário recebe uma explicação sobre a situação em vez de apenas um código técnico.
 
 ---
 
 ## 🗺️ Roadmap
 
-**v1 (atual):**
-- [x] CRUD de animais
-- [x] Registro e histórico de pesagens
-- [x] Cálculo de ganho de peso e GMD
-- [x] Documentação com Swagger
-- [ ] Testes automatizados
-- [ ] Frontend
+### Atual
 
-**v2 (futuro):**
-- [ ] Manejo sanitário (vacinas, vermífugos) com alertas
-- [ ] Lotes e pastos
-- [ ] Reprodução (coberturas, nascimentos)
-- [ ] Relatórios financeiros
+* [x] Cadastro e gerenciamento de animais
+* [x] Registro e histórico de pesagens
+* [x] Cálculo de ganho de peso e GMD
+* [x] Documentação interativa da API
+* [x] Interface para acompanhamento do rebanho
+* [x] Gráfico de evolução do peso
+* [ ] Ampliação da cobertura de testes automatizados
+
+### Próximas etapas
+
+* [ ] Manejo sanitário
+* [ ] Registro de vacinas e vermífugos
+* [ ] Alertas de manejo
+* [ ] Lotes e pastos
+* [ ] Reprodução e nascimentos
+* [ ] Relatórios e indicadores financeiros
 
 ---
 
 ## 👩‍💻 Autora
 
 **Amanda Gondra**
-Estudante de Ciência da Computação | Desenvolvedora Backend em formação
+Estudante de Ciência da Computação | Desenvolvedora Backend
 
-- GitHub: [@amanda-gondra](https://github.com/amanda-gondra)
-- LinkedIn: [Amanda Gondra](https://www.linkedin.com/in/amandagondra)
+* **GitHub:** @amanda-gondra
+* **LinkedIn:** Amanda Gondra
