@@ -45,7 +45,7 @@ export function AnimalList() {
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+            <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -109,7 +109,32 @@ export function AnimalList() {
         {loading ? (
           <p className="text-texto-suave">Carregando...</p>
         ) : animals.length === 0 ? (
-          <p className="text-texto-suave">Nenhum animal encontrado.</p>
+          status === "ALL" && category === "ALL" ? (
+            // Rebanho realmente vazio (sem nenhum filtro ativo)
+            <div className="bg-card border border-borda rounded-xl p-12 text-center max-w-xl mx-auto mt-4">
+              <div className="w-16 h-16 rounded-full bg-verde-claro flex items-center justify-center mx-auto mb-4">
+                <img src="/logo.png" alt="" className="w-9 h-9" />
+              </div>
+              <h2 className="text-lg font-medium text-texto mb-1">
+                Seu rebanho está vazio
+              </h2>
+              <p className="text-texto-suave text-sm mb-5">
+                Cadastre o primeiro animal para começar a acompanhar o
+                desempenho do seu rebanho.
+              </p>
+              <button
+                onClick={() => navigate("/animais/novo")}
+                className="inline-flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
+              >
+                <Plus size={18} /> Cadastrar primeiro animal
+              </button>
+            </div>
+          ) : (
+            // Tem animais, mas o filtro não achou nenhum
+            <div className="text-center text-texto-suave mt-8">
+              <p>Nenhum animal encontrado com esse filtro.</p>
+            </div>
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {animals.map((animal) => (

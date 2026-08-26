@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { getAnimal, updateAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
+import { useToast } from "../components/ToastProvider.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
@@ -27,6 +28,7 @@ const months = [
 export function AnimalEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const showToast = useToast();
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<Sex | "">("");
@@ -99,7 +101,8 @@ export function AnimalEdit() {
         birthDate: finalBirthDate,
         notes: notes.trim() || undefined,
       });
-      navigate(`/animais/${id}`); // volta pra ficha do animal
+      showToast("Alterações salvas.");
+      navigate(`/animais/${id}`);
     } catch (err: any) {
       if (Array.isArray(err?.errors)) {
         const mapped: Record<string, string> = {};
@@ -116,7 +119,7 @@ export function AnimalEdit() {
     return (
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 pb-24 md:p-8">
           <p className="text-texto-suave">Carregando...</p>
         </main>
       </div>

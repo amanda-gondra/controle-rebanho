@@ -96,7 +96,7 @@ export function AnimalCreate() {
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-      <main className="flex-1 p-8">
+            <main className="flex-1 p-4 pb-24 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => navigate("/")}

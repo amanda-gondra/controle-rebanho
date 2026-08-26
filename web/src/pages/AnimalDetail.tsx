@@ -67,7 +67,7 @@ export function AnimalDetail() {
     return (
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 pb-24 md:p-8">
           <p className="text-texto-suave">Carregando...</p>
         </main>
       </div>
@@ -142,7 +142,7 @@ export function AnimalDetail() {
           </div>
 
           {/* Botões de ação */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => navigate(`/animais/${animal.id}/editar`)}
               title="Editar animal"
@@ -171,7 +171,7 @@ export function AnimalDetail() {
         {gain ? (
           <>
             {/* Cartões de resumo */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-card border border-borda rounded-xl p-5">
                 <p className="text-sm text-texto-suave mb-1">Peso atual</p>
                 <p className="text-2xl font-medium text-texto">
