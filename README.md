@@ -1,7 +1,6 @@
 <div align="center">
 
   <img src="web/public/logo.png" alt="Logo Rebanho" width="90" />
-
 # Rebanho
 
 **Sistema de controle de rebanho de gado de corte** — cadastro dos animais, registro de pesagens e acompanhamento do ganho de peso e do **ganho médio diário (GMD)** ao longo do tempo.
