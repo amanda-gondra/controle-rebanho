@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Pencil, Trash2, Plus } from "lucide-react";
+import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { listAnimals } from "../services/animals.js";
 import type { Animal, Status, Category } from "../types/animal.js";
 import {
@@ -15,6 +15,7 @@ import { useToast } from "../components/ToastProvider.js";
 
 type StatusFilter = Status | "ALL";
 type CategoryFilter = Category | "ALL";
+type SortValue = "tag-asc" | "tag-desc" | "createdAt-desc" | "createdAt-asc";
 
 export function AnimalList() {
   const navigate = useNavigate();
@@ -23,29 +24,43 @@ export function AnimalList() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<StatusFilter>("ALL");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
+  const [sort, setSort] = useState<SortValue>("tag-asc");
+  const [search, setSearch] = useState("");
   const [deleting, setDeleting] = useState<Animal | null>(null);
 
   function loadAnimals() {
     setLoading(true);
+    // desmembra o valor do seletor (ex.: "tag-asc") em sortBy + order
+    const [sortBy, order] = sort.split("-") as [
+      "tag" | "createdAt",
+      "asc" | "desc",
+    ];
     listAnimals({
       status: status === "ALL" ? undefined : status,
       category: category === "ALL" ? undefined : category,
+      sortBy,
+      order,
     })
       .then((data) => setAnimals(data))
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }
 
-  // Busca de novo sempre que um filtro muda.
+  // Busca de novo sempre que um filtro ou a ordenação muda.
   useEffect(() => {
     loadAnimals();
-  }, [status, category]);
+  }, [status, category, sort]);
+
+  // Busca por brinco: filtra no frontend (instantâneo) a lista já carregada.
+  const visibleAnimals = animals.filter((animal) =>
+    animal.tag.toLowerCase().includes(search.trim().toLowerCase()),
+  );
 
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
 
-            <main className="flex-1 p-4 pb-24 md:p-8">
+      <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -65,7 +80,21 @@ export function AnimalList() {
           </button>
         </div>
 
-        {/* Filtros */}
+        {/* Busca por brinco */}
+        <div className="relative mb-4">
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-leve"
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por brinco (ex.: BR-004)"
+            className="w-full bg-card border border-borda rounded-lg pl-10 pr-3 py-2.5 text-texto"
+          />
+        </div>
+
+        {/* Filtros + ordenação */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div className="flex gap-2">
             {(
@@ -89,19 +118,35 @@ export function AnimalList() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-texto-suave">Categoria</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as CategoryFilter)}
-              className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
-            >
-              <option value="ALL">Todas</option>
-              <option value="CALF">Bezerro</option>
-              <option value="YEARLING">Novilho</option>
-              <option value="STEER">Boi</option>
-              <option value="COW">Vaca</option>
-            </select>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-texto-suave">Categoria</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as CategoryFilter)}
+                className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
+              >
+                <option value="ALL">Todas</option>
+                <option value="CALF">Bezerro</option>
+                <option value="YEARLING">Novilho</option>
+                <option value="STEER">Boi</option>
+                <option value="COW">Vaca</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-texto-suave">Ordenar</label>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortValue)}
+                className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
+              >
+                <option value="tag-asc">Brinco (crescente)</option>
+                <option value="tag-desc">Brinco (decrescente)</option>
+                <option value="createdAt-desc">Mais recentes</option>
+                <option value="createdAt-asc">Mais antigos</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -135,9 +180,14 @@ export function AnimalList() {
               <p>Nenhum animal encontrado com esse filtro.</p>
             </div>
           )
+        ) : visibleAnimals.length === 0 ? (
+          // A lista tem animais, mas a busca por brinco não achou
+          <div className="text-center text-texto-suave mt-8">
+            <p>Nenhum animal com esse brinco.</p>
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {animals.map((animal) => (
+            {visibleAnimals.map((animal) => (
               <div
                 key={animal.id}
                 onClick={() => navigate(`/animais/${animal.id}`)}

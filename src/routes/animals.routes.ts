@@ -8,7 +8,11 @@ import {
   updateStatusSchema,
   updateAnimalSchema,
 } from "../schemas/animal.schema.js";
-import { createWeighingSchema } from "../schemas/weighing.schema.js";
+import {
+  createWeighingSchema,
+  weighingParamsSchema,
+  updateWeighingSchema,
+} from "../schemas/weighing.schema.js";
 import { calculateWeightGain } from "../services/weighing.service.js";
 
 export async function animalRoutes(app: FastifyInstance) {
@@ -42,15 +46,15 @@ export async function animalRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ["Animais"],
-        summary: "Lista os animais (com filtros)",
+        summary: "Lista os animais (com filtros e ordenação)",
         querystring: listAnimalsQuerySchema,
       },
     },
     async (request) => {
-      const { status, category } = request.query;
+      const { status, category, sortBy, order } = request.query;
       const animals = await prisma.animal.findMany({
         where: { status, category },
-        orderBy: { createdAt: "desc" },
+        orderBy: { [sortBy]: order },
         include: {
           weighings: { orderBy: { date: "desc" }, take: 1 },
         },
@@ -216,6 +220,67 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { animalId: request.params.id },
         orderBy: { date: "desc" },
       });
+    },
+  );
+
+  // PUT /animals/:id/pesagens/:weighingId  — edita uma pesagem
+  r.put(
+    "/animals/:id/pesagens/:weighingId",
+    {
+      schema: {
+        tags: ["Pesagens"],
+        summary: "Edita uma pesagem",
+        params: weighingParamsSchema,
+        body: updateWeighingSchema,
+      },
+    },
+    async (request, reply) => {
+      // confere se a pesagem existe E pertence a este animal (segurança)
+      const weighing = await prisma.weighing.findFirst({
+        where: {
+          id: request.params.weighingId,
+          animalId: request.params.id,
+        },
+      });
+      if (!weighing) {
+        return reply.status(404).send({ message: "Weighing not found." });
+      }
+      const updated = await prisma.weighing.update({
+        where: { id: request.params.weighingId },
+        data: {
+          date: new Date(request.body.date),
+          weightKg: request.body.weightKg,
+        },
+      });
+      return updated;
+    },
+  );
+
+  // DELETE /animals/:id/pesagens/:weighingId  — exclui uma pesagem
+  r.delete(
+    "/animals/:id/pesagens/:weighingId",
+    {
+      schema: {
+        tags: ["Pesagens"],
+        summary: "Exclui uma pesagem",
+        params: weighingParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      // confere se a pesagem existe E pertence a este animal (segurança)
+      const weighing = await prisma.weighing.findFirst({
+        where: {
+          id: request.params.weighingId,
+          animalId: request.params.id,
+        },
+      });
+      if (!weighing) {
+        return reply.status(404).send({ message: "Weighing not found." });
+      }
+      await prisma.weighing.delete({
+        where: { id: request.params.weighingId },
+      });
+      return reply.status(204).send();
     },
   );
 

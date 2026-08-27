@@ -13,7 +13,8 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleDelete() {
+  async function handleDelete(e: React.FormEvent) {
+    e.preventDefault();
     setError("");
     setDeleting(true);
     try {
@@ -37,6 +38,7 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
         <div className="flex items-start justify-between mb-1">
           <h2 className="text-lg font-medium text-texto">Excluir animal?</h2>
           <button
+            type="button"
             onClick={onClose}
             title="Fechar"
             className="text-texto-leve hover:text-texto cursor-pointer"
@@ -49,23 +51,26 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
           as pesagens dele, e não dá para desfazer.
         </p>
 
-        {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+        <form onSubmit={handleDelete}>
+          {error && <p className="text-sm text-alerta mb-4">{error}</p>}
 
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-          >
-            {deleting ? "Excluindo..." : "Excluir"}
-          </button>
-        </div>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={deleting}
+              className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
+            >
+              {deleting ? "Excluindo..." : "Excluir"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

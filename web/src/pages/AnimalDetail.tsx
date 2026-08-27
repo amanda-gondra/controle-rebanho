@@ -11,7 +11,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Sidebar } from "../components/Sidebar.js";
-import { getAnimal, listWeighings, getWeightGain } from "../services/animals.js";
+import {
+  getAnimal,
+  listWeighings,
+  getWeightGain,
+  deleteWeighing,
+} from "../services/animals.js";
 import type { Animal, Weighing, WeightGain } from "../types/animal.js";
 import {
   sexLabel,
@@ -21,6 +26,7 @@ import {
 } from "../types/labels.js";
 import { formatDate, formatNumber } from "../types/format.js";
 import { WeighingModal } from "../components/WeighingModal.js";
+import { EditWeighingModal } from "../components/EditWeighingModal.js";
 import { StatusModal } from "../components/StatusModal.js";
 import { DeleteModal } from "../components/DeleteModal.js";
 import { useToast } from "../components/ToastProvider.js";
@@ -38,6 +44,9 @@ export function AnimalDetail() {
   const [showWeighingModal, setShowWeighingModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [editingWeighing, setEditingWeighing] = useState<Weighing | null>(null);
+  const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
+  const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
 
   // Busca (ou rebusca) todos os dados do animal.
   function loadData() {
@@ -62,6 +71,22 @@ export function AnimalDetail() {
     loadData();
   }, [id]);
 
+  // Confirma a exclusão de uma pesagem
+  async function handleDeleteWeighing() {
+    if (!id || !deletingWeighing) return;
+    setDeletingWeighingLoading(true);
+    try {
+      await deleteWeighing(id, deletingWeighing.id);
+      setDeletingWeighing(null);
+      loadData();
+      showToast("Pesagem excluída.");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingWeighingLoading(false);
+    }
+  }
+
   // Enquanto carrega
   if (loading) {
     return (
@@ -79,7 +104,7 @@ export function AnimalDetail() {
     return (
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
-        <main className="flex-1 p-8 flex items-center justify-center">
+        <main className="flex-1 p-4 pb-24 md:p-8 flex items-center justify-center">
           <div className="text-center">
             <h2 className="text-xl font-medium text-texto mb-2">
               Não encontramos este animal
@@ -115,7 +140,7 @@ export function AnimalDetail() {
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -171,7 +196,7 @@ export function AnimalDetail() {
         {gain ? (
           <>
             {/* Cartões de resumo */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-card border border-borda rounded-xl p-5">
                 <p className="text-sm text-texto-suave mb-1">Peso atual</p>
                 <p className="text-2xl font-medium text-texto">
@@ -262,9 +287,25 @@ export function AnimalDetail() {
                   <span className="text-texto-suave text-sm">
                     {formatDate(w.date)}
                   </span>
-                  <span className="font-medium text-texto">
-                    {String(w.weightKg).replace(".", ",")} kg
-                  </span>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-texto">
+                      {String(w.weightKg).replace(".", ",")} kg
+                    </span>
+                    <button
+                      onClick={() => setEditingWeighing(w)}
+                      title="Editar pesagem"
+                      className="text-texto-leve hover:text-verde cursor-pointer"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      onClick={() => setDeletingWeighing(w)}
+                      title="Excluir pesagem"
+                      className="text-texto-leve hover:text-alerta cursor-pointer"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -283,6 +324,58 @@ export function AnimalDetail() {
               showToast("Pesagem registrada.");
             }}
           />
+        )}
+
+        {/* Modal de editar pesagem */}
+        {editingWeighing && (
+          <EditWeighingModal
+            animalId={animal.id}
+            weighing={editingWeighing}
+            onClose={() => setEditingWeighing(null)}
+            onSaved={() => {
+              setEditingWeighing(null);
+              loadData();
+              showToast("Pesagem atualizada.");
+            }}
+          />
+        )}
+
+        {/* Confirmação de excluir pesagem */}
+        {deletingWeighing && (
+          <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+            onClick={() => setDeletingWeighing(null)}
+          >
+            <div
+              className="bg-card rounded-2xl p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-lg font-medium text-texto mb-1">
+                Excluir pesagem?
+              </h2>
+              <p className="text-sm text-texto-suave mb-5">
+                Tem certeza que quer excluir a pesagem de{" "}
+                {formatDate(deletingWeighing.date)} (
+                {String(deletingWeighing.weightKg).replace(".", ",")} kg)? Isso
+                pode alterar o cálculo do ganho de peso.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeletingWeighing(null)}
+                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteWeighing}
+                  disabled={deletingWeighingLoading}
+                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
+                >
+                  {deletingWeighingLoading ? "Excluindo..." : "Excluir"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Modal de mudar status */}

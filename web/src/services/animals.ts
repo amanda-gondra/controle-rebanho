@@ -12,10 +12,14 @@ import type {
 export function listAnimals(filters?: {
   status?: Status;
   category?: Category;
+  sortBy?: "tag" | "createdAt";
+  order?: "asc" | "desc";
 }): Promise<Animal[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.category) params.set("category", filters.category);
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.order) params.set("order", filters.order);
   const query = params.toString();
   return request<Animal[]>(`/animals${query ? `?${query}` : ""}`);
 }
@@ -87,5 +91,27 @@ export function updateAnimal(
   return request<Animal>(`/animals/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
+  });
+}
+
+// Edita uma pesagem existente (corrige data/peso).
+export function updateWeighing(
+  animalId: string,
+  weighingId: string,
+  data: { date: string; weightKg: number },
+): Promise<Weighing> {
+  return request<Weighing>(`/animals/${animalId}/pesagens/${weighingId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+// Exclui uma pesagem.
+export function deleteWeighing(
+  animalId: string,
+  weighingId: string,
+): Promise<void> {
+  return request<void>(`/animals/${animalId}/pesagens/${weighingId}`, {
+    method: "DELETE",
   });
 }

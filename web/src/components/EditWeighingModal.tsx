@@ -1,22 +1,29 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { createWeighing } from "../services/animals.js";
+import { updateWeighing } from "../services/animals.js";
+import type { Weighing } from "../types/animal.js";
 
 type Props = {
   animalId: string;
-  animalTag: string;
-  onClose: () => void; // fechar sem salvar
-  onSaved: () => void; // salvou com sucesso
+  weighing: Weighing;
+  onClose: () => void;
+  onSaved: () => void;
 };
 
-export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) {
-  const [date, setDate] = useState("");
-  const [weight, setWeight] = useState("");
+export function EditWeighingModal({
+  animalId,
+  weighing,
+  onClose,
+  onSaved,
+}: Props) {
+  // já começa preenchido com os valores atuais da pesagem
+  const [date, setDate] = useState(weighing.date.slice(0, 10));
+  const [weight, setWeight] = useState(String(weighing.weightKg).replace(".", ","));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function handleSave(e: React.FormEvent) {
-    e.preventDefault(); // impede o navegador de recarregar a página
+    e.preventDefault();
     setError("");
     if (!date) return setError("Informe a data da pesagem.");
     const weightNumber = Number(weight.replace(",", "."));
@@ -25,7 +32,10 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
 
     setSaving(true);
     try {
-      await createWeighing(animalId, { date, weightKg: weightNumber });
+      await updateWeighing(animalId, weighing.id, {
+        date,
+        weightKg: weightNumber,
+      });
       onSaved();
     } catch (err: any) {
       setError(err?.message ?? "Algo deu errado. Tente de novo.");
@@ -34,18 +44,16 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
   }
 
   return (
-    // fundo escurecido: clicar nele fecha
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
       onClick={onClose}
     >
-      {/* a janela: clicar dentro NÃO fecha (stopPropagation) */}
       <div
         className="bg-card rounded-2xl p-6 w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">Registrar pesagem</h2>
+        <div className="flex items-start justify-between mb-4">
+          <h2 className="text-lg font-medium text-texto">Editar pesagem</h2>
           <button
             type="button"
             onClick={onClose}
@@ -55,9 +63,7 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
             <X size={20} />
           </button>
         </div>
-        <p className="text-sm text-texto-suave mb-4">Animal {animalTag}</p>
 
-        {/* form: Enter dentro dele dispara o onSubmit (salvar) */}
         <form onSubmit={handleSave}>
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
@@ -99,7 +105,7 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar pesagem"}
+              {saving ? "Salvando..." : "Salvar alterações"}
             </button>
           </div>
         </form>

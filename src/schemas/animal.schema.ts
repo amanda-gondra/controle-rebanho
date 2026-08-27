@@ -27,10 +27,12 @@ export const animalIdParamSchema = z.object({
   id: z.string().uuid("ID inválido."),
 });
 
-// Valida os filtros opcionais da listagem (?status=...&category=...)
+// Valida os filtros e a ordenação da listagem (?status=&category=&sortBy=&order=)
 export const listAnimalsQuerySchema = z.object({
   status: z.enum(["ACTIVE", "SOLD", "DEAD"]).optional(),
   category: z.enum(["CALF", "YEARLING", "STEER", "COW"]).optional(),
+  sortBy: z.enum(["tag", "createdAt"]).default("tag"),
+  order: z.enum(["asc", "desc"]).default("asc"),
 });
 
 // Valida o corpo do PATCH de status (só aceita um status válido)

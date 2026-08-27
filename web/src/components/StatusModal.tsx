@@ -28,7 +28,8 @@ export function StatusModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSave() {
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
     setError("");
     setSaving(true);
     try {
@@ -54,6 +55,7 @@ export function StatusModal({
             Mudar status do animal
           </h2>
           <button
+            type="button"
             onClick={onClose}
             title="Fechar"
             className="text-texto-leve hover:text-texto cursor-pointer"
@@ -65,39 +67,43 @@ export function StatusModal({
           O que aconteceu com o {animalTag}?
         </p>
 
-        <div className="flex flex-col gap-2 mb-5">
-          {options.map((opt) => (
+        <form onSubmit={handleSave}>
+          <div className="flex flex-col gap-2 mb-5">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setStatus(opt.value)}
+                className={`py-2.5 rounded-lg border font-medium cursor-pointer ${
+                  status === opt.value
+                    ? "bg-verde-claro border-verde text-verde-escuro"
+                    : "bg-card border-borda-chip text-texto-suave"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+
+          <div className="flex justify-end gap-3">
             <button
-              key={opt.value}
-              onClick={() => setStatus(opt.value)}
-              className={`py-2.5 rounded-lg border font-medium cursor-pointer ${
-                status === opt.value
-                  ? "bg-verde-claro border-verde text-verde-escuro"
-                  : "bg-card border-borda-chip text-texto-suave"
-              }`}
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              {opt.label}
+              Cancelar
             </button>
-          ))}
-        </div>
-
-        {error && <p className="text-sm text-alerta mb-4">{error}</p>}
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
-          >
-            {saving ? "Salvando..." : "Confirmar"}
-          </button>
-        </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Confirmar"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
