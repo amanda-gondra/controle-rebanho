@@ -14,6 +14,7 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import { animalRoutes } from "./routes/animals.routes.js";
+import { sanitaryRoutes } from "./routes/sanitary.routes.js";
 
 const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
 
@@ -55,6 +56,7 @@ app.get("/health", async () => {
 });
 
 app.register(animalRoutes);
+app.register(sanitaryRoutes);
 
 // Tratador de erros central
 app.setErrorHandler((error, request, reply) => {

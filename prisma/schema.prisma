@@ -31,6 +31,12 @@ enum BirthDatePrecision {
   UNKNOWN        // desconhecida
 }
 
+// Tipo do produto sanitário: vacina ou vermífugo (tratados separados nas telas)
+enum ProductType {
+  VACCINE  // vacina
+  DEWORMER // vermífugo
+}
+
 model Animal {
   id             String             @id @default(uuid())
   tag            String             @unique
@@ -42,6 +48,7 @@ model Animal {
   birthPrecision BirthDatePrecision @default(UNKNOWN)
   notes          String?
   weighings      Weighing[]
+  applications   ApplicationAnimal[]
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 }
@@ -53,4 +60,35 @@ model Weighing {
   date      DateTime
   weightKg  Decimal  @db.Decimal(6, 2)
   createdAt DateTime @default(now())
+}
+
+// Cadastro de produtos sanitários (vacinas e vermífugos). Versão mínima: nome + tipo.
+model Product {
+  id           String        @id @default(uuid())
+  name         String
+  type         ProductType
+  applications Application[]
+  createdAt    DateTime      @default(now())
+}
+
+// Um "evento" de aplicação: um produto aplicado numa data, em vários animais.
+model Application {
+  id        String              @id @default(uuid())
+  productId String
+  product   Product             @relation(fields: [productId], references: [id])
+  date      DateTime
+  notes     String?
+  animals   ApplicationAnimal[]
+  createdAt DateTime            @default(now())
+}
+
+// A "ponte": liga cada aplicação a cada animal que participou dela.
+model ApplicationAnimal {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  animalId      String
+  animal        Animal      @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, animalId]) // não repete o mesmo animal na mesma aplicação
 }

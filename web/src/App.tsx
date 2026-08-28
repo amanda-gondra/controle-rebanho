@@ -3,6 +3,10 @@ import { AnimalList } from "./pages/AnimalList.js";
 import { AnimalCreate } from "./pages/AnimalCreate.js";
 import { AnimalDetail } from "./pages/AnimalDetail.js";
 import { AnimalEdit } from "./pages/AnimalEdit.js";
+import { Products } from "./pages/Products.js";
+import { ApplicationCreate } from "./pages/ApplicationCreate.js";
+import { ApplicationDetail } from "./pages/ApplicationDetail.js";
+import { Sanitary } from "./pages/Sanitary.js";
 import { ToastProvider } from "./components/ToastProvider.js";
 
 function App() {
@@ -14,6 +18,10 @@ function App() {
           <Route path="/animais/novo" element={<AnimalCreate />} />
           <Route path="/animais/:id" element={<AnimalDetail />} />
           <Route path="/animais/:id/editar" element={<AnimalEdit />} />
+          <Route path="/manejo" element={<Sanitary />} />
+          <Route path="/produtos" element={<Products />} />
+          <Route path="/aplicacoes/nova" element={<ApplicationCreate />} />
+          <Route path="/aplicacoes/:id" element={<ApplicationDetail />} />
         </Routes>
       </BrowserRouter>
     </ToastProvider>

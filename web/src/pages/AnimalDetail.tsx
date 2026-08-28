@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, RefreshCw, Trash2, Syringe, Pill } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -17,7 +17,8 @@ import {
   getWeightGain,
   deleteWeighing,
 } from "../services/animals.js";
-import type { Animal, Weighing, WeightGain } from "../types/animal.js";
+import { listAnimalApplications } from "../services/sanitary.js";
+import type { Animal, Weighing, WeightGain, Application } from "../types/animal.js";
 import {
   sexLabel,
   categoryLabel,
@@ -39,6 +40,7 @@ export function AnimalDetail() {
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [weighings, setWeighings] = useState<Weighing[]>([]);
   const [gain, setGain] = useState<WeightGain | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showWeighingModal, setShowWeighingModal] = useState(false);
@@ -64,6 +66,9 @@ export function AnimalDetail() {
     getWeightGain(id)
       .then((data) => setGain(data))
       .catch(() => setGain(null)); // sem 2 pesagens: fica null
+    listAnimalApplications(id)
+      .then((data) => setApplications(data))
+      .catch((err) => console.error(err));
   }
 
   useEffect(() => {
@@ -262,7 +267,7 @@ export function AnimalDetail() {
         )}
 
         {/* Histórico de pesagens */}
-        <div className="bg-card border border-borda rounded-xl p-6">
+        <div className="bg-card border border-borda rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <p className="font-medium text-texto">Pesagens</p>
             <button
@@ -308,6 +313,49 @@ export function AnimalDetail() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Manejo sanitário (vacinas e vermífugos deste animal) */}
+        <div className="bg-card border border-borda rounded-xl p-6">
+          <p className="font-medium text-texto mb-4">Manejo sanitário</p>
+          {applications.length === 0 ? (
+            <p className="text-texto-suave text-sm">
+              Nenhuma vacina ou vermífugo registrado para este animal.
+            </p>
+          ) : (
+            <div className="flex flex-col divide-y divide-borda">
+              {applications.map((app) => {
+                const isVaccine = app.product.type === "VACCINE";
+                return (
+                  <div
+                    key={app.id}
+                    onClick={() => navigate(`/aplicacoes/${app.id}`)}
+                    className="flex items-center gap-3 py-3 cursor-pointer hover:bg-bege -mx-2 px-2 rounded-lg"
+                  >
+                    <span
+                      className={`flex items-center justify-center w-9 h-9 rounded-full ${
+                        isVaccine
+                          ? "bg-verde-claro text-verde"
+                          : "bg-bege text-couro"
+                      }`}
+                    >
+                      {isVaccine ? <Syringe size={16} /> : <Pill size={16} />}
+                    </span>
+                    <div className="flex-1">
+                      <p className="font-medium text-texto text-sm">
+                        {app.product.name}
+                      </p>
+                      <p className="text-xs text-texto-suave">
+                        {isVaccine ? "Vacina" : "Vermífugo"} ·{" "}
+                        {formatDate(app.date)}
+                        {app.notes ? ` · ${app.notes}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

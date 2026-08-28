@@ -36,3 +36,36 @@ export type WeightGain = {
   days: number;
   averageDailyGainKg: number;
 };
+
+// ── Manejo sanitário (v2) ──
+
+export type ProductType = "VACCINE" | "DEWORMER";
+
+export type Product = {
+  id: string;
+  name: string;
+  type: ProductType;
+  createdAt: string;
+};
+
+// A "ponte" — liga uma aplicação a um animal (pode trazer o animal junto)
+export type ApplicationAnimal = {
+  id: string;
+  applicationId: string;
+  animalId: string;
+  animal?: Animal;
+};
+
+// Uma aplicação (evento). Alguns campos só vêm em certas rotas:
+// - _count.animals: na listagem (quantos animais no evento)
+// - animals: nos detalhes (a lista de animais do lote)
+export type Application = {
+  id: string;
+  productId: string;
+  product: Product;
+  date: string;
+  notes: string | null;
+  animals?: ApplicationAnimal[];
+  _count?: { animals: number };
+  createdAt: string;
+};

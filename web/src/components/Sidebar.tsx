@@ -1,4 +1,4 @@
-import { List, PlusCircle } from "lucide-react";
+import { List, PlusCircle, Syringe } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 export function Sidebar() {
@@ -36,6 +36,14 @@ export function Sidebar() {
           >
             <PlusCircle size={18} /> Cadastrar animal
           </NavLink>
+          <NavLink
+            to="/manejo"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            <Syringe size={18} /> Manejo sanitário
+          </NavLink>
         </nav>
       </aside>
 
@@ -61,6 +69,16 @@ export function Sidebar() {
           }
         >
           <PlusCircle size={20} /> Cadastrar
+        </NavLink>
+        <NavLink
+          to="/manejo"
+          className={({ isActive }) =>
+            `flex flex-col items-center gap-1 text-xs ${
+              isActive ? "text-verde-escuro font-medium" : "text-texto-suave"
+            }`
+          }
+        >
+          <Syringe size={20} /> Manejo
         </NavLink>
       </nav>
     </>
