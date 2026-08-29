@@ -58,3 +58,24 @@ export function listAnimalApplications(
 export function listAlerts(): Promise<Application[]> {
   return request<Application[]>("/alerts");
 }
+
+// Edita os dados de uma aplicação (não os animais).
+export function updateApplication(
+  id: string,
+  data: {
+    productId: string;
+    date: string;
+    reapplyDate?: string;
+    notes?: string;
+  },
+): Promise<Application> {
+  return request<Application>(`/applications/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+// Exclui uma aplicação.
+export function deleteApplication(id: string): Promise<void> {
+  return request<void>(`/applications/${id}`, { method: "DELETE" });
+}

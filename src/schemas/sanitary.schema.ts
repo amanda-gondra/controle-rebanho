@@ -42,3 +42,16 @@ export const listApplicationsQuerySchema = z.object({
 export const applicationIdParamSchema = z.object({
   id: z.string().uuid("ID da aplicação inválido."),
 });
+
+// Valida a edição de uma aplicação (só os dados, não os animais)
+export const updateApplicationSchema = z
+  .object({
+    productId: z.string().uuid("Produto inválido."),
+    date: z
+      .iso
+      .date()
+      .refine((d) => new Date(d) <= new Date(), "A data não pode ser no futuro."),
+    reapplyDate: z.iso.date().optional(),
+    notes: z.string().optional(),
+  })
+  .strict();

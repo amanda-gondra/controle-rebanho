@@ -5,6 +5,7 @@ import {
   createProductSchema,
   listProductsQuerySchema,
   createApplicationSchema,
+  updateApplicationSchema,
   listApplicationsQuerySchema,
   applicationIdParamSchema,
 } from "../schemas/sanitary.schema.js";
@@ -186,6 +187,78 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: "Application not found." });
       }
       return application;
+    },
+  );
+
+  // PUT /applications/:id — edita os dados de uma aplicação (não os animais)
+  r.put(
+    "/applications/:id",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Edita os dados de uma aplicação",
+        params: applicationIdParamSchema,
+        body: updateApplicationSchema,
+      },
+    },
+    async (request, reply) => {
+      // confere se a aplicação existe
+      const existing = await prisma.application.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!existing) {
+        return reply.status(404).send({ message: "Application not found." });
+      }
+
+      const { productId, date, reapplyDate, notes } = request.body;
+
+      // confere se o produto novo existe
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+      });
+      if (!product) {
+        return reply.status(404).send({ message: "Product not found." });
+      }
+
+      const updated = await prisma.application.update({
+        where: { id: request.params.id },
+        data: {
+          productId,
+          date: new Date(date),
+          reapplyDate: reapplyDate ? new Date(reapplyDate) : null,
+          notes,
+        },
+        include: {
+          product: true,
+          animals: { include: { animal: true } },
+        },
+      });
+      return updated;
+    },
+  );
+
+  // DELETE /applications/:id — exclui uma aplicação
+  r.delete(
+    "/applications/:id",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Exclui uma aplicação",
+        params: applicationIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const existing = await prisma.application.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!existing) {
+        return reply.status(404).send({ message: "Application not found." });
+      }
+      // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
+      await prisma.application.delete({
+        where: { id: request.params.id },
+      });
+      return reply.status(204).send();
     },
   );
 
