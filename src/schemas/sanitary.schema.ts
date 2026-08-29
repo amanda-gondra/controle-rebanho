@@ -25,6 +25,7 @@ export const createApplicationSchema = z
       .iso
       .date()
       .refine((d) => new Date(d) <= new Date(), "A data não pode ser no futuro."),
+    reapplyDate: z.iso.date().optional(),
     notes: z.string().optional(),
     animalIds: z
       .array(z.string().uuid("Animal inválido."))

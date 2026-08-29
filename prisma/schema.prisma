@@ -73,13 +73,14 @@ model Product {
 
 // Um "evento" de aplicação: um produto aplicado numa data, em vários animais.
 model Application {
-  id        String              @id @default(uuid())
-  productId String
-  product   Product             @relation(fields: [productId], references: [id])
-  date      DateTime
-  notes     String?
-  animals   ApplicationAnimal[]
-  createdAt DateTime            @default(now())
+  id          String              @id @default(uuid())
+  productId   String
+  product     Product             @relation(fields: [productId], references: [id])
+  date        DateTime
+  reapplyDate DateTime?
+  notes       String?
+  animals     ApplicationAnimal[]
+  createdAt   DateTime            @default(now())
 }
 
 // A "ponte": liga cada aplicação a cada animal que participou dela.

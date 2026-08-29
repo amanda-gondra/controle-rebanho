@@ -65,7 +65,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { productId, date, notes, animalIds } = request.body;
+      const { productId, date, reapplyDate, notes, animalIds } = request.body;
 
       // 1. confere se o produto existe
       const product = await prisma.product.findUnique({
@@ -90,6 +90,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         data: {
           productId,
           date: new Date(date),
+          reapplyDate: reapplyDate ? new Date(reapplyDate) : null,
           notes,
           animals: {
             create: animalIds.map((animalId) => ({ animalId })),
@@ -126,6 +127,40 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         },
       });
       return applications;
+    },
+  );
+
+  // GET /alerts — reaplicações chegando (próximos 7 dias) e vencidas
+  r.get(
+    "/alerts",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Reaplicações chegando ou vencidas",
+      },
+    },
+    async () => {
+      // janela: de agora até 7 dias pra frente
+      const now = new Date();
+      const limit = new Date();
+      limit.setDate(limit.getDate() + 7);
+
+      const applications = await prisma.application.findMany({
+        where: {
+          reapplyDate: { not: null, lte: limit }, // tem data e ela é <= 7 dias
+        },
+        orderBy: { reapplyDate: "asc" }, // as mais urgentes primeiro
+        include: {
+          product: true,
+          _count: { select: { animals: true } },
+        },
+      });
+
+      // marca cada uma como "vencida" ou "chegando"
+      return applications.map((app) => ({
+        ...app,
+        overdue: app.reapplyDate ? app.reapplyDate < now : false,
+      }));
     },
   );
 
@@ -171,7 +206,6 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       if (!animal) {
         return reply.status(404).send({ message: "Animal not found." });
       }
-      // busca as ligações desse animal, trazendo a aplicação e o produto
       const links = await prisma.applicationAnimal.findMany({
         where: { animalId: request.params.id },
         include: {
@@ -179,7 +213,6 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         },
         orderBy: { application: { date: "desc" } },
       });
-      // devolve já "achatado": a aplicação + o produto de cada uma
       return links.map((link) => link.application);
     },
   );

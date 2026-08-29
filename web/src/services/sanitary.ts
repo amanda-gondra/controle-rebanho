@@ -26,6 +26,7 @@ export function createProduct(data: {
 export function createApplication(data: {
   productId: string;
   date: string;
+  reapplyDate?: string;
   notes?: string;
   animalIds: string[];
 }): Promise<Application> {
@@ -51,4 +52,9 @@ export function listAnimalApplications(
   animalId: string,
 ): Promise<Application[]> {
   return request<Application[]>(`/animals/${animalId}/applications`);
+}
+
+// Reaplicações chegando (próximos 7 dias) ou vencidas.
+export function listAlerts(): Promise<Application[]> {
+  return request<Application[]>("/alerts");
 }

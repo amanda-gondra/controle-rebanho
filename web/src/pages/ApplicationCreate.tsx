@@ -28,6 +28,10 @@ export function ApplicationCreate() {
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  // reaplicação
+  const [needsReapply, setNeedsReapply] = useState(false);
+  const [reapplyDate, setReapplyDate] = useState("");
+
   // seletor de animais
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -95,6 +99,8 @@ export function ApplicationCreate() {
     setError("");
     if (!productId) return setError("Escolha o produto.");
     if (!date) return setError("Informe a data da aplicação.");
+    if (needsReapply && !reapplyDate)
+      return setError("Informe a data da reaplicação.");
     if (selected.size === 0)
       return setError("Selecione pelo menos um animal.");
 
@@ -103,6 +109,7 @@ export function ApplicationCreate() {
       await createApplication({
         productId,
         date,
+        reapplyDate: needsReapply ? reapplyDate : undefined,
         notes: notes.trim() || undefined,
         animalIds: Array.from(selected),
       });
@@ -214,6 +221,37 @@ export function ApplicationCreate() {
                 onChange={(e) => setDate(e.target.value)}
                 className="border border-borda rounded-lg px-3 py-2 text-texto"
               />
+            </div>
+
+            {/* Reaplicação */}
+            <div className="mb-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={needsReapply}
+                  onChange={(e) => setNeedsReapply(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer accent-[#3B6D11]"
+                />
+                <span className="font-medium text-texto">
+                  Precisa reaplicar
+                </span>
+              </label>
+              {needsReapply && (
+                <div className="mt-2">
+                  <label className="block text-sm text-texto-suave mb-1">
+                    Data da reaplicação
+                  </label>
+                  <input
+                    type="date"
+                    value={reapplyDate}
+                    onChange={(e) => setReapplyDate(e.target.value)}
+                    className="border border-borda rounded-lg px-3 py-2 text-texto"
+                  />
+                  <p className="text-xs text-texto-leve mt-1">
+                    Você será avisado quando a data estiver chegando.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Observação */}

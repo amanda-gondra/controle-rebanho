@@ -64,8 +64,10 @@ export type Application = {
   productId: string;
   product: Product;
   date: string;
+  reapplyDate: string | null;
   notes: string | null;
   animals?: ApplicationAnimal[];
   _count?: { animals: number };
+  overdue?: boolean; // só vem na rota de alertas (se já venceu)
   createdAt: string;
 };
