@@ -10,6 +10,7 @@ import {
   applicationIdParamSchema,
 } from "../schemas/sanitary.schema.js";
 import { animalIdParamSchema } from "../schemas/animal.schema.js";
+import { classifyReapplication } from "../services/sanitary.service.js";
 
 export async function sanitaryRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -141,27 +142,26 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async () => {
-      // janela: de agora até 7 dias pra frente
       const now = new Date();
-      const limit = new Date();
-      limit.setDate(limit.getDate() + 7);
 
+      // busca as que têm data de reaplicação (a regra de "é alerta" fica na função)
       const applications = await prisma.application.findMany({
-        where: {
-          reapplyDate: { not: null, lte: limit }, // tem data e ela é <= 7 dias
-        },
-        orderBy: { reapplyDate: "asc" }, // as mais urgentes primeiro
+        where: { reapplyDate: { not: null } },
+        orderBy: { reapplyDate: "asc" },
         include: {
           product: true,
           _count: { select: { animals: true } },
         },
       });
 
-      // marca cada uma como "vencida" ou "chegando"
-      return applications.map((app) => ({
-        ...app,
-        overdue: app.reapplyDate ? app.reapplyDate < now : false,
-      }));
+      // usa a função pura pra decidir quais são alerta e quais estão vencidas
+      return applications
+        .map((app) => {
+          const { isAlert, overdue } = classifyReapplication(app, now);
+          return { ...app, isAlert, overdue };
+        })
+        .filter((app) => app.isAlert)
+        .map(({ isAlert, ...app }) => app); // tira o isAlert do resultado final
     },
   );
 
