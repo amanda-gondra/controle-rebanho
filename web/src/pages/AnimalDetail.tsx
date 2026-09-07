@@ -18,18 +18,35 @@ import {
   deleteWeighing,
 } from "../services/animals.js";
 import { listAnimalApplications } from "../services/sanitary.js";
-import type { Animal, Weighing, WeightGain, Application } from "../types/animal.js";
+import {
+  getPurchase,
+  getSale,
+  getAnimalResult,
+  deletePurchase,
+  deleteSale,
+} from "../services/finance.js";
+import type {
+  Animal,
+  Weighing,
+  WeightGain,
+  Application,
+  Purchase,
+  Sale,
+  AnimalResult,
+} from "../types/animal.js";
 import {
   sexLabel,
   categoryLabel,
   statusLabel,
   statusStyle,
 } from "../types/labels.js";
-import { formatDate, formatNumber } from "../types/format.js";
+import { formatDate, formatNumber, formatMoney } from "../types/format.js";
 import { WeighingModal } from "../components/WeighingModal.js";
 import { EditWeighingModal } from "../components/EditWeighingModal.js";
 import { StatusModal } from "../components/StatusModal.js";
 import { DeleteModal } from "../components/DeleteModal.js";
+import { TradeModal } from "../components/TradeModal.js";
+import { EstimatedPriceModal } from "../components/EstimatedPriceModal.js";
 import { useToast } from "../components/ToastProvider.js";
 
 export function AnimalDetail() {
@@ -41,6 +58,9 @@ export function AnimalDetail() {
   const [weighings, setWeighings] = useState<Weighing[]>([]);
   const [gain, setGain] = useState<WeightGain | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [purchase, setPurchase] = useState<Purchase | null>(null);
+  const [sale, setSale] = useState<Sale | null>(null);
+  const [result, setResult] = useState<AnimalResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showWeighingModal, setShowWeighingModal] = useState(false);
@@ -49,6 +69,16 @@ export function AnimalDetail() {
   const [editingWeighing, setEditingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
+  // Financeiro (v3.0)
+  const [tradeModal, setTradeModal] = useState<{
+    kind: "purchase" | "sale";
+    existing: Purchase | Sale | null;
+  } | null>(null);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [deletingTrade, setDeletingTrade] = useState<"purchase" | "sale" | null>(
+    null,
+  );
+  const [deletingTradeLoading, setDeletingTradeLoading] = useState(false);
 
   // Busca (ou rebusca) todos os dados do animal.
   function loadData() {
@@ -69,6 +99,16 @@ export function AnimalDetail() {
     listAnimalApplications(id)
       .then((data) => setApplications(data))
       .catch((err) => console.error(err));
+    // 404 é esperado quando não há compra/venda registrada — vira null.
+    getPurchase(id)
+      .then((data) => setPurchase(data))
+      .catch(() => setPurchase(null));
+    getSale(id)
+      .then((data) => setSale(data))
+      .catch(() => setSale(null));
+    getAnimalResult(id)
+      .then((data) => setResult(data))
+      .catch(() => setResult(null));
   }
 
   useEffect(() => {
@@ -89,6 +129,27 @@ export function AnimalDetail() {
       console.error(err);
     } finally {
       setDeletingWeighingLoading(false);
+    }
+  }
+
+  // Confirma a exclusão de uma compra, ou o desfazer de uma venda.
+  async function handleDeleteTrade() {
+    if (!id || !deletingTrade) return;
+    setDeletingTradeLoading(true);
+    try {
+      if (deletingTrade === "purchase") {
+        await deletePurchase(id);
+        showToast("Compra removida.");
+      } else {
+        await deleteSale(id);
+        showToast("Venda desfeita. O animal voltou a ativo.");
+      }
+      setDeletingTrade(null);
+      loadData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingTradeLoading(false);
     }
   }
 
@@ -360,6 +421,187 @@ export function AnimalDetail() {
           )}
         </div>
 
+        {/* Financeiro (v3.0) — compra, venda e resultado do animal */}
+        <div className="bg-card border border-borda rounded-xl p-6 mt-6">
+          <p className="font-medium text-texto mb-4">Financeiro</p>
+
+          {/* Resultado apurado (real se vendido, estimado se vivo) */}
+          {result && result.resultType ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="rounded-xl bg-bege p-4">
+                <p className="text-sm text-texto-suave mb-1">Custo de compra</p>
+                <p className="text-xl font-medium text-texto">
+                  {result.purchaseCost !== null
+                    ? formatMoney(result.purchaseCost)
+                    : "Não informado"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-bege p-4">
+                <p className="text-sm text-texto-suave mb-1">
+                  {result.resultType === "REALIZED"
+                    ? "Receita da venda"
+                    : "Valor estimado"}
+                </p>
+                <p className="text-xl font-medium text-texto">
+                  {formatMoney(
+                    result.resultType === "REALIZED"
+                      ? (result.saleRevenue ?? 0)
+                      : (result.estimatedValue ?? 0),
+                  )}
+                </p>
+              </div>
+              <div className="rounded-xl bg-bege p-4">
+                <p className="text-sm text-texto-suave mb-1">
+                  Resultado
+                  {result.resultType === "ESTIMATED" ? " (estimado)" : ""}
+                </p>
+                <p
+                  className={`text-xl font-medium ${
+                    (result.result ?? 0) >= 0 ? "text-verde" : "text-alerta"
+                  }`}
+                >
+                  {formatMoney(result.result ?? 0)}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-texto-suave text-sm mb-6">
+              Registre a compra e informe o preço estimado (com ao menos uma
+              pesagem) para ver o resultado enquanto o animal não é vendido.
+            </p>
+          )}
+
+          {/* Linhas: compra, venda e — se ainda vivo — preço estimado */}
+          <div className="flex flex-col divide-y divide-borda">
+            {/* Compra */}
+            <div className="flex items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-texto">Compra</p>
+                <p className="text-xs text-texto-suave">
+                  {purchase
+                    ? `${formatDate(purchase.date)} · ${formatNumber(
+                        Number(purchase.weightKg),
+                      )} kg × ${formatMoney(Number(purchase.pricePerKg))}/kg`
+                    : "Não registrada"}
+                </p>
+              </div>
+              {purchase ? (
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-texto">
+                    {formatMoney(
+                      Number(purchase.weightKg) * Number(purchase.pricePerKg),
+                    )}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setTradeModal({ kind: "purchase", existing: purchase })
+                    }
+                    title="Editar compra"
+                    className="text-texto-leve hover:text-verde cursor-pointer"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => setDeletingTrade("purchase")}
+                    title="Remover compra"
+                    className="text-texto-leve hover:text-alerta cursor-pointer"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() =>
+                    setTradeModal({ kind: "purchase", existing: null })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
+                >
+                  <Plus size={15} /> Registrar
+                </button>
+              )}
+            </div>
+
+            {/* Venda */}
+            <div className="flex items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-texto">Venda</p>
+                <p className="text-xs text-texto-suave">
+                  {sale
+                    ? `${formatDate(sale.date)} · ${formatNumber(
+                        Number(sale.weightKg),
+                      )} kg × ${formatMoney(Number(sale.pricePerKg))}/kg`
+                    : animal.status === "DEAD"
+                      ? "Animal morto"
+                      : "Não registrada"}
+                </p>
+              </div>
+              {sale ? (
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-texto">
+                    {formatMoney(
+                      Number(sale.weightKg) * Number(sale.pricePerKg),
+                    )}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setTradeModal({ kind: "sale", existing: sale })
+                    }
+                    title="Editar venda"
+                    className="text-texto-leve hover:text-verde cursor-pointer"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => setDeletingTrade("sale")}
+                    title="Desfazer venda"
+                    className="text-texto-leve hover:text-alerta cursor-pointer"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setTradeModal({ kind: "sale", existing: null })}
+                  disabled={animal.status === "DEAD"}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={15} /> Registrar
+                </button>
+              )}
+            </div>
+
+            {/* Preço estimado — só faz sentido enquanto o animal está vivo e não vendido */}
+            {!sale && animal.status !== "DEAD" && (
+              <div className="flex items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="text-sm font-medium text-texto">
+                    Preço estimado (kg)
+                  </p>
+                  <p className="text-xs text-texto-suave">
+                    {animal.estimatedPricePerKg
+                      ? `${formatMoney(Number(animal.estimatedPricePerKg))}/kg`
+                      : "Não informado"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPriceModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
+                >
+                  {animal.estimatedPricePerKg ? (
+                    <>
+                      <Pencil size={15} /> Alterar
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={15} /> Informar
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Modal de registrar pesagem */}
         {showWeighingModal && (
           <WeighingModal
@@ -452,6 +694,82 @@ export function AnimalDetail() {
               navigate("/");
             }}
           />
+        )}
+
+        {/* Modal de compra / venda (cadastro e edição) */}
+        {tradeModal && (
+          <TradeModal
+            animalId={animal.id}
+            animalTag={animal.tag}
+            kind={tradeModal.kind}
+            existing={tradeModal.existing}
+            onClose={() => setTradeModal(null)}
+            onSaved={() => {
+              const wasEdit = !!tradeModal.existing;
+              const noun = tradeModal.kind === "sale" ? "Venda" : "Compra";
+              setTradeModal(null);
+              loadData();
+              showToast(`${noun} ${wasEdit ? "atualizada" : "registrada"}.`);
+            }}
+          />
+        )}
+
+        {/* Modal do preço estimado */}
+        {showPriceModal && (
+          <EstimatedPriceModal
+            animalId={animal.id}
+            animalTag={animal.tag}
+            current={animal.estimatedPricePerKg}
+            onClose={() => setShowPriceModal(false)}
+            onSaved={() => {
+              setShowPriceModal(false);
+              loadData();
+              showToast("Preço estimado atualizado.");
+            }}
+          />
+        )}
+
+        {/* Confirmação de remover compra / desfazer venda */}
+        {deletingTrade && (
+          <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+            onClick={() => setDeletingTrade(null)}
+          >
+            <div
+              className="bg-card rounded-2xl p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-lg font-medium text-texto mb-1">
+                {deletingTrade === "purchase"
+                  ? "Remover compra?"
+                  : "Desfazer venda?"}
+              </h2>
+              <p className="text-sm text-texto-suave mb-5">
+                {deletingTrade === "purchase"
+                  ? "O custo de compra deixa de entrar no resultado deste animal."
+                  : "A venda é apagada e o animal volta para o status Ativo."}
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeletingTrade(null)}
+                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteTrade}
+                  disabled={deletingTradeLoading}
+                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
+                >
+                  {deletingTradeLoading
+                    ? "Processando..."
+                    : deletingTrade === "purchase"
+                      ? "Remover"
+                      : "Desfazer"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

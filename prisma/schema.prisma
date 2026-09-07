@@ -38,19 +38,22 @@ enum ProductType {
 }
 
 model Animal {
-  id             String             @id @default(uuid())
-  tag            String             @unique
-  sex            Sex
-  breed          String?
-  category       Category
-  status         Status             @default(ACTIVE)
-  birthDate      DateTime?
-  birthPrecision BirthDatePrecision @default(UNKNOWN)
-  notes          String?
-  weighings      Weighing[]
-  applications   ApplicationAnimal[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                  String             @id @default(uuid())
+  tag                 String             @unique
+  sex                 Sex
+  breed               String?
+  category            Category
+  status              Status             @default(ACTIVE)
+  birthDate           DateTime?
+  birthPrecision      BirthDatePrecision @default(UNKNOWN)
+  notes               String?
+  weighings           Weighing[]
+  applications        ApplicationAnimal[]
+  purchase            AnimalPurchase?
+  sale                AnimalSale?
+  estimatedPricePerKg Decimal?           @db.Decimal(10, 2) // preço/kg informado p/ animal vivo
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 }
 
 model Weighing {
@@ -92,4 +95,28 @@ model ApplicationAnimal {
   animal        Animal      @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
   @@unique([applicationId, animalId]) // não repete o mesmo animal na mesma aplicação
+}
+
+// Compra do animal: o produtor pensa em peso × preço por kg. 1 compra por animal.
+model AnimalPurchase {
+  id         String   @id @default(uuid())
+  animalId   String   @unique
+  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  date       DateTime
+  weightKg   Decimal  @db.Decimal(6, 2)
+  pricePerKg Decimal  @db.Decimal(10, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+// Venda do animal: mesma ideia da compra. 1 venda por animal.
+model AnimalSale {
+  id         String   @id @default(uuid())
+  animalId   String   @unique
+  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  date       DateTime
+  weightKg   Decimal  @db.Decimal(6, 2)
+  pricePerKg Decimal  @db.Decimal(10, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
 }

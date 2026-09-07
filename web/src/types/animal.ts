@@ -16,6 +16,7 @@ export type Animal = {
   birthDate: string | null;
   birthPrecision: BirthPrecision;
   notes: string | null;
+  estimatedPricePerKg: string | null; // preço/kg informado p/ animal vivo (Decimal → texto)
   currentWeightKg?: number | null; // só vem na listagem (peso da última pesagem)
   createdAt: string;
   updatedAt: string;
@@ -70,4 +71,33 @@ export type Application = {
   _count?: { animals: number };
   overdue?: boolean; // só vem na rota de alertas (se já venceu)
   createdAt: string;
+};
+
+// ── Financeiro (v3.0) ──
+
+// Compra de um animal (peso + preço/kg). Decimais vêm como texto do backend.
+export type Purchase = {
+  id: string;
+  animalId: string;
+  date: string;
+  weightKg: string;
+  pricePerKg: string;
+  notes: string | null;
+  createdAt: string;
+};
+
+// Venda: mesma forma da compra hoje. Alias separado porque são conceitos distintos.
+export type Sale = Purchase;
+
+// Como o resultado foi apurado (espelha o backend):
+// REALIZED = animal vendido · ESTIMATED = vivo, com preço informado · null = sem dados.
+export type ResultType = "REALIZED" | "ESTIMATED" | null;
+
+// Resultado financeiro de um animal — tudo já calculado pelo backend.
+export type AnimalResult = {
+  purchaseCost: number | null; // peso × preço/kg da compra
+  saleRevenue: number | null; // peso × preço/kg da venda
+  estimatedValue: number | null; // peso atual × preço/kg estimado (animal vivo)
+  result: number | null; // receita (ou estimativa) − custo de compra
+  resultType: ResultType;
 };

@@ -8,3 +8,11 @@ export function formatDate(iso: string): string {
 export function formatNumber(value: number): string {
   return value.toLocaleString("pt-BR");
 }
+
+// Formata um valor em reais (1234.5 → "R$ 1.234,50", -560 → "-R$ 560,00").
+export function formatMoney(value: number): string {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
