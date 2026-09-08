@@ -73,19 +73,24 @@ Backend (raiz):
 Frontend (web/):
   src/pages/                    AnimalList, AnimalCreate, AnimalDetail, AnimalEdit,
                                 Products, ApplicationCreate, Sanitary, ApplicationDetail
-  src/components/               Sidebar, modais (Weighing, EditWeighing, Status, Delete,
+  src/components/               Sidebar, AnimalActionsMenu (menu ⋮ da lista, via portal),
+                                modais (Weighing, EditWeighing, Status, Delete,
                                 EditApplication, Trade, EstimatedPrice), ToastProvider
   src/services/                 animals.ts, sanitary.ts, finance.ts, api.ts (helper request<T>)
-  src/types/                    animal.ts, labels.ts, format.ts
+  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata)
   src/index.css                 tema "campo moderno" (paleta em @theme)
 ```
 
 ## Paleta (classes Tailwind via @theme em web/src/index.css)
 
 `verde #3B6D11` · `verde-escuro #27500A` · `verde-claro #EAF3DE` · `verde-nevoa #D6E8C2`
-`bege #F4EEE2` · `card #FFFFFF` · `texto #2C2A24` · `texto-suave #6B6459`
-`texto-leve #9A8F7C` · `borda #E7E0D2` · `couro #8B6F52` · `alerta #B42318`
-Uso: `bg-verde`, `text-texto`, `border-borda`, etc. Logo em `web/public/logo.png`.
+`bege #F1F0EC` (fundo de todas as telas) · `card #FFFFFF` · `texto #2C2A24` · `texto-suave #6B6459`
+`texto-leve #9A8F7C` · `borda #E7E0D2` · `borda-chip #D8CFBD` · `couro #8B6F52` · `alerta #B42318`
+`sidebar #152B1C` (fundo do menu lateral) · `sidebar-ativo #37592E` (item de menu ativo)
+Uso: `bg-verde`, `text-texto`, `border-borda`, etc. Logo em `web/public/logo.png`
+(na sidebar escura, aplicar `[filter:brightness(0)_invert(1)]` pra deixá-la branca).
+Cores fora do tema, inline: ícone de sexo `#2E7BD6` (macho) / `#D6478B` (fêmea),
+pontinho de status vendido `#D8A200` / morto `#9A8F7C` (ver `web/src/types/labels.ts`).
 
 ---
 
@@ -97,6 +102,13 @@ evento, reaplicação + alertas, CRUD de aplicações) e **v3.0** (financeiro ba
 por animal — venda marca `status=SOLD` e desfazer volta pra `ACTIVE`; só `DEAD` bloqueia o
 registro de venda —, preço/kg estimado informado pelo produtor, resultado por animal na
 ficha). Testes: GMD, alertas e resultado.
+
+**Redesign da listagem (branch `feat/redesign-lista-rebanho`, em cima da v3.0):** `AnimalList`
+virou tabela (brinco, animal com idade exata, sexo com ícone colorido, raça, peso + data da
+última pesagem, status com pontinho, menu ⋮). Filtro/busca/ordenação/paginação agora são
+client-side (1 fetch da lista inteira). Sidebar repaginada (verde `sidebar`, item ativo,
+usuário placeholder — login é v7 —, morros SVG). `GET /animals` passou a devolver
+`lastWeighingDate`.
 
 ### Schema Prisma (atual)
 
@@ -190,7 +202,8 @@ model AnimalSale {
 ### Rotas
 
 ```
-Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order)
+Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
+            devolve currentWeightKg + lastWeighingDate da última pesagem)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
             PATCH /animals/:id/status
 Pesagens:   POST /animals/:id/pesagens · GET /animals/:id/pesagens
