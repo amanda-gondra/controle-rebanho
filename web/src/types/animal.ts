@@ -18,6 +18,7 @@ export type Animal = {
   notes: string | null;
   estimatedPricePerKg: string | null; // preço/kg informado p/ animal vivo (Decimal → texto)
   currentWeightKg?: number | null; // só vem na listagem (peso da última pesagem)
+  lastWeighingDate?: string | null; // só vem na listagem (data da última pesagem, ISO)
   createdAt: string;
   updatedAt: string;
 };

@@ -63,6 +63,7 @@ export async function animalRoutes(app: FastifyInstance) {
       return animals.map(({ weighings, ...animal }) => ({
         ...animal,
         currentWeightKg: weighings[0] ? Number(weighings[0].weightKg) : null,
+        lastWeighingDate: weighings[0] ? weighings[0].date : null,
       }));
     },
   );

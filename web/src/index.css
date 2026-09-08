@@ -5,7 +5,7 @@
   --color-verde-escuro: #27500A;
   --color-verde-claro: #EAF3DE;
   --color-verde-nevoa: #D6E8C2;
-  --color-bege: #F4EEE2;
+  --color-bege: #F1F0EC;
   --color-card: #FFFFFF;
   --color-texto: #2C2A24;
   --color-texto-suave: #6B6459;
@@ -14,4 +14,6 @@
   --color-borda-chip: #D8CFBD;
   --color-couro: #8B6F52;
   --color-alerta: #B42318;
+  --color-sidebar: #152B1C; /* verde pinho escuro do menu lateral */
+  --color-sidebar-ativo: #37592E; /* item de menu ativo (verde médio discreto) */
 }
