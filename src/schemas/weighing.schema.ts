@@ -6,10 +6,10 @@ export const createWeighingSchema = z
     date: z
       .iso
       .date()
-      .refine((d) => new Date(d) <= new Date(), "Weighing date cannot be in the future."),
+      .refine((d) => new Date(d) <= new Date(), "A data da pesagem não pode ser no futuro."),
     weightKg: z.coerce
       .number()
-      .positive("Weight must be greater than zero."),
+      .positive("O peso deve ser maior que zero."),
   })
   .strict();
 
@@ -28,9 +28,9 @@ export const updateWeighingSchema = z
     date: z
       .iso
       .date()
-      .refine((d) => new Date(d) <= new Date(), "Weighing date cannot be in the future."),
+      .refine((d) => new Date(d) <= new Date(), "A data da pesagem não pode ser no futuro."),
     weightKg: z.coerce
       .number()
-      .positive("Weight must be greater than zero."),
+      .positive("O peso deve ser maior que zero."),
   })
   .strict();

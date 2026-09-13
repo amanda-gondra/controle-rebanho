@@ -74,7 +74,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         where: { id: productId },
       });
       if (!product) {
-        return reply.status(404).send({ message: "Product not found." });
+        return reply.status(404).send({ message: "Produto não encontrado." });
       }
 
       // 2. confere se todos os animais existem
@@ -84,7 +84,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       if (found !== animalIds.length) {
         return reply
           .status(400)
-          .send({ message: "One or more animals were not found." });
+          .send({ message: "Um ou mais animais não foram encontrados." });
       }
 
       // 3. cria a aplicação (evento) JÁ com as ligações por animal
@@ -184,7 +184,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         },
       });
       if (!application) {
-        return reply.status(404).send({ message: "Application not found." });
+        return reply.status(404).send({ message: "Aplicação não encontrada." });
       }
       return application;
     },
@@ -207,7 +207,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!existing) {
-        return reply.status(404).send({ message: "Application not found." });
+        return reply.status(404).send({ message: "Aplicação não encontrada." });
       }
 
       const { productId, date, reapplyDate, notes } = request.body;
@@ -217,7 +217,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         where: { id: productId },
       });
       if (!product) {
-        return reply.status(404).send({ message: "Product not found." });
+        return reply.status(404).send({ message: "Produto não encontrado." });
       }
 
       const updated = await prisma.application.update({
@@ -252,7 +252,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!existing) {
-        return reply.status(404).send({ message: "Application not found." });
+        return reply.status(404).send({ message: "Aplicação não encontrada." });
       }
       // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
       await prisma.application.delete({
@@ -277,7 +277,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       const links = await prisma.applicationAnimal.findMany({
         where: { animalId: request.params.id },

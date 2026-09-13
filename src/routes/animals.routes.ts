@@ -83,7 +83,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       return animal;
     },
@@ -105,7 +105,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       const { birthDate, ...rest } = request.body;
       const updated = await prisma.animal.update({
@@ -134,7 +134,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       // apaga as pesagens primeiro (são "filhas" do animal), depois o animal
       await prisma.weighing.deleteMany({
@@ -161,7 +161,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       const updated = await prisma.animal.update({
         where: { id: request.params.id },
@@ -187,7 +187,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       const weighing = await prisma.weighing.create({
         data: {
@@ -215,7 +215,7 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       return prisma.weighing.findMany({
         where: { animalId: request.params.id },
@@ -244,7 +244,7 @@ export async function animalRoutes(app: FastifyInstance) {
         },
       });
       if (!weighing) {
-        return reply.status(404).send({ message: "Weighing not found." });
+        return reply.status(404).send({ message: "Pesagem não encontrada." });
       }
       const updated = await prisma.weighing.update({
         where: { id: request.params.weighingId },
@@ -276,7 +276,7 @@ export async function animalRoutes(app: FastifyInstance) {
         },
       });
       if (!weighing) {
-        return reply.status(404).send({ message: "Weighing not found." });
+        return reply.status(404).send({ message: "Pesagem não encontrada." });
       }
       await prisma.weighing.delete({
         where: { id: request.params.weighingId },
@@ -300,13 +300,13 @@ export async function animalRoutes(app: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal not found." });
+        return reply.status(404).send({ message: "Animal não encontrado." });
       }
       const result = await calculateWeightGain(request.params.id);
       if (!result) {
         return reply.status(422).send({
           message:
-            "At least two weighings are required to calculate weight gain.",
+            "São necessárias pelo menos duas pesagens para calcular o ganho de peso.",
         });
       }
       return result;

@@ -65,7 +65,7 @@ app.setErrorHandler((error, request, reply) => {
   // Validação automática (schemas Zod nas rotas) → 400
   if (hasZodFastifySchemaValidationErrors(error)) {
     return reply.status(400).send({
-      message: "Invalid data.",
+      message: "Dados inválidos.",
       errors: error.validation.map((issue: any) => ({
         field: issue.instancePath ? issue.instancePath.replace(/^\//, "") : "",
         error: issue.message,
@@ -76,7 +76,7 @@ app.setErrorHandler((error, request, reply) => {
   // Validação manual (.parse) — rede de segurança
   if (error instanceof ZodError) {
     return reply.status(400).send({
-      message: "Invalid data.",
+      message: "Dados inválidos.",
       errors: error.issues.map((i) => ({
         field: i.path.join("."),
         error: i.message,
@@ -90,12 +90,12 @@ app.setErrorHandler((error, request, reply) => {
     error.code === "P2002"
   ) {
     return reply.status(409).send({
-      message: "An animal with this tag already exists.",
+      message: "Já existe um animal cadastrado com este brinco.",
     });
   }
 
   request.log.error(error);
-  return reply.status(500).send({ message: "Internal server error." });
+  return reply.status(500).send({ message: "Erro interno do servidor." });
 });
 
 app.listen({ port: 3333 }).then(() => {
