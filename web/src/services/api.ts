@@ -1,5 +1,6 @@
-// O endereço do nosso backend.
-const API_URL = "http://localhost:3333";
+// O endereço do nosso backend. Em produção, defina VITE_API_URL no .env
+// (ver .env.example); em desenvolvimento, cai no localhost por padrão.
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
 
 // Ajudante central: faz a chamada à API e trata a resposta de forma padronizada.
 export async function request<T>(
