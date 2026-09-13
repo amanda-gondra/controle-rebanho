@@ -4,7 +4,7 @@
   
 # Rebanho
 
-**Sistema de controle de rebanho de gado de corte** — cadastro dos animais, registro de pesagens e acompanhamento do ganho de peso e do **ganho médio diário (GMD)** ao longo do tempo.
+**Sistema de controle de rebanho de gado de corte** — cadastro dos animais, pesagens com ganho de peso e **GMD**, manejo sanitário e controle financeiro básico (compra, venda e resultado) por animal.
 
 <sub>Um histórico organizado para acompanhar o desempenho dos animais e apoiar decisões baseadas em dados.</sub>
 
@@ -33,6 +33,8 @@ O sistema também prioriza a experiência do usuário final, com linguagem clara
 * **Visualização da evolução do peso** de cada animal por meio de gráficos.
 * **Filtros de animais** por status e categoria.
 * **Atualização de status** para situações como venda ou morte, preservando o histórico do animal.
+* **Manejo sanitário completo**, com cadastro de produtos (vacinas e vermífugos), aplicação em lote, histórico por animal e por evento, e alertas de reaplicação.
+* **Módulo financeiro base**, com registro de compra e venda por animal (preço por kg) e cálculo do resultado — realizado ou estimado — na ficha do animal.
 * **Interface responsiva**, adaptada para computador e dispositivos móveis.
 * **Mensagens e estados vazios orientados ao usuário**, evitando a exposição de informações técnicas desnecessárias.
 
@@ -171,6 +173,10 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `POST`   | `/animals/:id/pesagens`   | Registra uma nova pesagem               |
 | `GET`    | `/animals/:id/pesagens`   | Retorna o histórico de pesagens         |
 | `GET`    | `/animals/:id/ganho-peso` | Retorna o ganho de peso e o GMD         |
+| `POST`   | `/applications`           | Registra uma aplicação sanitária em lote (vacina/vermífugo) |
+| `GET`    | `/alerts`                 | Lista alertas de reaplicação (vencidas e próximas) |
+| `POST`   | `/animals/:id/venda`      | Registra a venda de um animal (preço/kg) |
+| `GET`    | `/animals/:id/resultado`  | Retorna o resultado financeiro do animal |
 
 A documentação completa e interativa da API está disponível na rota `/docs`.
 
@@ -190,7 +196,7 @@ A documentação completa e interativa da API está disponível na rota `/docs`.
 
 ## 🗺️ Roadmap
 
-### Atual
+### Concluído
 
 * [x] Cadastro e gerenciamento de animais
 * [x] Registro e histórico de pesagens
@@ -198,16 +204,19 @@ A documentação completa e interativa da API está disponível na rota `/docs`.
 * [x] Documentação interativa da API
 * [x] Interface para acompanhamento do rebanho
 * [x] Gráfico de evolução do peso
+* [x] Manejo sanitário completo (produtos, aplicação em lote, histórico, alertas de reaplicação)
+* [x] Financeiro base — compra e venda por animal, resultado por animal (v3.0)
+
+### Em andamento / próximas etapas
+
 * [ ] Ampliação da cobertura de testes automatizados
-
-### Próximas etapas
-
-* [ ] Manejo sanitário
-* [ ] Registro de vacinas e vermífugos
-* [ ] Alertas de manejo
+* [ ] Financeiro — custos por categoria, rateio por lote e dashboard financeiro
 * [ ] Lotes e pastos
 * [ ] Reprodução e nascimentos
-* [ ] Relatórios e indicadores financeiros
+* [ ] Painel dinâmico com indicadores do rebanho
+* [ ] Cadastro de fazenda e personalização por perfil de operação
+
+> Detalhamento de cada versão em [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
