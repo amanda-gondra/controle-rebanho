@@ -37,86 +37,171 @@ enum ProductType {
   DEWORMER // vermífugo
 }
 
+// ── Conta (G1) ──────────────────────────────────────────────────────────────
+// Cada produtor tem a sua fazenda. TODO dado do rebanho pertence a uma fazenda
+// (farmId) e uma fazenda nunca enxerga os dados de outra.
+
+model Farm {
+  id        String   @id @default(uuid())
+  name      String
+  country   String   @default("BR")
+  timezone  String   @default("America/Sao_Paulo") // D-16: usado em "hoje", "futuro" e "vencido"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User?
+  animals            Animal[]
+  weighings          Weighing[]
+  products           Product[]
+  applications       Application[]
+  applicationAnimals ApplicationAnimal[]
+  purchases          AnimalPurchase[]
+  sales              AnimalSale[]
+}
+
+// Na Release 1.0: um usuário por fazenda (farmId @unique).
+model User {
+  id           String    @id @default(uuid())
+  farmId       String    @unique
+  farm         Farm      @relation(fields: [farmId], references: [id])
+  name         String
+  email        String    @unique // sempre guardado em minúsculas
+  passwordHash String // scrypt (D-24) — nunca a senha
+  sessions     Session[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Sessão de login (D-23). O navegador guarda um token aleatório num cookie
+// HttpOnly; aqui fica só o HASH dele. Apagar a linha = sair/revogar.
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime // vence por inatividade (renovada com o uso)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ── Rebanho ─────────────────────────────────────────────────────────────────
+
 model Animal {
-  id                  String             @id @default(uuid())
-  tag                 String             @unique
+  id                  String              @id @default(uuid())
+  farmId              String
+  farm                Farm                @relation(fields: [farmId], references: [id])
+  tag                 String
   sex                 Sex
   breed               String?
   category            Category
-  status              Status             @default(ACTIVE)
-  birthDate           DateTime?
-  birthPrecision      BirthDatePrecision @default(UNKNOWN)
+  status              Status              @default(ACTIVE)
+  birthDate           DateTime?           @db.Date
+  birthPrecision      BirthDatePrecision  @default(UNKNOWN)
   notes               String?
   weighings           Weighing[]
   applications        ApplicationAnimal[]
   purchase            AnimalPurchase?
   sale                AnimalSale?
-  estimatedPricePerKg Decimal?           @db.Decimal(10, 2) // preço/kg informado p/ animal vivo
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  estimatedPricePerKg Decimal?            @db.Decimal(10, 2) // preço/kg informado p/ animal vivo
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([farmId, tag]) // brinco único POR FAZENDA
+  @@index([farmId, status])
 }
 
 model Weighing {
   id        String   @id @default(uuid())
+  farmId    String
+  farm      Farm     @relation(fields: [farmId], references: [id])
   animalId  String
   animal    Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date      DateTime
+  date      DateTime @db.Date
   weightKg  Decimal  @db.Decimal(6, 2)
   createdAt DateTime @default(now())
+
+  @@index([animalId, date])
+  @@index([farmId])
 }
 
 // Cadastro de produtos sanitários (vacinas e vermífugos). Versão mínima: nome + tipo.
 model Product {
   id           String        @id @default(uuid())
+  farmId       String
+  farm         Farm          @relation(fields: [farmId], references: [id])
   name         String
   type         ProductType
   applications Application[]
   createdAt    DateTime      @default(now())
+
+  @@index([farmId, type])
 }
 
 // Um "evento" de aplicação: um produto aplicado numa data, em vários animais.
 model Application {
   id          String              @id @default(uuid())
+  farmId      String
+  farm        Farm                @relation(fields: [farmId], references: [id])
   productId   String
   product     Product             @relation(fields: [productId], references: [id])
-  date        DateTime
-  reapplyDate DateTime?
+  date        DateTime            @db.Date
+  reapplyDate DateTime?           @db.Date
   notes       String?
   animals     ApplicationAnimal[]
   createdAt   DateTime            @default(now())
+
+  @@index([farmId, date])
+  @@index([farmId, reapplyDate])
+  @@index([productId])
 }
 
 // A "ponte": liga cada aplicação a cada animal que participou dela.
 model ApplicationAnimal {
   id            String      @id @default(uuid())
+  farmId        String
+  farm          Farm        @relation(fields: [farmId], references: [id])
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   animalId      String
   animal        Animal      @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
   @@unique([applicationId, animalId]) // não repete o mesmo animal na mesma aplicação
+  @@index([animalId])
+  @@index([farmId])
 }
 
 // Compra do animal: o produtor pensa em peso × preço por kg. 1 compra por animal.
+// (O modelo definitivo, Trade/TradeItem, chega na G5.)
 model AnimalPurchase {
   id         String   @id @default(uuid())
+  farmId     String
+  farm       Farm     @relation(fields: [farmId], references: [id])
   animalId   String   @unique
   animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime
+  date       DateTime @db.Date
   weightKg   Decimal  @db.Decimal(6, 2)
   pricePerKg Decimal  @db.Decimal(10, 2)
   notes      String?
   createdAt  DateTime @default(now())
+
+  @@index([farmId])
 }
 
 // Venda do animal: mesma ideia da compra. 1 venda por animal.
 model AnimalSale {
   id         String   @id @default(uuid())
+  farmId     String
+  farm       Farm     @relation(fields: [farmId], references: [id])
   animalId   String   @unique
   animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime
+  date       DateTime @db.Date
   weightKg   Decimal  @db.Decimal(6, 2)
   pricePerKg Decimal  @db.Decimal(10, 2)
   notes      String?
   createdAt  DateTime @default(now())
+
+  @@index([farmId])
 }

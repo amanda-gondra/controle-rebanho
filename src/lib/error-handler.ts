@@ -9,13 +9,17 @@ type ErrorBody = { code: ErrorCode; message: string; errors?: FieldError[] };
 // Qual unicidade foi violada → qual código e mensagem devolver (F-12).
 // A chave é "Modelo.campo1,campo2".
 const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> = {
-  "Animal.tag": {
+  "Animal.farmId,tag": {
     code: ErrorCode.DUPLICATE_TAG,
     message: "Já existe um animal cadastrado com este brinco.",
   },
   "AnimalPurchase.animalId": {
     code: ErrorCode.DUPLICATE_PURCHASE,
     message: "Este animal já tem uma compra registrada.",
+  },
+  "User.email": {
+    code: ErrorCode.EMAIL_ALREADY_REGISTERED,
+    message: "Já existe uma conta com esse e-mail.",
   },
   "AnimalSale.animalId": {
     code: ErrorCode.DUPLICATE_SALE,
@@ -109,7 +113,11 @@ export function errorHandler(
   if (error instanceof AppError) {
     return reply
       .status(error.statusCode)
-      .send({ code: error.code, message: error.message } satisfies ErrorBody);
+      .send({
+        code: error.code,
+        message: error.message,
+        ...(error.errors ? { errors: error.errors } : {}),
+      } satisfies ErrorBody);
   }
 
   // Validação automática (schemas Zod nas rotas) → 400

@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { prisma } from "../lib/prisma.js";
-import { toDbDate } from "../lib/dates.js";
+import { assertNotInFuture, toDbDate } from "../lib/dates.js";
 import { ErrorCode, badRequest, notFound } from "../lib/errors.js";
 import {
   createProductSchema,
@@ -16,6 +15,8 @@ import { classifyReapplication } from "../services/sanitary.service.js";
 
 const productNotFound = () =>
   notFound(ErrorCode.PRODUCT_NOT_FOUND, "Produto não encontrado.");
+
+const FUTURE_DATE = "A data não pode ser no futuro.";
 
 const applicationNotFound = () =>
   notFound(ErrorCode.APPLICATION_NOT_FOUND, "Aplicação não encontrada.");
@@ -36,8 +37,8 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const product = await prisma.product.create({
-        data: request.body,
+      const product = await request.db.product.create({
+        data: { ...request.body, farmId: request.auth.farm.id },
       });
       return reply.status(201).send(product);
     },
@@ -55,7 +56,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { type } = request.query;
-      return prisma.product.findMany({
+      return request.db.product.findMany({
         where: { type },
         orderBy: { name: "asc" },
       });
@@ -76,15 +77,17 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { productId, date, reapplyDate, notes, animalIds } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
+      const farmId = request.auth.farm.id;
 
       // 1. confere se o produto existe
-      const product = await prisma.product.findUnique({
+      const product = await request.db.product.findUnique({
         where: { id: productId },
       });
       if (!product) throw productNotFound();
 
       // 2. confere se todos os animais existem (o schema já recusa ids repetidos)
-      const found = await prisma.animal.count({
+      const found = await request.db.animal.count({
         where: { id: { in: animalIds } },
       });
       if (found !== animalIds.length) {
@@ -94,15 +97,17 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         );
       }
 
-      // 3. cria a aplicação (evento) JÁ com as ligações por animal
-      const application = await prisma.application.create({
+      // 3. cria a aplicação (evento) JÁ com as ligações por animal.
+      // As ligações são criação ANINHADA: o farmId vai explícito em cada uma.
+      const application = await request.db.application.create({
         data: {
+          farmId,
           productId,
           date: toDbDate(date),
           reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
           notes,
           animals: {
-            create: animalIds.map((animalId) => ({ animalId })),
+            create: animalIds.map((animalId) => ({ animalId, farmId })),
           },
         },
         include: {
@@ -127,7 +132,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { type } = request.query;
-      const applications = await prisma.application.findMany({
+      const applications = await request.db.application.findMany({
         where: type ? { product: { type } } : {},
         orderBy: { date: "desc" },
         include: {
@@ -148,11 +153,12 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         summary: "Reaplicações chegando ou vencidas",
       },
     },
-    async () => {
+    async (request) => {
       const now = new Date();
+      const { timezone } = request.auth.farm;
 
       // busca as que têm data de reaplicação (a regra de "é alerta" fica na função)
-      const applications = await prisma.application.findMany({
+      const applications = await request.db.application.findMany({
         where: { reapplyDate: { not: null } },
         orderBy: { reapplyDate: "asc" },
         include: {
@@ -164,7 +170,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       // usa a função pura pra decidir quais são alerta e quais estão vencidas
       return applications
         .map((app) => {
-          const { isAlert, overdue } = classifyReapplication(app, now);
+          const { isAlert, overdue } = classifyReapplication(app, now, timezone);
           return { ...app, isAlert, overdue };
         })
         .filter((app) => app.isAlert)
@@ -183,7 +189,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const application = await prisma.application.findUnique({
+      const application = await request.db.application.findUnique({
         where: { id: request.params.id },
         include: {
           product: true,
@@ -208,20 +214,21 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request) => {
       // confere se a aplicação existe
-      const existing = await prisma.application.findUnique({
+      const existing = await request.db.application.findUnique({
         where: { id: request.params.id },
       });
       if (!existing) throw applicationNotFound();
 
       const { productId, date, reapplyDate, notes } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
 
       // confere se o produto novo existe
-      const product = await prisma.product.findUnique({
+      const product = await request.db.product.findUnique({
         where: { id: productId },
       });
       if (!product) throw productNotFound();
 
-      const updated = await prisma.application.update({
+      const updated = await request.db.application.update({
         where: { id: request.params.id },
         data: {
           productId,
@@ -250,7 +257,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
-      const { count } = await prisma.application.deleteMany({
+      const { count } = await request.db.application.deleteMany({
         where: { id: request.params.id },
       });
       if (count === 0) throw applicationNotFound();
@@ -269,13 +276,13 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
       });
       if (!animal) {
         throw notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
       }
-      const links = await prisma.applicationAnimal.findMany({
+      const links = await request.db.applicationAnimal.findMany({
         where: { animalId: request.params.id },
         include: {
           application: { include: { product: true } },

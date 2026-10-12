@@ -17,6 +17,7 @@ cd web && npm run dev         # frontend (Vite), porta 5173
 npm run test:unit             # testes de unidade (sem banco)
 npm run db:test:migrate       # aplica migrations no banco de TESTE (TEST_DATABASE_URL)
 npm test                      # unidade + integração (precisa do banco de teste)
+npm run dev:claim-initial-farm  # cria login para a "Fazenda inicial" (dados antigos de teste)
 ```
 
 - Variáveis: ver `.env.example` (só nomes). Validadas ao subir em `src/config/env.ts`.
@@ -50,6 +51,11 @@ npm test                      # unidade + integração (precisa do banco de test
 - **Datas** entram como texto ISO (`YYYY-MM-DD`) e viram `Date` com `toDbDate()` (meia-noite UTC).
   "Hoje/futuro/vencido" sempre pelo fuso da fazenda (`src/lib/dates.ts`, padrão D-16).
 - **Toda rota tem teste de integração** em `tests/integration/` (banco de teste real).
+- **Fazenda (multi-tenant) — regra de ouro:** rota protegida usa **só `request.db`** (já filtrado
+  pela fazenda da sessão, `src/lib/tenant.ts`), nunca o `prisma` direto. Em `create`, passar
+  `farmId: request.auth.farm.id` (inclusive em criação aninhada). `farmId` NUNCA vem do
+  navegador. Toda rota nova entra no teste de acesso cruzado (`tests/integration/tenancy.test.ts`).
+- **"Data no futuro"** é conferida na rota com `assertNotInFuture(data, request.auth.farm.timezone, ...)`.
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
@@ -70,21 +76,24 @@ Backend (raiz):
   src/server.ts                 sobe o servidor (config → buildApp → listen; desliga limpo)
   src/app.ts                    buildApp(config): plugins, erros, rotas (sem abrir porta)
   src/config/env.ts             variáveis de ambiente validadas
-  src/lib/                      prisma.ts, errors.ts, error-handler.ts, dates.ts
+  src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
+                                password.ts, errors.ts, error-handler.ts, dates.ts
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
   src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance
-  src/routes/                   animals.routes.ts, sanitary.routes.ts, finance.routes.ts
+  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance (protegidas)
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
                                 finance.service.ts (resultado por animal)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
 
 Frontend (web/):
-  src/pages/                    AnimalList, AnimalCreate, AnimalDetail, AnimalEdit,
-                                Products, ApplicationCreate, Sanitary, ApplicationDetail
-  src/components/               Sidebar, AnimalActionsMenu (menu ⋮ da lista, via portal),
+  src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
+                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail
+  src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
+                                Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
                                 EditApplication, Trade, EstimatedPrice), ToastProvider
-  src/services/                 animals.ts, sanitary.ts, finance.ts, api.ts (helper request<T>)
+  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts,
+                                api.ts (request<T>: manda o cookie; 401 → volta para o login)
   src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata)
   src/index.css                 tema "campo moderno" (paleta em @theme)
 ```
@@ -115,101 +124,24 @@ ficha). Testes: GMD, alertas e resultado.
 virou tabela (brinco, animal com idade exata, sexo com ícone colorido, raça, peso + data da
 última pesagem, status com pontinho, menu ⋮). Filtro/busca/ordenação/paginação agora são
 client-side (1 fetch da lista inteira). Sidebar repaginada (verde `sidebar`, item ativo,
-usuário placeholder — login é v7 —, morros SVG). `GET /animals` passou a devolver
+usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolver
 `lastWeighingDate`.
 
-### Schema Prisma (atual)
+### Banco (resumo — fonte da verdade: `prisma/schema.prisma`)
 
-```prisma
-enum Sex { MALE FEMALE }
-enum Category { CALF YEARLING STEER COW }
-enum Status { ACTIVE SOLD DEAD }
-enum BirthDatePrecision { DAY_MONTH_YEAR MONTH_YEAR UNKNOWN }
-enum ProductType { VACCINE DEWORMER }
-
-model Animal {
-  id String @id @default(uuid())
-  tag String @unique
-  sex Sex
-  breed String?
-  category Category
-  status Status @default(ACTIVE)
-  birthDate DateTime?
-  birthPrecision BirthDatePrecision @default(UNKNOWN)
-  notes String?
-  weighings Weighing[]
-  applications ApplicationAnimal[]
-  purchase AnimalPurchase?
-  sale AnimalSale?
-  estimatedPricePerKg Decimal? @db.Decimal(10, 2)  // preço/kg informado p/ animal vivo
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Weighing {
-  id String @id @default(uuid())
-  animalId String
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  createdAt DateTime @default(now())
-}
-
-model Product {
-  id String @id @default(uuid())
-  name String
-  type ProductType
-  applications Application[]
-  createdAt DateTime @default(now())
-}
-
-model Application {
-  id String @id @default(uuid())
-  productId String
-  product Product @relation(fields: [productId], references: [id])
-  date DateTime
-  reapplyDate DateTime?
-  notes String?
-  animals ApplicationAnimal[]
-  createdAt DateTime @default(now())
-}
-
-model ApplicationAnimal {
-  id String @id @default(uuid())
-  applicationId String
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  animalId String
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  @@unique([applicationId, animalId])
-}
-
-// v3.0 — compra e venda: 1 por animal (animalId @unique). Mesma forma: peso × preço/kg.
-model AnimalPurchase {
-  id String @id @default(uuid())
-  animalId String @unique
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  pricePerKg Decimal @db.Decimal(10, 2)
-  notes String?
-  createdAt DateTime @default(now())
-}
-
-model AnimalSale {
-  id String @id @default(uuid())
-  animalId String @unique
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  pricePerKg Decimal @db.Decimal(10, 2)
-  notes String?
-  createdAt DateTime @default(now())
-}
-```
+- Conta: `Farm` (nome, país, fuso) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
+  `Session` (hash do token, validade).
+- Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda) · `Weighing` ·
+  `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
+- Datas de calendário são `@db.Date`. Dinheiro e peso são `Decimal`.
 
 ### Rotas
 
 ```
+Conta:      POST /auth/register · POST /auth/login · POST /auth/logout   (públicas)
+            GET /auth/me                                                (protegida)
+            → TODAS as rotas abaixo exigem login (401 UNAUTHENTICATED / SESSION_EXPIRED)
+              e só enxergam a fazenda da sessão (outra fazenda → 404)
 Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
             devolve currentWeightKg + lastWeighingDate da última pesagem)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
@@ -247,5 +179,8 @@ O antigo roadmap v3–v7 deste arquivo foi substituído por ele.
 
 **Fase 3 (fundação técnica, 2026-10-12):** app factory, config validada, códigos de erro,
 limites, fuso da fazenda, GMD no mesmo dia, D-06/D-10 na API, seed seguro, rotas em inglês,
-testes de integração de todas as rotas e CI com Postgres. **Ainda NÃO há login nem separação
-por fazenda (G1) — não publicar a API.**
+testes de integração de todas as rotas e CI com Postgres.
+
+**G1 (2026-10-12):** fazenda, usuário, login com sessão em cookie (D-23), senha scrypt (D-24),
+telas de entrar/criar conta/sair (D-25), `farmId` em tudo + filtro único, testes de acesso
+cruzado. Falta: recuperação de senha (precisa de e-mail), chaves compostas `[id, farmId]` (🟡).

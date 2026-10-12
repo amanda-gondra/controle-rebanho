@@ -18,6 +18,12 @@ export const ErrorCode = {
   DUPLICATE_RECORD: "DUPLICATE_RECORD",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 
+  // conta e sessão (G1)
+  UNAUTHENTICATED: "UNAUTHENTICATED",
+  SESSION_EXPIRED: "SESSION_EXPIRED",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+  EMAIL_ALREADY_REGISTERED: "EMAIL_ALREADY_REGISTERED",
+
   // animais e pesagens
   ANIMAL_NOT_FOUND: "ANIMAL_NOT_FOUND",
   DUPLICATE_TAG: "DUPLICATE_TAG",
@@ -50,6 +56,7 @@ export class AppError extends Error {
     public readonly statusCode: number,
     public readonly code: ErrorCode,
     message: string,
+    public readonly errors?: FieldError[],
   ) {
     super(message);
     this.name = "AppError";
@@ -68,3 +75,11 @@ export const unprocessable = (code: ErrorCode, message: string) =>
 
 export const badRequest = (code: ErrorCode, message: string) =>
   new AppError(400, code, message);
+
+export const unauthorized = (code: ErrorCode, message: string) =>
+  new AppError(401, code, message);
+
+// Erro de validação de UM campo, no mesmo formato da validação do Zod
+// (usado quando a regra depende da fazenda, ex.: data futura no fuso dela).
+export const fieldError = (field: string, error: string) =>
+  new AppError(400, ErrorCode.VALIDATION_ERROR, "Dados inválidos.", [{ field, error }]);

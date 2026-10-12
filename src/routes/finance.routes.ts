@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { prisma } from "../lib/prisma.js";
-import { calendarDateOf, toDbDate } from "../lib/dates.js";
+import { assertNotInFuture, calendarDateOf, toDbDate } from "../lib/dates.js";
 import {
   ErrorCode,
   conflict,
@@ -27,6 +26,8 @@ const purchaseNotFound = () =>
 
 const saleNotFound = () =>
   notFound(ErrorCode.SALE_NOT_FOUND, "Nenhuma venda registrada para este animal.");
+
+const FUTURE_DATE = "A data não pode ser no futuro.";
 
 // D-06: a venda não pode ser anterior à compra.
 function assertSaleNotBeforePurchase(saleDate: string, purchaseDate: string) {
@@ -55,7 +56,7 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
         include: { purchase: true, sale: true },
       });
@@ -68,15 +69,17 @@ export async function financeRoutes(app: FastifyInstance) {
       }
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
       if (animal.sale) {
         assertSaleNotBeforePurchase(calendarDateOf(animal.sale.date), date);
       }
 
       // Se duas requisições chegarem juntas, a unicidade do banco (animalId)
       // barra a segunda, e o tratador central responde DUPLICATE_PURCHASE.
-      const purchase = await prisma.animalPurchase.create({
+      const purchase = await request.db.animalPurchase.create({
         data: {
           animalId: request.params.id,
+          farmId: request.auth.farm.id,
           date: toDbDate(date),
           weightKg,
           pricePerKg,
@@ -98,7 +101,7 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const purchase = await prisma.animalPurchase.findUnique({
+      const purchase = await request.db.animalPurchase.findUnique({
         where: { animalId: request.params.id },
       });
       if (!purchase) throw purchaseNotFound();
@@ -118,18 +121,19 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const purchase = await prisma.animalPurchase.findUnique({
+      const purchase = await request.db.animalPurchase.findUnique({
         where: { animalId: request.params.id },
         include: { animal: { include: { sale: true } } },
       });
       if (!purchase) throw purchaseNotFound();
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
       if (purchase.animal.sale) {
         assertSaleNotBeforePurchase(calendarDateOf(purchase.animal.sale.date), date);
       }
 
-      return prisma.animalPurchase.update({
+      return request.db.animalPurchase.update({
         where: { animalId: request.params.id },
         data: {
           date: toDbDate(date),
@@ -152,7 +156,7 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { count } = await prisma.animalPurchase.deleteMany({
+      const { count } = await request.db.animalPurchase.deleteMany({
         where: { animalId: request.params.id },
       });
       if (count === 0) throw purchaseNotFound();
@@ -175,7 +179,7 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
         include: { purchase: true, sale: true },
       });
@@ -197,15 +201,17 @@ export async function financeRoutes(app: FastifyInstance) {
       }
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
       if (animal.purchase) {
         assertSaleNotBeforePurchase(date, calendarDateOf(animal.purchase.date));
       }
 
       // A venda e a mudança de status andam juntas: ou as duas, ou nenhuma.
-      const sale = await prisma.$transaction(async (tx) => {
+      const sale = await request.db.$transaction(async (tx) => {
         const created = await tx.animalSale.create({
           data: {
             animalId: request.params.id,
+            farmId: request.auth.farm.id,
             date: toDbDate(date),
             weightKg,
             pricePerKg,
@@ -234,7 +240,7 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const sale = await prisma.animalSale.findUnique({
+      const sale = await request.db.animalSale.findUnique({
         where: { animalId: request.params.id },
       });
       if (!sale) throw saleNotFound();
@@ -254,18 +260,19 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const sale = await prisma.animalSale.findUnique({
+      const sale = await request.db.animalSale.findUnique({
         where: { animalId: request.params.id },
         include: { animal: { include: { purchase: true } } },
       });
       if (!sale) throw saleNotFound();
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
       if (sale.animal.purchase) {
         assertSaleNotBeforePurchase(date, calendarDateOf(sale.animal.purchase.date));
       }
 
-      return prisma.animalSale.update({
+      return request.db.animalSale.update({
         where: { animalId: request.params.id },
         data: {
           date: toDbDate(date),
@@ -289,7 +296,7 @@ export async function financeRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       // Desfazer a venda e reativar o animal andam juntos.
-      await prisma.$transaction(async (tx) => {
+      await request.db.$transaction(async (tx) => {
         const { count } = await tx.animalSale.deleteMany({
           where: { animalId: request.params.id },
         });
@@ -319,12 +326,12 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
       });
       if (!animal) throw animalNotFound();
 
-      return prisma.animal.update({
+      return request.db.animal.update({
         where: { id: request.params.id },
         data: { estimatedPricePerKg: request.body.pricePerKg },
       });
@@ -344,11 +351,11 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
       });
       if (!animal) throw animalNotFound();
-      return calculateAnimalResult(request.params.id);
+      return calculateAnimalResult(request.db, request.params.id);
     },
   );
 }

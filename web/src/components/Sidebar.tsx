@@ -1,8 +1,14 @@
-import { List, PlusCircle, Syringe, ChevronDown } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { List, PlusCircle, Syringe, LogOut } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "./AuthProvider.js";
 
-// Placeholder do usuário — login é uma versão futura. Por ora, fixo.
-const USER = { name: "Amanda Gondra", initials: "AG" };
+// Iniciais do nome para o "avatar" (ex.: "Maria Silva" → "MS")
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase();
+}
 
 const NAV_ITEMS = [
   { to: "/", end: true, label: "Rebanho", Icon: List },
@@ -11,6 +17,17 @@ const NAV_ITEMS = [
 ];
 
 export function Sidebar() {
+  const { account, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
+
+  const userName = account?.user.name ?? "";
+  const farmName = account?.farm.name ?? "";
+
   return (
     <>
       {/* MENU LATERAL — só no desktop (md pra cima) */}
@@ -51,15 +68,27 @@ export function Sidebar() {
           {/* Empurra o bloco de usuário pra base */}
           <div className="flex-1" />
 
-          {/* Usuário (placeholder — sem ação por enquanto) */}
+          {/* Usuário logado + sair (F-24) */}
           <div className="flex items-center gap-3 px-2 py-3 border-t border-white/10">
-            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-verde text-white text-sm font-semibold shrink-0">
-              {USER.initials}
+            <span
+              aria-hidden="true"
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-verde text-white text-sm font-semibold shrink-0"
+            >
+              {initialsOf(userName)}
             </span>
-            <span className="flex-1 text-sm font-medium truncate">
-              {USER.name}
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium truncate">{userName}</span>
+              <span className="block text-xs text-white/60 truncate">{farmName}</span>
             </span>
-            <ChevronDown size={16} className="text-white/50 shrink-0" />
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Sair"
+              aria-label="Sair da conta"
+              className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
 
@@ -102,6 +131,14 @@ export function Sidebar() {
             {label === "Cadastrar animal" ? "Cadastrar" : label.split(" ")[0]}
           </NavLink>
         ))}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex flex-col items-center gap-1 text-xs text-white/60 cursor-pointer"
+        >
+          <LogOut size={20} />
+          Sair
+        </button>
       </nav>
     </>
   );

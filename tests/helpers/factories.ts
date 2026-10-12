@@ -1,7 +1,8 @@
-import type { App } from "../../src/app.js";
+import type { Client } from "./client.js";
 import { addDays, todayInTimeZone } from "../../src/lib/dates.js";
 
-// Atalhos para montar cenários de teste PELA API (o mesmo caminho do usuário).
+// Atalhos para montar cenários de teste PELA API (o mesmo caminho do usuário),
+// sempre como um usuário logado (`Client`).
 
 export const today = () => todayInTimeZone();
 export const daysFromToday = (days: number) => addDays(today(), days);
@@ -9,7 +10,7 @@ export const daysFromToday = (days: number) => addDays(today(), days);
 let tagCounter = 0;
 export const uniqueTag = () => `T-${Date.now()}-${++tagCounter}`;
 
-export async function createAnimal(app: App, body: Record<string, unknown> = {}) {
+export async function createAnimal(app: Client, body: Record<string, unknown> = {}) {
   const response = await app.inject({
     method: "POST",
     url: "/animals",
@@ -21,7 +22,7 @@ export async function createAnimal(app: App, body: Record<string, unknown> = {})
   return response.json() as { id: string; tag: string; status: string };
 }
 
-export async function createProduct(app: App, body: Record<string, unknown> = {}) {
+export async function createProduct(app: Client, body: Record<string, unknown> = {}) {
   const response = await app.inject({
     method: "POST",
     url: "/products",
@@ -33,7 +34,7 @@ export async function createProduct(app: App, body: Record<string, unknown> = {}
   return response.json() as { id: string; name: string };
 }
 
-export async function addWeighing(app: App, animalId: string, date: string, weightKg: number) {
+export async function addWeighing(app: Client, animalId: string, date: string, weightKg: number) {
   const response = await app.inject({
     method: "POST",
     url: `/animals/${animalId}/weighings`,

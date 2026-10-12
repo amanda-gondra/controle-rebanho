@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { prisma } from "../lib/prisma.js";
-import { toDbDate } from "../lib/dates.js";
+import { assertNotInFuture, toDbDate } from "../lib/dates.js";
+import type { FarmDb } from "../lib/tenant.js";
 import {
   ErrorCode,
   conflict,
@@ -27,9 +27,12 @@ const animalNotFound = () =>
 const weighingNotFound = () =>
   notFound(ErrorCode.WEIGHING_NOT_FOUND, "Pesagem não encontrada.");
 
-// Garante que o animal existe; senão, 404.
-async function findAnimalOrFail(id: string) {
-  const animal = await prisma.animal.findUnique({ where: { id } });
+const FUTURE_BIRTH = "A data de nascimento não pode ser no futuro.";
+const FUTURE_WEIGHING = "A data da pesagem não pode ser no futuro.";
+
+// Garante que o animal existe NESTA fazenda; senão, 404.
+async function findAnimalOrFail(db: FarmDb, id: string) {
+  const animal = await db.animal.findUnique({ where: { id } });
   if (!animal) throw animalNotFound();
   return animal;
 }
@@ -49,9 +52,11 @@ export async function animalRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { birthDate, ...rest } = request.body;
-      const animal = await prisma.animal.create({
+      assertNotInFuture(birthDate, request.auth.farm.timezone, "birthDate", FUTURE_BIRTH);
+      const animal = await request.db.animal.create({
         data: {
           ...rest,
+          farmId: request.auth.farm.id,
           ...(birthDate ? { birthDate: toDbDate(birthDate) } : {}),
         },
       });
@@ -71,7 +76,7 @@ export async function animalRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { status, category, sortBy, order } = request.query;
-      const animals = await prisma.animal.findMany({
+      const animals = await request.db.animal.findMany({
         where: { status, category },
         orderBy: { [sortBy]: order },
         include: {
@@ -97,7 +102,7 @@ export async function animalRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request) => findAnimalOrFail(request.params.id),
+    async (request) => findAnimalOrFail(request.db, request.params.id),
   );
 
   // PUT /animals/:id
@@ -112,10 +117,11 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      await findAnimalOrFail(request.params.id);
+      await findAnimalOrFail(request.db, request.params.id);
 
       const { birthDate, birthPrecision, ...rest } = request.body;
-      return prisma.animal.update({
+      assertNotInFuture(birthDate, request.auth.farm.timezone, "birthDate", FUTURE_BIRTH);
+      return request.db.animal.update({
         where: { id: request.params.id },
         data: {
           ...rest,
@@ -150,13 +156,13 @@ export async function animalRoutes(app: FastifyInstance) {
       const { id } = request.params;
 
       // Uma instrução só: apaga apenas se não houver compra nem venda.
-      const { count } = await prisma.animal.deleteMany({
+      const { count } = await request.db.animal.deleteMany({
         where: { id, purchase: { is: null }, sale: { is: null } },
       });
 
       if (count === 0) {
         // Não apagou: ou não existe, ou tem histórico financeiro.
-        await findAnimalOrFail(id);
+        await findAnimalOrFail(request.db, id);
         throw conflict(
           ErrorCode.ANIMAL_HAS_TRANSACTIONS,
           "Este animal tem compra ou venda registrada e não pode ser excluído.",
@@ -180,7 +186,7 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const animal = await prisma.animal.findUnique({
+      const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
         include: { sale: { select: { id: true } } },
       });
@@ -193,7 +199,7 @@ export async function animalRoutes(app: FastifyInstance) {
         );
       }
 
-      return prisma.animal.update({
+      return request.db.animal.update({
         where: { id: request.params.id },
         data: { status: request.body.status },
       });
@@ -212,12 +218,14 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      await findAnimalOrFail(request.params.id);
-      const weighing = await prisma.weighing.create({
+      await findAnimalOrFail(request.db, request.params.id);
+      assertNotInFuture(request.body.date, request.auth.farm.timezone, "date", FUTURE_WEIGHING);
+      const weighing = await request.db.weighing.create({
         data: {
           date: toDbDate(request.body.date),
           weightKg: request.body.weightKg,
           animalId: request.params.id,
+          farmId: request.auth.farm.id,
         },
       });
       return reply.status(201).send(weighing);
@@ -235,8 +243,8 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      await findAnimalOrFail(request.params.id);
-      return prisma.weighing.findMany({
+      await findAnimalOrFail(request.db, request.params.id);
+      return request.db.weighing.findMany({
         where: { animalId: request.params.id },
         orderBy: { date: "desc" },
       });
@@ -255,8 +263,9 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      // a pesagem tem que existir E pertencer a este animal
-      const { count } = await prisma.weighing.updateMany({
+      assertNotInFuture(request.body.date, request.auth.farm.timezone, "date", FUTURE_WEIGHING);
+      // a pesagem tem que existir E pertencer a este animal (e a esta fazenda)
+      const { count } = await request.db.weighing.updateMany({
         where: { id: request.params.weighingId, animalId: request.params.id },
         data: {
           date: toDbDate(request.body.date),
@@ -265,7 +274,7 @@ export async function animalRoutes(app: FastifyInstance) {
       });
       if (count === 0) throw weighingNotFound();
 
-      return prisma.weighing.findUniqueOrThrow({
+      return request.db.weighing.findUniqueOrThrow({
         where: { id: request.params.weighingId },
       });
     },
@@ -282,8 +291,8 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      // a pesagem tem que existir E pertencer a este animal
-      const { count } = await prisma.weighing.deleteMany({
+      // a pesagem tem que existir E pertencer a este animal (e a esta fazenda)
+      const { count } = await request.db.weighing.deleteMany({
         where: { id: request.params.weighingId, animalId: request.params.id },
       });
       if (count === 0) throw weighingNotFound();
@@ -302,8 +311,8 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      await findAnimalOrFail(request.params.id);
-      const outcome = await calculateWeightGain(request.params.id);
+      await findAnimalOrFail(request.db, request.params.id);
+      const outcome = await calculateWeightGain(request.db, request.params.id);
 
       if (!outcome.ok) {
         throw outcome.reason === "SAME_DAY_WEIGHINGS"

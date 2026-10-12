@@ -13,7 +13,7 @@ const t = useTestApp();
 
 describe("POST /animals", () => {
   it("cadastra um animal e devolve 201", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       payload: {
@@ -34,13 +34,13 @@ describe("POST /animals", () => {
   });
 
   it("remove espaços das pontas do brinco (F-13)", async () => {
-    const animal = await createAnimal(t.app, { tag: "  BR-010  " });
+    const animal = await createAnimal(t.client, { tag: "  BR-010  " });
     expect(animal.tag).toBe("BR-010");
   });
 
   it("brinco repetido → 409 DUPLICATE_TAG, inclusive com espaços (F-12, F-13)", async () => {
-    await createAnimal(t.app, { tag: "BR-020" });
-    const response = await t.app.inject({
+    await createAnimal(t.client, { tag: "BR-020" });
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       payload: { tag: " BR-020 ", sex: "MALE", category: "CALF" },
@@ -59,7 +59,7 @@ describe("POST /animals", () => {
     ["observação longa demais", { notes: "x".repeat(1001) }],
     ["campo desconhecido", { farmId: NON_EXISTENT_ID }],
   ])("recusa %s com 400 VALIDATION_ERROR", async (_label, override) => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       payload: { tag: "BR-030", sex: "MALE", category: "CALF", ...override },
@@ -69,19 +69,19 @@ describe("POST /animals", () => {
   });
 
   it("aceita nascimento hoje (fuso da fazenda)", async () => {
-    const animal = await createAnimal(t.app, { birthDate: today() });
+    const animal = await createAnimal(t.client, { birthDate: today() });
     expect(animal.id).toBeTruthy();
   });
 });
 
 describe("GET /animals e GET /animals/:id", () => {
   it("lista com filtro e devolve o peso da última pesagem", async () => {
-    const a = await createAnimal(t.app, { tag: "A-1", category: "COW", sex: "FEMALE" });
-    await createAnimal(t.app, { tag: "A-2", category: "CALF" });
-    await addWeighing(t.app, a.id, "2026-01-01", 400);
-    await addWeighing(t.app, a.id, "2026-02-01", 420.5);
+    const a = await createAnimal(t.client, { tag: "A-1", category: "COW", sex: "FEMALE" });
+    await createAnimal(t.client, { tag: "A-2", category: "CALF" });
+    await addWeighing(t.client, a.id, "2026-01-01", 400);
+    await addWeighing(t.client, a.id, "2026-02-01", 420.5);
 
-    const response = await t.app.inject({ url: "/animals?category=COW" });
+    const response = await t.client.inject({ url: "/animals?category=COW" });
     expect(response.statusCode).toBe(200);
     const list = response.json();
     expect(list).toHaveLength(1);
@@ -89,19 +89,19 @@ describe("GET /animals e GET /animals/:id", () => {
   });
 
   it("filtro inválido → 400", async () => {
-    const response = await t.app.inject({ url: "/animals?status=LOST" });
+    const response = await t.client.inject({ url: "/animals?status=LOST" });
     expect(response.statusCode).toBe(400);
   });
 
   it("id que não existe → 404 ANIMAL_NOT_FOUND", async () => {
-    const response = await t.app.inject({ url: `/animals/${NON_EXISTENT_ID}` });
+    const response = await t.client.inject({ url: `/animals/${NON_EXISTENT_ID}` });
     expect(response.statusCode).toBe(404);
     expect(response.json().code).toBe("ANIMAL_NOT_FOUND");
   });
 
   it("id que não é UUID → 400 (manipulação de ID)", async () => {
     for (const id of ["123", "abc", "1%20OR%201=1", "%27%3B%20DROP%20TABLE%20Animal"]) {
-      const response = await t.app.inject({ url: `/animals/${id}` });
+      const response = await t.client.inject({ url: `/animals/${id}` });
       expect([400, 404]).toContain(response.statusCode);
       expect(response.statusCode).not.toBe(500);
     }
@@ -110,14 +110,14 @@ describe("GET /animals e GET /animals/:id", () => {
 
 describe("PUT /animals/:id", () => {
   it("edita e LIMPA raça, nascimento e observações com null (F-11)", async () => {
-    const animal = await createAnimal(t.app, {
+    const animal = await createAnimal(t.client, {
       breed: "Gir",
       notes: "obs",
       birthDate: "2023-01-01",
       birthPrecision: "DAY_MONTH_YEAR",
     });
 
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "PUT",
       url: `/animals/${animal.id}`,
       payload: { breed: null, notes: null, birthDate: null },
@@ -133,8 +133,8 @@ describe("PUT /animals/:id", () => {
   });
 
   it("não permite trocar o brinco por aqui (campo recusado)", async () => {
-    const animal = await createAnimal(t.app);
-    const response = await t.app.inject({
+    const animal = await createAnimal(t.client);
+    const response = await t.client.inject({
       method: "PUT",
       url: `/animals/${animal.id}`,
       payload: { tag: "OUTRO" },
@@ -143,7 +143,7 @@ describe("PUT /animals/:id", () => {
   });
 
   it("animal inexistente → 404", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "PUT",
       url: `/animals/${NON_EXISTENT_ID}`,
       payload: { breed: "Nelore" },
@@ -154,51 +154,51 @@ describe("PUT /animals/:id", () => {
 
 describe("DELETE /animals/:id", () => {
   it("exclui o animal e as pesagens dele, num passo só (F-22)", async () => {
-    const animal = await createAnimal(t.app);
-    await addWeighing(t.app, animal.id, "2026-01-01", 200);
+    const animal = await createAnimal(t.client);
+    await addWeighing(t.client, animal.id, "2026-01-01", 200);
 
-    const response = await t.app.inject({ method: "DELETE", url: `/animals/${animal.id}` });
+    const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}` });
     expect(response.statusCode).toBe(204);
     expect(await prisma.weighing.count({ where: { animalId: animal.id } })).toBe(0);
   });
 
   it("NÃO exclui animal com compra registrada (D-10)", async () => {
-    const animal = await createAnimal(t.app);
-    await t.app.inject({
+    const animal = await createAnimal(t.client);
+    await t.client.inject({
       method: "POST",
       url: `/animals/${animal.id}/purchase`,
       payload: { date: "2026-01-01", weightKg: 200, pricePerKg: 12 },
     });
 
-    const response = await t.app.inject({ method: "DELETE", url: `/animals/${animal.id}` });
+    const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}` });
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("ANIMAL_HAS_TRANSACTIONS");
     expect(await prisma.animalPurchase.count()).toBe(1);
   });
 
   it("NÃO exclui animal com venda registrada (D-10)", async () => {
-    const animal = await createAnimal(t.app);
-    await t.app.inject({
+    const animal = await createAnimal(t.client);
+    await t.client.inject({
       method: "POST",
       url: `/animals/${animal.id}/sale`,
       payload: { date: "2026-01-01", weightKg: 450, pricePerKg: 11 },
     });
 
-    const response = await t.app.inject({ method: "DELETE", url: `/animals/${animal.id}` });
+    const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}` });
     expect(response.statusCode).toBe(409);
     expect(await prisma.animalSale.count()).toBe(1);
   });
 
   it("animal inexistente → 404", async () => {
-    const response = await t.app.inject({ method: "DELETE", url: `/animals/${NON_EXISTENT_ID}` });
+    const response = await t.client.inject({ method: "DELETE", url: `/animals/${NON_EXISTENT_ID}` });
     expect(response.statusCode).toBe(404);
   });
 });
 
 describe("PATCH /animals/:id/status", () => {
   it("muda o status de um animal sem venda", async () => {
-    const animal = await createAnimal(t.app);
-    const response = await t.app.inject({
+    const animal = await createAnimal(t.client);
+    const response = await t.client.inject({
       method: "PATCH",
       url: `/animals/${animal.id}/status`,
       payload: { status: "DEAD" },
@@ -208,15 +208,15 @@ describe("PATCH /animals/:id/status", () => {
   });
 
   it("animal com venda não volta a ativo nem vira morto pelo status (D-06, F-08)", async () => {
-    const animal = await createAnimal(t.app);
-    await t.app.inject({
+    const animal = await createAnimal(t.client);
+    await t.client.inject({
       method: "POST",
       url: `/animals/${animal.id}/sale`,
       payload: { date: "2026-01-01", weightKg: 450, pricePerKg: 11 },
     });
 
     for (const status of ["ACTIVE", "DEAD"]) {
-      const response = await t.app.inject({
+      const response = await t.client.inject({
         method: "PATCH",
         url: `/animals/${animal.id}/status`,
         payload: { status },
@@ -227,8 +227,8 @@ describe("PATCH /animals/:id/status", () => {
   });
 
   it("status inválido → 400", async () => {
-    const animal = await createAnimal(t.app);
-    const response = await t.app.inject({
+    const animal = await createAnimal(t.client);
+    const response = await t.client.inject({
       method: "PATCH",
       url: `/animals/${animal.id}/status`,
       payload: { status: "STOLEN" },

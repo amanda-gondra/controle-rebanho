@@ -1,3 +1,5 @@
+import { fieldError } from "./errors.js";
+
 // Datas de calendário (nascimento, pesagem, aplicação, compra, venda...).
 //
 // Elas trafegam como texto "AAAA-MM-DD" e são gravadas como meia-noite UTC.
@@ -5,7 +7,7 @@
 // de 11/10 em Brasília já é 12/10 em UTC, e comparar com o relógio UTC
 // aceitava a data de amanhã (F-04).
 //
-// Enquanto a fazenda não tem cadastro próprio (parte G1), vale o padrão D-16.
+// O fuso vem do cadastro da fazenda (Farm.timezone); o padrão é o de D-16.
 export const DEFAULT_TIME_ZONE = "America/Sao_Paulo";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -49,4 +51,18 @@ export function isNotInFuture(
 // Converte "AAAA-MM-DD" para o Date gravado no banco (meia-noite UTC).
 export function toDbDate(calendarDate: string): Date {
   return new Date(`${calendarDate}T00:00:00.000Z`);
+}
+
+// Recusa data de calendário no futuro, no fuso DA FAZENDA (F-04, D-16).
+// Fica fora do schema Zod porque depende de quem está logado.
+export function assertNotInFuture(
+  calendarDate: string | null | undefined,
+  timeZone: string,
+  field: string,
+  message: string,
+  now: Date = new Date(),
+) {
+  if (calendarDate && !isNotInFuture(calendarDate, timeZone, now)) {
+    throw fieldError(field, message);
+  }
 }

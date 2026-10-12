@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { notes, pastOrTodayDate, pricePerKg, weightKg } from "./common.schema.js";
+import { calendarDate, notes, pricePerKg, weightKg } from "./common.schema.js";
 
 // ── Compra e venda ──
 //
@@ -11,7 +11,7 @@ import { notes, pastOrTodayDate, pricePerKg, weightKg } from "./common.schema.js
 // Cada schema é usado tanto no cadastro (POST) quanto na edição (PUT).
 
 const tradeFields = {
-  date: pastOrTodayDate("A data não pode ser no futuro."),
+  date: calendarDate,
   weightKg,
   pricePerKg,
   notes: notes.optional(),

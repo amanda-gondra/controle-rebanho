@@ -66,7 +66,7 @@ describe("respostas de erro HTTP (nunca 500 para erro do cliente)", () => {
   });
 
   it("rotas antigas em português não existem mais", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       url: "/animals/00000000-0000-4000-8000-000000000000/pesagens",
     });
     expect(response.statusCode).toBe(404);
@@ -74,7 +74,7 @@ describe("respostas de erro HTTP (nunca 500 para erro do cliente)", () => {
   });
 
   it("JSON malformado → 400 BAD_REQUEST (antes virava 500)", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       headers: { "content-type": "application/json" },
@@ -85,7 +85,7 @@ describe("respostas de erro HTTP (nunca 500 para erro do cliente)", () => {
   });
 
   it("tipo de conteúdo não suportado → 415", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       headers: { "content-type": "text/xml" },
@@ -96,7 +96,7 @@ describe("respostas de erro HTTP (nunca 500 para erro do cliente)", () => {
   });
 
   it("corpo grande demais → 413", async () => {
-    const response = await t.app.inject({
+    const response = await t.client.inject({
       method: "POST",
       url: "/animals",
       payload: { tag: "x", sex: "MALE", category: "CALF", notes: "x".repeat(1_100_000) },
@@ -148,17 +148,4 @@ describe("limite de requisições e CORS", () => {
     const response = await t.app.inject({ url: "/docs" });
     expect(response.statusCode).toBe(404);
   });
-});
-
-// Estes testes são EXIGIDOS pela Fase 3, mas dependem da parte G1 (login e
-// separação por fazenda), que aguarda aprovação. Ficam registrados como
-// pendentes — NÃO contam como aprovados.
-describe("autenticação e isolamento por fazenda (aguardando G1)", () => {
-  it.todo("rota privada sem sessão → 401");
-  it.todo("login com senha errada → 401 sem revelar se o e-mail existe");
-  it.todo("usuário da fazenda A lê os próprios animais");
-  it.todo("fazenda A não lê, edita nem exclui animal da fazenda B (404) — todas as rotas, inclusive aninhadas");
-  it.todo("aplicação sanitária recusa animal ou produto de outra fazenda");
-  it.todo("duas fazendas podem usar o mesmo brinco; a mesma fazenda não");
-  it.todo("farmId enviado no corpo ou na URL é ignorado/recusado");
 });

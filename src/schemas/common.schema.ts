@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isNotInFuture } from "../lib/dates.js";
 
 // Peças de validação reaproveitadas pelos schemas. Os limites são coerentes com
 // as colunas do banco (F-14): um valor que o banco não guarda vira erro de
@@ -21,9 +20,8 @@ const hasAtMostTwoDecimals = (value: number) =>
 // "AAAA-MM-DD"
 export const calendarDate = z.iso.date("Data inválida. Use o formato AAAA-MM-DD.");
 
-// Data de calendário que não pode estar no futuro (fuso da fazenda — F-04)
-export const pastOrTodayDate = (message: string) =>
-  calendarDate.refine((date) => isNotInFuture(date), message);
+// "Não pode ser no futuro" depende do fuso da fazenda logada, então é
+// conferido na rota com assertNotInFuture (src/lib/dates.ts).
 
 export const weightKg = z.coerce
   .number({ error: "O peso deve ser um número." })

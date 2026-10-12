@@ -4,6 +4,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -14,6 +15,8 @@ import type { AppConfig } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { errorHandler } from "./lib/error-handler.js";
 import { ErrorCode } from "./lib/errors.js";
+import { authenticate } from "./lib/auth.js";
+import { authRoutes } from "./routes/auth.routes.js";
 import { animalRoutes } from "./routes/animals.routes.js";
 import { sanitaryRoutes } from "./routes/sanitary.routes.js";
 import { financeRoutes } from "./routes/finance.routes.js";
@@ -56,11 +59,19 @@ export async function buildApp(config: AppConfig) {
     timeWindow: "1 minute",
   });
 
-  // CORS: só as origens configuradas (antes: qualquer origem — F-20)
+  // CORS: só as origens configuradas (antes: qualquer origem — F-20).
+  // `credentials: true` deixa o navegador mandar o cookie de sessão — por isso
+  // a lista de origens precisa ser fechada (nunca "qualquer origem").
   await app.register(cors, {
     origin: config.corsOrigins,
+    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
+
+  // Leitura e escrita de cookies (sessão de login — D-23)
+  await app.register(cookie);
+  app.decorateRequest("auth", null as never);
+  app.decorateRequest("db", null as never);
 
   // Documentação (Swagger / OpenAPI) — desligada em produção por padrão
   if (config.apiDocsEnabled) {
@@ -90,9 +101,17 @@ export async function buildApp(config: AppConfig) {
     }
   });
 
-  await app.register(animalRoutes);
-  await app.register(sanitaryRoutes);
-  await app.register(financeRoutes);
+  // Rotas públicas da conta (criar conta, entrar, sair)
+  await app.register(async (instance) => authRoutes(instance, config));
+
+  // Rotas PROTEGIDAS: tudo aqui dentro exige sessão válida e enxerga só os
+  // dados da fazenda logada (request.db).
+  await app.register(async (protectedApp) => {
+    protectedApp.addHook("onRequest", authenticate(config.cookieSecure));
+    await protectedApp.register(animalRoutes);
+    await protectedApp.register(sanitaryRoutes);
+    await protectedApp.register(financeRoutes);
+  });
 
   return app;
 }

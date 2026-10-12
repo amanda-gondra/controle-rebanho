@@ -34,7 +34,17 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
-## Pendente (aguarda G1)
+## Login e isolamento entre fazendas (G1)
 
-Autenticação e isolamento entre fazendas — listados como `it.todo` em
-`tests/integration/platform.test.ts`. **Não contam como aprovados.**
+- Cada teste começa com um usuário **já logado** numa fazenda nova (`t.client`,
+  `tests/helpers/client.ts`); `t.app` é o "visitante" sem login.
+- `auth.test.ts`: criar conta (fazenda + usuário juntos, só hash guardado, e-mail repetido,
+  cadastros simultâneos), entrar, mesma resposta para senha errada e e-mail inexistente, sair
+  revoga, limite de tentativas (429), todas as rotas de dados sem login → 401, sessão vencida
+  por inatividade e por idade, renovação.
+- `tenancy.test.ts`: duas fazendas; a fazenda A tenta ler, editar e excluir **cada** registro
+  da fazenda B por **todas** as rotas (404) e o teste confere que **nada** de B mudou; aplicação
+  com animal ou produto de outra fazenda; `farmId` vindo do navegador; mesmo brinco em fazendas
+  diferentes.
+- **Prova de que os testes protegem:** com o filtro por fazenda desligado de propósito, 3 testes
+  de `tenancy.test.ts` falham (feito em 2026-10-12).

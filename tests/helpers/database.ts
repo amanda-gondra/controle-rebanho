@@ -3,6 +3,8 @@ import { prisma } from "../../src/lib/prisma.js";
 // Tabelas de dados, das "filhas" para as "mães". A lista é fixa no código
 // (nunca vem de fora), então pode ir direto no SQL.
 const TABLES = [
+  "Session",
+  "User",
   "ApplicationAnimal",
   "Application",
   "Product",
@@ -10,6 +12,7 @@ const TABLES = [
   "AnimalPurchase",
   "AnimalSale",
   "Animal",
+  "Farm",
 ];
 
 // Esvazia o banco de TESTE entre os testes. Confere de novo, no próprio

@@ -174,6 +174,9 @@ O frontend será iniciado na porta configurada pelo Vite.
 
 | Método   | Rota                      | Descrição                               |
 | -------- | ------------------------- | --------------------------------------- |
+| `POST`   | `/auth/register`          | Cria a conta (fazenda + usuário) e entra |
+| `POST`   | `/auth/login`             | Entra na conta (sessão em cookie HttpOnly) |
+| `POST`   | `/auth/logout`            | Sai da conta                            |
 | `POST`   | `/animals`                | Cadastra um novo animal                 |
 | `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
 | `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |
@@ -187,6 +190,8 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `GET`    | `/alerts`                 | Lista alertas de reaplicação (vencidas e próximas) |
 | `POST`   | `/animals/:id/sale`       | Registra a venda de um animal (preço/kg) |
 | `GET`    | `/animals/:id/result`     | Retorna o resultado financeiro do animal |
+
+Todas as rotas de dados exigem login, e cada fazenda só enxerga os próprios dados.
 
 A documentação completa e interativa da API está disponível na rota `/docs` (desligada em produção por padrão). Erros seguem o formato `{ code, message }` — ver `docs/architecture.md`.
 

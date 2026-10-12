@@ -1,7 +1,7 @@
 # Arquitetura do backend
 
-> Estado em 2026-10-12 (Fase 3 — fundação técnica). O que é **atual** está marcado como tal;
-> o que ainda **depende da parte G1** está marcado como 🔒 *planejado*.
+> Estado em 2026-10-12: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
+> por fazenda).
 
 ## Visão geral (atual)
 
@@ -10,11 +10,13 @@ separados — não há necessidade real ainda.
 
 ```
 requisição
-  → Fastify (helmet, rate limit, CORS por lista de origens)
+  → Fastify (helmet, rate limit, CORS por lista de origens, cookies)
+  → [rotas protegidas] authenticate: cookie → sessão no banco → request.auth + request.db
+                                                             → 401 UNAUTHENTICATED / SESSION_EXPIRED
   → validação Zod do schema da rota (params, query, body)   → 400 VALIDATION_ERROR
   → handler da rota (src/routes)                             → AppError com código
       → regra pura (src/services, testada)                    
-      → Prisma (src/lib/prisma.ts)  → PostgreSQL
+      → request.db (Prisma filtrado pela fazenda — src/lib/tenant.ts) → PostgreSQL
   → tratador central de erros (src/lib/error-handler.ts)
 ```
 
@@ -27,8 +29,12 @@ requisição
 | `src/lib/error-handler.ts` | Converte qualquer erro na resposta `{ code, message, errors? }` |
 | `src/lib/dates.ts` | Datas de calendário e "hoje" no fuso da fazenda |
 | `src/lib/prisma.ts` | Conexão única com o banco |
+| `src/lib/tenant.ts` | `forFarm(farmId)`: o **ponto único** do filtro por fazenda |
+| `src/lib/auth.ts` | Gancho `authenticate` das rotas protegidas |
+| `src/lib/session.ts` | Criar, conferir, renovar e apagar sessões; cookie |
+| `src/lib/password.ts` | Hash e verificação de senha (scrypt) |
 | `src/schemas/` | Schemas Zod (fonte única de validação e do Swagger); limites em `common.schema.ts` |
-| `src/routes/` | Rotas HTTP: `animals`, `sanitary`, `finance` |
+| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance` (protegidas) |
 | `src/services/` | Regras de cálculo puras (GMD, alertas, resultado) + testes unitários |
 
 ## Convenções
@@ -59,6 +65,10 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
 
 | Situação | Status | Código |
 |---|---|---|
+| Sem login / sessão inexistente | 401 | `UNAUTHENTICATED` |
+| Sessão vencida | 401 | `SESSION_EXPIRED` |
+| E-mail ou senha errados (mesma resposta nos dois casos) | 401 | `INVALID_CREDENTIALS` |
+| E-mail já cadastrado | 409 | `EMAIL_ALREADY_REGISTERED` |
 | Schema inválido | 400 | `VALIDATION_ERROR` |
 | JSON malformado / requisição ruim | 400 | `BAD_REQUEST` |
 | Registro não existe | 404 | `*_NOT_FOUND` / `RECORD_NOT_FOUND` |
@@ -75,23 +85,40 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
 - `GET /health` — o processo está vivo (não toca no banco).
 - `GET /ready` — o banco responde (`SELECT 1`); 503 se não.
 
-## 🔒 Isolamento por fazenda (planejado — G1, aguardando decisões)
+## Isolamento por fazenda (G1)
 
-Hoje **não existe** autenticação nem separação por fazenda: todas as rotas são públicas
-(F-01). **Não publicar a API na internet antes da G1.**
+- Banco compartilhado; **todas** as tabelas do rebanho têm `farmId` (Animal, Weighing, Product,
+  Application, ApplicationAnimal, AnimalPurchase, AnimalSale). Brinco único **por fazenda**.
+- O `farmId` vem **só da sessão**. Os schemas `.strict()` recusam `farmId` no corpo ou na query.
+- **Ponto único:** `forFarm(farmId)` (`src/lib/tenant.ts`) é uma extensão do Prisma que acrescenta
+  `where.farmId` em toda leitura/edição/exclusão e `data.farmId` em toda criação. As rotas
+  protegidas só usam `request.db` (já filtrado); o `prisma` "cru" fica para conta/sessão/saúde.
+- Operação do Prisma que o filtro não conhece → erro (falha fechada, nunca vaza).
+- Criações **aninhadas** (ex.: aplicação + animais) informam o `farmId` do filho explicitamente.
+- Ao gravar uma ligação (aplicação → animais/produto), a rota confere pelos dados **da fazenda**:
+  id de outra fazenda → `ANIMALS_NOT_FOUND` / `PRODUCT_NOT_FOUND`.
+- Registro de outra fazenda responde **404** (não revela que existe).
+- 🟡 Ainda não há chaves compostas `[id, farmId]` no banco (defesa extra prevista no escopo);
+  a garantia hoje é o filtro único + os testes de acesso cruzado.
 
-Modelo aprovado no escopo (Release 1.0, G1):
+## Autenticação (G1 — D-23, D-24, D-25)
 
-- Banco compartilhado, `farmId` em **todas** as tabelas de dados; brinco único por fazenda.
-- O `farmId` vem **só da sessão** — nunca do corpo, da URL ou de query.
-- Filtro por fazenda aplicado em **um ponto só** do código.
-- 🟡 Relações compostas `[id, farmId]` para o banco impedir ligação entre fazendas.
-- Acesso a registro de outra fazenda responde **404** (não revela que existe).
+| Rota | Faz |
+|---|---|
+| `POST /auth/register` | cria fazenda + usuário numa instrução só e já entra (201) |
+| `POST /auth/login` | entra; erro igual para e-mail inexistente e senha errada (401) |
+| `POST /auth/logout` | apaga a sessão no banco e o cookie (204) |
+| `GET /auth/me` | usuário e fazenda da sessão (protegida) |
 
-## 🔒 Fluxo de autenticação (planejado — G1, aguardando decisões)
-
-Proposta no escopo (🟡, pendente de aprovação): sessão em cookie `HttpOnly`, `Secure`,
-`SameSite=Lax`, registrada no banco (permite sair e revogar); senha com hash Argon2id;
-limite de tentativas de login; mensagem que não revela se o e-mail existe; recuperação de
-senha por e-mail com token de uso único. Os testes exigidos já estão listados como
-pendentes em `tests/integration/platform.test.ts`.
+- **Senha:** scrypt nativo do Node (N=2^15, r=8, p=1, sal de 16 bytes), parâmetros guardados
+  junto do hash; comparação em tempo constante; login de e-mail inexistente confere contra um
+  hash "de mentira" (mesmo tempo de resposta). Senha de 8 a 128 caracteres.
+- **Sessão:** token aleatório de 256 bits no cookie `rebanho_session` (`HttpOnly`,
+  `SameSite=Lax`, `Path=/`, `Secure` em produção). O banco guarda só o **SHA-256** do token.
+  Vence após **7 dias sem uso** (renovada com o uso, no máximo 1 escrita/hora) e, de qualquer
+  jeito, **30 dias** após o login. Sair apaga a sessão (revogação imediata).
+- **Força bruta:** limite de `AUTH_RATE_LIMIT_MAX` tentativas/minuto por IP em entrar e criar conta.
+- **CSRF:** `SameSite=Lax` + CORS com lista fechada de origens (`credentials: true`) + a API só
+  aceita corpo JSON (formulário de outro site não consegue enviar).
+- **Fora desta etapa (D-25):** recuperação de senha (precisa de serviço de e-mail), troca de
+  senha, vários usuários por fazenda.

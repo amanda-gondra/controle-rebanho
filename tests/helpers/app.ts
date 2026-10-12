@@ -10,6 +10,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     LOG_LEVEL: "silent",
     API_DOCS_ENABLED: "false",
     RATE_LIMIT_MAX: "100000",
+    AUTH_RATE_LIMIT_MAX: "100000",
     ...overrides,
   });
   const app = await buildApp(config);

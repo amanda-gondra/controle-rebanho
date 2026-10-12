@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma.js";
+import type { FarmDb } from "../lib/tenant.js";
 
 // Como o resultado foi apurado:
 // - REALIZED  → animal vendido, resultado "real" (receita da venda)
@@ -102,9 +102,10 @@ export function computeAnimalResult(
 // A função que fala com o banco: busca compra, venda e a última pesagem do
 // animal e chama a conta pura acima.
 export async function calculateAnimalResult(
+  db: FarmDb,
   animalId: string,
 ): Promise<AnimalResultOutput> {
-  const animal = await prisma.animal.findUnique({
+  const animal = await db.animal.findUnique({
     where: { id: animalId },
     include: {
       purchase: true,

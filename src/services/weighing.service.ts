@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma.js";
+import type { FarmDb } from "../lib/tenant.js";
 
 // Resultado do cálculo de desempenho de um animal
 export type WeightGainResult = {
@@ -68,9 +68,10 @@ export function computeWeightGain(weighings: WeighingInput[]): WeightGainOutcome
 
 // A função que fala com o banco: busca as pesagens e chama a conta pura acima.
 export async function calculateWeightGain(
+  db: FarmDb,
   animalId: string,
 ): Promise<WeightGainOutcome> {
-  const weighings = await prisma.weighing.findMany({
+  const weighings = await db.weighing.findMany({
     where: { animalId },
     orderBy: { date: "asc" },
     select: { date: true, weightKg: true },

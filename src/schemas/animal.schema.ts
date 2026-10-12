@@ -3,7 +3,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_TAG_LENGTH,
   notes,
-  pastOrTodayDate,
+  calendarDate,
   requiredText,
 } from "./common.schema.js";
 
@@ -13,7 +13,7 @@ const category = z.enum(["CALF", "YEARLING", "STEER", "COW"]);
 const status = z.enum(["ACTIVE", "SOLD", "DEAD"]);
 const birthPrecision = z.enum(["DAY_MONTH_YEAR", "MONTH_YEAR", "UNKNOWN"]);
 
-const birthDate = pastOrTodayDate("A data de nascimento não pode ser no futuro.");
+const birthDate = calendarDate;
 const breed = requiredText(MAX_NAME_LENGTH, "A raça não pode ficar em branco.");
 
 // The shape of a valid animal on creation. Nothing reaches the DB without passing here.

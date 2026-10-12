@@ -3,7 +3,6 @@ import {
   MAX_NAME_LENGTH,
   calendarDate,
   notes,
-  pastOrTodayDate,
   requiredText,
 } from "./common.schema.js";
 
@@ -35,7 +34,7 @@ export const listProductsQuerySchema = z
 // Campos comuns ao cadastro e à edição de uma aplicação
 const applicationFields = {
   productId: z.uuid("Produto inválido."),
-  date: pastOrTodayDate("A data não pode ser no futuro."),
+  date: calendarDate,
   reapplyDate: calendarDate.optional(),
   notes: notes.optional(),
 };
