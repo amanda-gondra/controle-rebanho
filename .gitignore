@@ -10,3 +10,5 @@ node_modules
 .windsurf/
 .vscode/
 skills-lock.json
+# Build
+dist
