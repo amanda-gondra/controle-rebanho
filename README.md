@@ -137,7 +137,7 @@ Na raiz do projeto:
 npm install
 ```
 
-Crie o arquivo `.env` utilizando o `.env.example` como referência e configure a variável `DATABASE_URL`.
+Crie o arquivo `.env` utilizando o `.env.example` como referência e configure a variável `DATABASE_URL`. O servidor valida a configuração ao subir e informa qual variável está faltando ou inválida.
 
 Em seguida, execute:
 
@@ -145,6 +145,16 @@ Em seguida, execute:
 npx prisma migrate dev
 npm run dev
 ```
+
+### Testes
+
+```bash
+npm run test:unit          # regras de cálculo, sem banco
+npm run db:test:migrate    # prepara o banco de TESTE (TEST_DATABASE_URL, nome terminado em _test)
+npm test                   # unidade + integração (todas as rotas contra o banco de teste)
+```
+
+Veja `docs/testing.md`.
 
 O backend estará disponível em `http://localhost:3333`, e a documentação interativa da API estará disponível em `/docs`.
 
@@ -170,15 +180,15 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `PUT`    | `/animals/:id`            | Atualiza os dados de um animal          |
 | `PATCH`  | `/animals/:id/status`     | Atualiza o status do animal             |
 | `DELETE` | `/animals/:id`            | Exclui um animal                        |
-| `POST`   | `/animals/:id/pesagens`   | Registra uma nova pesagem               |
-| `GET`    | `/animals/:id/pesagens`   | Retorna o histórico de pesagens         |
-| `GET`    | `/animals/:id/ganho-peso` | Retorna o ganho de peso e o GMD         |
+| `POST`   | `/animals/:id/weighings`  | Registra uma nova pesagem               |
+| `GET`    | `/animals/:id/weighings`  | Retorna o histórico de pesagens         |
+| `GET`    | `/animals/:id/weight-gain`| Retorna o ganho de peso e o GMD         |
 | `POST`   | `/applications`           | Registra uma aplicação sanitária em lote (vacina/vermífugo) |
 | `GET`    | `/alerts`                 | Lista alertas de reaplicação (vencidas e próximas) |
-| `POST`   | `/animals/:id/venda`      | Registra a venda de um animal (preço/kg) |
-| `GET`    | `/animals/:id/resultado`  | Retorna o resultado financeiro do animal |
+| `POST`   | `/animals/:id/sale`       | Registra a venda de um animal (preço/kg) |
+| `GET`    | `/animals/:id/result`     | Retorna o resultado financeiro do animal |
 
-A documentação completa e interativa da API está disponível na rota `/docs`.
+A documentação completa e interativa da API está disponível na rota `/docs` (desligada em produção por padrão). Erros seguem o formato `{ code, message }` — ver `docs/architecture.md`.
 
 ---
 

@@ -1,6 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
+import { calendarDateOf, toDbDate } from "../lib/dates.js";
+import {
+  ErrorCode,
+  conflict,
+  notFound,
+  unprocessable,
+} from "../lib/errors.js";
 import { animalIdParamSchema } from "../schemas/animal.schema.js";
 import {
   purchaseSchema,
@@ -9,14 +16,36 @@ import {
 } from "../schemas/finance.schema.js";
 import { calculateAnimalResult } from "../services/finance.service.js";
 
+const animalNotFound = () =>
+  notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
+
+const purchaseNotFound = () =>
+  notFound(
+    ErrorCode.PURCHASE_NOT_FOUND,
+    "Nenhuma compra registrada para este animal.",
+  );
+
+const saleNotFound = () =>
+  notFound(ErrorCode.SALE_NOT_FOUND, "Nenhuma venda registrada para este animal.");
+
+// D-06: a venda não pode ser anterior à compra.
+function assertSaleNotBeforePurchase(saleDate: string, purchaseDate: string) {
+  if (saleDate < purchaseDate) {
+    throw unprocessable(
+      ErrorCode.SALE_BEFORE_PURCHASE,
+      "A data da venda não pode ser anterior à data da compra.",
+    );
+  }
+}
+
 export async function financeRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
   // ── COMPRA ──
 
-  // POST /animals/:id/compra — registra a compra do animal (uma por animal)
+  // POST /animals/:id/purchase — registra a compra do animal (uma por animal)
   r.post(
-    "/animals/:id/compra",
+    "/animals/:id/purchase",
     {
       schema: {
         tags: ["Financeiro"],
@@ -28,22 +57,27 @@ export async function financeRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
-        include: { purchase: true },
+        include: { purchase: true, sale: true },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
+      if (!animal) throw animalNotFound();
       if (animal.purchase) {
-        return reply
-          .status(409)
-          .send({ message: "Este animal já tem uma compra registrada." });
+        throw conflict(
+          ErrorCode.DUPLICATE_PURCHASE,
+          "Este animal já tem uma compra registrada.",
+        );
       }
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      if (animal.sale) {
+        assertSaleNotBeforePurchase(calendarDateOf(animal.sale.date), date);
+      }
+
+      // Se duas requisições chegarem juntas, a unicidade do banco (animalId)
+      // barra a segunda, e o tratador central responde DUPLICATE_PURCHASE.
       const purchase = await prisma.animalPurchase.create({
         data: {
           animalId: request.params.id,
-          date: new Date(date),
+          date: toDbDate(date),
           weightKg,
           pricePerKg,
           notes: notes ?? null,
@@ -53,9 +87,9 @@ export async function financeRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /animals/:id/compra — dados da compra
+  // GET /animals/:id/purchase — dados da compra
   r.get(
-    "/animals/:id/compra",
+    "/animals/:id/purchase",
     {
       schema: {
         tags: ["Financeiro"],
@@ -63,22 +97,18 @@ export async function financeRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const purchase = await prisma.animalPurchase.findUnique({
         where: { animalId: request.params.id },
       });
-      if (!purchase) {
-        return reply
-          .status(404)
-          .send({ message: "Nenhuma compra registrada para este animal." });
-      }
+      if (!purchase) throw purchaseNotFound();
       return purchase;
     },
   );
 
-  // PUT /animals/:id/compra — edita a compra
+  // PUT /animals/:id/purchase — edita a compra
   r.put(
-    "/animals/:id/compra",
+    "/animals/:id/purchase",
     {
       schema: {
         tags: ["Financeiro"],
@@ -87,33 +117,33 @@ export async function financeRoutes(app: FastifyInstance) {
         body: purchaseSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const purchase = await prisma.animalPurchase.findUnique({
         where: { animalId: request.params.id },
+        include: { animal: { include: { sale: true } } },
       });
-      if (!purchase) {
-        return reply
-          .status(404)
-          .send({ message: "Nenhuma compra registrada para este animal." });
-      }
+      if (!purchase) throw purchaseNotFound();
 
       const { date, weightKg, pricePerKg, notes } = request.body;
-      const updated = await prisma.animalPurchase.update({
+      if (purchase.animal.sale) {
+        assertSaleNotBeforePurchase(calendarDateOf(purchase.animal.sale.date), date);
+      }
+
+      return prisma.animalPurchase.update({
         where: { animalId: request.params.id },
         data: {
-          date: new Date(date),
+          date: toDbDate(date),
           weightKg,
           pricePerKg,
           notes: notes ?? null,
         },
       });
-      return updated;
     },
   );
 
-  // DELETE /animals/:id/compra — exclui a compra
+  // DELETE /animals/:id/purchase — exclui a compra
   r.delete(
-    "/animals/:id/compra",
+    "/animals/:id/purchase",
     {
       schema: {
         tags: ["Financeiro"],
@@ -122,27 +152,20 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const purchase = await prisma.animalPurchase.findUnique({
+      const { count } = await prisma.animalPurchase.deleteMany({
         where: { animalId: request.params.id },
       });
-      if (!purchase) {
-        return reply
-          .status(404)
-          .send({ message: "Nenhuma compra registrada para este animal." });
-      }
-      await prisma.animalPurchase.delete({
-        where: { animalId: request.params.id },
-      });
+      if (count === 0) throw purchaseNotFound();
       return reply.status(204).send();
     },
   );
 
   // ── VENDA ──
 
-  // POST /animals/:id/venda — registra a venda E marca o animal como SOLD.
-  // Só bloqueia se o animal estiver morto (DEAD).
+  // POST /animals/:id/sale — registra a venda E marca o animal como SOLD.
+  // Animal morto não recebe venda (D-06).
   r.post(
-    "/animals/:id/venda",
+    "/animals/:id/sale",
     {
       schema: {
         tags: ["Financeiro"],
@@ -154,33 +177,36 @@ export async function financeRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
-        include: { sale: true },
+        include: { purchase: true, sale: true },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
-      // Regra de negócio: um animal morto não é uma venda. Já um animal com
-      // status SOLD (marcado na mão, ou vendido antes deste módulo existir)
-      // ainda pode receber o registro de "por quanto foi vendido".
+      if (!animal) throw animalNotFound();
+
+      // Um animal morto não é uma venda. Já um animal com status SOLD (marcado
+      // na mão) ainda pode receber o registro de "por quanto foi vendido".
       if (animal.status === "DEAD") {
-        return reply.status(409).send({
-          message: "Não é possível registrar a venda de um animal marcado como morto.",
-        });
+        throw conflict(
+          ErrorCode.DEAD_ANIMAL_CANNOT_BE_SOLD,
+          "Não é possível registrar a venda de um animal marcado como morto.",
+        );
       }
       if (animal.sale) {
-        return reply
-          .status(409)
-          .send({ message: "Este animal já tem uma venda registrada." });
+        throw conflict(
+          ErrorCode.DUPLICATE_SALE,
+          "Este animal já tem uma venda registrada.",
+        );
       }
 
       const { date, weightKg, pricePerKg, notes } = request.body;
+      if (animal.purchase) {
+        assertSaleNotBeforePurchase(date, calendarDateOf(animal.purchase.date));
+      }
 
       // A venda e a mudança de status andam juntas: ou as duas, ou nenhuma.
       const sale = await prisma.$transaction(async (tx) => {
         const created = await tx.animalSale.create({
           data: {
             animalId: request.params.id,
-            date: new Date(date),
+            date: toDbDate(date),
             weightKg,
             pricePerKg,
             notes: notes ?? null,
@@ -197,9 +223,9 @@ export async function financeRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /animals/:id/venda — dados da venda
+  // GET /animals/:id/sale — dados da venda
   r.get(
-    "/animals/:id/venda",
+    "/animals/:id/sale",
     {
       schema: {
         tags: ["Financeiro"],
@@ -207,20 +233,18 @@ export async function financeRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const sale = await prisma.animalSale.findUnique({
         where: { animalId: request.params.id },
       });
-      if (!sale) {
-        return reply.status(404).send({ message: "Nenhuma venda registrada para este animal." });
-      }
+      if (!sale) throw saleNotFound();
       return sale;
     },
   );
 
-  // PUT /animals/:id/venda — edita a venda (não mexe no status: já está SOLD)
+  // PUT /animals/:id/sale — edita a venda (não mexe no status: já está SOLD)
   r.put(
-    "/animals/:id/venda",
+    "/animals/:id/sale",
     {
       schema: {
         tags: ["Financeiro"],
@@ -229,31 +253,33 @@ export async function financeRoutes(app: FastifyInstance) {
         body: saleSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const sale = await prisma.animalSale.findUnique({
         where: { animalId: request.params.id },
+        include: { animal: { include: { purchase: true } } },
       });
-      if (!sale) {
-        return reply.status(404).send({ message: "Nenhuma venda registrada para este animal." });
-      }
+      if (!sale) throw saleNotFound();
 
       const { date, weightKg, pricePerKg, notes } = request.body;
-      const updated = await prisma.animalSale.update({
+      if (sale.animal.purchase) {
+        assertSaleNotBeforePurchase(date, calendarDateOf(sale.animal.purchase.date));
+      }
+
+      return prisma.animalSale.update({
         where: { animalId: request.params.id },
         data: {
-          date: new Date(date),
+          date: toDbDate(date),
           weightKg,
           pricePerKg,
           notes: notes ?? null,
         },
       });
-      return updated;
     },
   );
 
-  // DELETE /animals/:id/venda — desfaz a venda E volta o animal para ACTIVE
+  // DELETE /animals/:id/sale — desfaz a venda E volta o animal para ACTIVE
   r.delete(
-    "/animals/:id/venda",
+    "/animals/:id/sale",
     {
       schema: {
         tags: ["Financeiro"],
@@ -262,18 +288,13 @@ export async function financeRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const sale = await prisma.animalSale.findUnique({
-        where: { animalId: request.params.id },
-      });
-      if (!sale) {
-        return reply.status(404).send({ message: "Nenhuma venda registrada para este animal." });
-      }
-
       // Desfazer a venda e reativar o animal andam juntos.
       await prisma.$transaction(async (tx) => {
-        await tx.animalSale.delete({
+        const { count } = await tx.animalSale.deleteMany({
           where: { animalId: request.params.id },
         });
+        if (count === 0) throw saleNotFound();
+
         await tx.animal.update({
           where: { id: request.params.id },
           data: { status: "ACTIVE" },
@@ -286,9 +307,9 @@ export async function financeRoutes(app: FastifyInstance) {
 
   // ── PREÇO ESTIMADO ──
 
-  // PATCH /animals/:id/preco-estimado — o produtor informa (ou limpa) o preço/kg
+  // PATCH /animals/:id/estimated-price — o produtor informa (ou limpa) o preço/kg
   r.patch(
-    "/animals/:id/preco-estimado",
+    "/animals/:id/estimated-price",
     {
       schema: {
         tags: ["Financeiro"],
@@ -297,26 +318,24 @@ export async function financeRoutes(app: FastifyInstance) {
         body: estimatedPriceSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
-      const updated = await prisma.animal.update({
+      if (!animal) throw animalNotFound();
+
+      return prisma.animal.update({
         where: { id: request.params.id },
         data: { estimatedPricePerKg: request.body.pricePerKg },
       });
-      return updated;
     },
   );
 
   // ── RESULTADO ──
 
-  // GET /animals/:id/resultado — resultado financeiro do animal (calculado)
+  // GET /animals/:id/result — resultado financeiro do animal (calculado)
   r.get(
-    "/animals/:id/resultado",
+    "/animals/:id/result",
     {
       schema: {
         tags: ["Financeiro"],
@@ -324,13 +343,11 @@ export async function financeRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
+      if (!animal) throw animalNotFound();
       return calculateAnimalResult(request.params.id);
     },
   );

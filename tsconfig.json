@@ -1,4 +1,6 @@
 {
+  // Configuração usada pelo editor e pelo "npm run typecheck":
+  // confere TODO o TypeScript do backend (código, testes, scripts e seed).
   "compilerOptions": {
     "target": "ES2022",
     "types": ["node"],
@@ -10,8 +12,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "outDir": "dist",
-    "rootDir": "src"
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "prisma/**/*.ts", "vitest.config.ts"]
 }

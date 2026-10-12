@@ -14,11 +14,15 @@ virar produto. Monorepo: **backend** na raiz + **frontend** em `web/`.
 docker compose up -d          # Postgres 16 no Docker (container rebanho-db, porta 5433)
 npm run dev                   # backend (Fastify), porta 3333  — rodar na raiz
 cd web && npm run dev         # frontend (Vite), porta 5173
-npm test                      # testes (Vitest), na raiz
+npm run test:unit             # testes de unidade (sem banco)
+npm run db:test:migrate       # aplica migrations no banco de TESTE (TEST_DATABASE_URL)
+npm test                      # unidade + integração (precisa do banco de teste)
 ```
 
-- `DATABASE_URL="postgresql://rebanho:rebanho123@localhost:5433/rebanho?schema=public"`
-- Docs interativas (Swagger): `localhost:3333/docs`
+- Variáveis: ver `.env.example` (só nomes). Validadas ao subir em `src/config/env.ts`.
+- Banco de teste: nome **tem** que terminar em `_test` (ver `docs/testing.md`).
+- Docs interativas (Swagger): `localhost:3333/docs` (desligadas em produção por padrão)
+- Docs técnicas: `docs/architecture.md`, `docs/database.md`, `docs/testing.md`
 - Após mexer no `prisma/schema.prisma`: `npx prisma migrate dev --name <nome>` e, se o
   editor não reconhecer os tipos novos, `npx prisma generate` (+ Restart TS Server).
 
@@ -37,14 +41,15 @@ npm test                      # testes (Vitest), na raiz
   (ex.: `import { x } from "./foo.js"`).
 - **Validação com Zod é fonte única**: valida as requisições E gera o Swagger. Todo input
   passa por um schema em `src/schemas/`.
-- **Erros central** (`setErrorHandler` no `server.ts`): Zod→400, Prisma P2002→409, resto→500
-  genérico (não vazar detalhe).
-- **Mensagens de erro voltam em PORTUGUÊS** (o `message` de `reply.status(...).send(...)` e
-  as mensagens dos schemas Zod). O frontend mostra esse texto cru pro pecuarista, então tem
-  que ser amigável e em pt-BR. (Rotas mais antigas de v1/v2 ainda têm textos em inglês — migrar
-  quando encostar nelas.)
+- **Erros:** a rota lança `AppError` (`notFound`, `conflict`, `unprocessable`, `badRequest`
+  de `src/lib/errors.ts`); o tratador central (`src/lib/error-handler.ts`) responde
+  `{ code, message, errors? }`. O **`code` é o contrato** (ex.: `DUPLICATE_TAG`); o `message`
+  em pt-BR existe até a G3 tirar os textos do código. 4xx do Fastify nunca vira 500.
+- **Limites de validação** ficam em `src/schemas/common.schema.ts` (coerentes com o banco).
 - **Decimal** (`weightKg`) volta como **string** — converter com `Number(...)` no cálculo.
-- **Datas** entram como texto ISO (`YYYY-MM-DD`) e viram `Date` na fronteira da rota.
+- **Datas** entram como texto ISO (`YYYY-MM-DD`) e viram `Date` com `toDbDate()` (meia-noite UTC).
+  "Hoje/futuro/vencido" sempre pelo fuso da fazenda (`src/lib/dates.ts`, padrão D-16).
+- **Toda rota tem teste de integração** em `tests/integration/` (banco de teste real).
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
@@ -62,9 +67,12 @@ npm test                      # testes (Vitest), na raiz
 
 ```
 Backend (raiz):
-  src/server.ts                 sobe o servidor, registra rotas, erros (central)
-  src/lib/prisma.ts             conexão única com o banco
-  src/schemas/                  Zod: animal.schema, weighing.schema, sanitary.schema, finance.schema
+  src/server.ts                 sobe o servidor (config → buildApp → listen; desliga limpo)
+  src/app.ts                    buildApp(config): plugins, erros, rotas (sem abrir porta)
+  src/config/env.ts             variáveis de ambiente validadas
+  src/lib/                      prisma.ts, errors.ts, error-handler.ts, dates.ts
+  tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
+  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance
   src/routes/                   animals.routes.ts, sanitary.routes.ts, finance.routes.ts
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
                                 finance.service.ts (resultado por animal)
@@ -206,20 +214,23 @@ Animais:    POST /animals · GET /animals (filtros status/category, sortBy, orde
             devolve currentWeightKg + lastWeighingDate da última pesagem)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
             PATCH /animals/:id/status
-Pesagens:   POST /animals/:id/pesagens · GET /animals/:id/pesagens
-            PUT /animals/:id/pesagens/:weighingId · DELETE /animals/:id/pesagens/:weighingId
-            GET /animals/:id/ganho-peso   (422 se < 2 pesagens)
+            DELETE: 409 ANIMAL_HAS_TRANSACTIONS se houver compra/venda (D-10)
+            PATCH status: 409 ANIMAL_HAS_SALE se houver venda e status ≠ SOLD (D-06)
+Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
+            PUT /animals/:id/weighings/:weighingId · DELETE /animals/:id/weighings/:weighingId
+            GET /animals/:id/weight-gain   (422 INSUFFICIENT_WEIGHINGS | SAME_DAY_WEIGHINGS)
 Sanitário:  POST /products · GET /products (filtro type)
             POST /applications · GET /applications (filtro type) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
             GET /alerts   (reaplicações ≤7 dias + vencidas)
             GET /animals/:id/applications
-Financeiro: POST/GET/PUT/DELETE /animals/:id/compra   (409 se já existe)
-            POST/GET/PUT/DELETE /animals/:id/venda     (POST marca SOLD; DELETE volta ACTIVE;
-                                                        409 se animal DEAD ou venda já existe.
-                                                        animal SOLD sem venda: registro é aceito)
-            PATCH /animals/:id/preco-estimado   (pricePerKg: número ou null p/ limpar)
-            GET /animals/:id/resultado   (resultType: REALIZED | ESTIMATED | null)
+Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
+            POST/GET/PUT/DELETE /animals/:id/sale       (POST marca SOLD; DELETE volta ACTIVE;
+                                                         409 se animal DEAD ou venda já existe;
+                                                         422 SALE_BEFORE_PURCHASE — D-06)
+            PATCH /animals/:id/estimated-price   (pricePerKg: número ou null p/ limpar)
+            GET /animals/:id/result   (resultType: REALIZED | ESTIMATED | null)
+Saúde:      GET /health (processo) · GET /ready (banco)
 ```
 
 **Padrão-chave da v2 — "aplica em lote, guarda individual":** a aplicação é 1 evento
@@ -228,51 +239,13 @@ individual (ficha) e por evento (lote). Replicar esse tipo de raciocínio nas pr
 
 ---
 
-## Próxima versão — v3: Financeiro / rentabilidade
+## Próximos passos
 
-Módulo de **rentabilidade** (não contabilidade). Responde "este animal/lote dá lucro?".
-Já validado com o produtor (pai da Amanda). Decisões-base dessa validação:
+O plano oficial é a **Release 1.0** no Obsidian ("Escopo Release 1.0" e "Guia de Execução"):
+Parte B (base corrigida) → **G1** (fazenda, usuário, login, `farmId`) → G2 → G4 → G3 → G5 → G6.
+O antigo roadmap v3–v7 deste arquivo foi substituído por ele.
 
-- **Linguagem por quilo/arroba:** o produtor pensa e negocia em preço por kg (peso × preço/kg).
-  Conecta com o módulo de pesagens que já existe.
-- **Duas dimensões — animal E lote:** modelar em torno das duas. Info necessária por animal
-  (pelo brinco) + visão de grupo por lote. Regra de ouro do pai: "as informações necessárias,
-  nem turbilhão nem pouco".
-- **Preço estimado (animal vivo):** o produtor **informa** o preço do kg (o sistema não chuta);
-  resultado "real" é o do animal vendido.
-- **Custo liga a 1 animal, a vários (lote) ou é geral;** custo de lote é **rateado
-  automaticamente** entre os animais (reaproveita a seleção em lote do manejo sanitário).
-- **Escopo é toda a pecuária** do produtor (inclui gastos diversos/experimentais). Agricultura
-  e escritório ficam FORA (outro produto).
-- **Fora de escopo:** nota fiscal, imposto, banco, cartão, contabilidade formal.
-
-**Cuidado com scope creep:** as ideias grandes (tabela nutricional da ração; gastos de
-experimento) entram nas partes finais/candidatas, NÃO na 3.0. Uma parte completa por vez.
-
-### Fatiamento da v3 (mandar uma parte de cada vez)
-- **3.0 — Base:** ✅ FEITO. Compra e venda por animal (1 cada, `animalId @unique`); venda marca
-  `status=SOLD` em transação e `DELETE` volta `ACTIVE`; só `DEAD` bloqueia (409) o registro de
-  venda — animal `SOLD` sem venda registrada ainda aceita "por quanto foi vendido".
-  Preço/kg estimado no `Animal` (produtor informa; `null` limpa). `computeAnimalResult` (função
-  pura + testes) → `resultType` REALIZED/ESTIMATED/null. Seção "Financeiro" na ficha.
-- **3.1 — Custos por categoria:** movimentações de custo (nutrição, sanidade, manejo, outros);
-  ligáveis a animal/lote/geral; **rateio automático** por lote.
-- **3.2 — Integração sanitária:** vacina/vermífugo ganham **valor + dose** → viram custo automático.
-- **3.3 — Lote + dashboard:** resultado agregado por lote; **dashboard financeiro** (investido,
-  custos, receitas, resultado no período; custos por categoria; resultado por lote; + rentáveis).
-- **3.4 — Estoque de insumos:** saldo, baixa automática a cada uso, aviso de reposição.
-- **3.5 — (Candidata) Tabela nutricional da ração:** registrar nutrição e comparar
-  prometido × ganho de peso real. Avaliar se entra na v3 ou vira módulo próprio.
-- **Testes:** regras novas (resultado, rateio) como funções puras + Vitest.
-
-### Arquitetura de fases (cria/recria/engorda) — decisão que guia daqui pra frente
-- A **fase é um atributo do animal** (como `category`), que **muda com o tempo**. NÃO são telas
-  separadas — a ficha é uma só, mostrando o que importa pra fase atual.
-- As funcionalidades (financeiro, lotes) são **neutras** agora — servem às 3 fases igual. A
-  **separação/filtro por fase vem só na v7** (personalização). Construir preparado, sem separar ainda.
-
-### Depois da v3 (ordem do roadmap)
-v4 Lotes e pastos → v5 Reprodução/nascimentos (módulo da CRIA) → v6 Dashboard/inteligência
-por fase → v7 Cadastro de fazenda + seleção cria/recria/engorda (personalização, por último).
-
-> Detalhamento das partes e checkboxes de progresso: ver "Guia de Execução" no Obsidian da Amanda.
+**Fase 3 (fundação técnica, 2026-10-12):** app factory, config validada, códigos de erro,
+limites, fuso da fazenda, GMD no mesmo dia, D-06/D-10 na API, seed seguro, rotas em inglês,
+testes de integração de todas as rotas e CI com Postgres. **Ainda NÃO há login nem separação
+por fazenda (G1) — não publicar a API.**

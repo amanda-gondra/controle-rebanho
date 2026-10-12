@@ -46,18 +46,18 @@ export function createAnimal(data: CreateAnimalInput): Promise<Animal> {
 }
 
 export function listWeighings(animalId: string): Promise<Weighing[]> {
-  return request<Weighing[]>(`/animals/${animalId}/pesagens`);
+  return request<Weighing[]>(`/animals/${animalId}/weighings`);
 }
 
 export function getWeightGain(animalId: string): Promise<WeightGain> {
-  return request<WeightGain>(`/animals/${animalId}/ganho-peso`);
+  return request<WeightGain>(`/animals/${animalId}/weight-gain`);
 }
 
 export function createWeighing(
   animalId: string,
   data: { date: string; weightKg: number },
 ): Promise<Weighing> {
-  return request<Weighing>(`/animals/${animalId}/pesagens`, {
+  return request<Weighing>(`/animals/${animalId}/weighings`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -100,7 +100,7 @@ export function updateWeighing(
   weighingId: string,
   data: { date: string; weightKg: number },
 ): Promise<Weighing> {
-  return request<Weighing>(`/animals/${animalId}/pesagens/${weighingId}`, {
+  return request<Weighing>(`/animals/${animalId}/weighings/${weighingId}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -111,7 +111,7 @@ export function deleteWeighing(
   animalId: string,
   weighingId: string,
 ): Promise<void> {
-  return request<void>(`/animals/${animalId}/pesagens/${weighingId}`, {
+  return request<void>(`/animals/${animalId}/weighings/${weighingId}`, {
     method: "DELETE",
   });
 }

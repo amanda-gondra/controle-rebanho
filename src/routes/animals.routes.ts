@@ -1,6 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
+import { toDbDate } from "../lib/dates.js";
+import {
+  ErrorCode,
+  conflict,
+  notFound,
+  unprocessable,
+} from "../lib/errors.js";
 import {
   createAnimalSchema,
   animalIdParamSchema,
@@ -9,11 +16,23 @@ import {
   updateAnimalSchema,
 } from "../schemas/animal.schema.js";
 import {
-  createWeighingSchema,
+  weighingBodySchema,
   weighingParamsSchema,
-  updateWeighingSchema,
 } from "../schemas/weighing.schema.js";
 import { calculateWeightGain } from "../services/weighing.service.js";
+
+const animalNotFound = () =>
+  notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
+
+const weighingNotFound = () =>
+  notFound(ErrorCode.WEIGHING_NOT_FOUND, "Pesagem não encontrada.");
+
+// Garante que o animal existe; senão, 404.
+async function findAnimalOrFail(id: string) {
+  const animal = await prisma.animal.findUnique({ where: { id } });
+  if (!animal) throw animalNotFound();
+  return animal;
+}
 
 export async function animalRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -33,7 +52,7 @@ export async function animalRoutes(app: FastifyInstance) {
       const animal = await prisma.animal.create({
         data: {
           ...rest,
-          ...(birthDate ? { birthDate: new Date(birthDate) } : {}),
+          ...(birthDate ? { birthDate: toDbDate(birthDate) } : {}),
         },
       });
       return reply.status(201).send(animal);
@@ -78,15 +97,7 @@ export async function animalRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
-      return animal;
-    },
+    async (request) => findAnimalOrFail(request.params.id),
   );
 
   // PUT /animals/:id
@@ -95,103 +106,116 @@ export async function animalRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ["Animais"],
-        summary: "Edita os dados de um animal",
+        summary: "Edita os dados de um animal (null limpa raça, nascimento e observações)",
         params: animalIdParamSchema,
         body: updateAnimalSchema,
       },
     },
-    async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
-      const { birthDate, ...rest } = request.body;
-      const updated = await prisma.animal.update({
+    async (request) => {
+      await findAnimalOrFail(request.params.id);
+
+      const { birthDate, birthPrecision, ...rest } = request.body;
+      return prisma.animal.update({
         where: { id: request.params.id },
         data: {
           ...rest,
-          ...(birthDate ? { birthDate: new Date(birthDate) } : {}),
+          ...(birthDate !== undefined
+            ? { birthDate: birthDate === null ? null : toDbDate(birthDate) }
+            : {}),
+          // Sem data de nascimento, a precisão volta a "desconhecida"
+          ...(birthDate === null
+            ? { birthPrecision: "UNKNOWN" as const }
+            : birthPrecision !== undefined
+              ? { birthPrecision }
+              : {}),
         },
       });
-      return updated;
     },
   );
 
   // DELETE /animals/:id
+  // D-10: animal com compra ou venda NÃO pode ser excluído (o histórico
+  // financeiro não some). Sem transação, a exclusão leva junto pesagens e
+  // participações em aplicações (cascata do banco, num passo só — F-22).
   r.delete(
     "/animals/:id",
     {
       schema: {
         tags: ["Animais"],
-        summary: "Exclui um animal (e as pesagens dele)",
+        summary: "Exclui um animal sem compra nem venda (e as pesagens dele)",
         params: animalIdParamSchema,
       },
     },
     async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
+      const { id } = request.params;
+
+      // Uma instrução só: apaga apenas se não houver compra nem venda.
+      const { count } = await prisma.animal.deleteMany({
+        where: { id, purchase: { is: null }, sale: { is: null } },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
+
+      if (count === 0) {
+        // Não apagou: ou não existe, ou tem histórico financeiro.
+        await findAnimalOrFail(id);
+        throw conflict(
+          ErrorCode.ANIMAL_HAS_TRANSACTIONS,
+          "Este animal tem compra ou venda registrada e não pode ser excluído.",
+        );
       }
-      // apaga as pesagens primeiro (são "filhas" do animal), depois o animal
-      await prisma.weighing.deleteMany({
-        where: { animalId: request.params.id },
-      });
-      await prisma.animal.delete({ where: { id: request.params.id } });
+
       return reply.status(204).send();
     },
   );
 
   // PATCH /animals/:id/status
+  // D-06: animal com venda registrada fica "vendido"; para mudar, desfaça a venda.
   r.patch(
     "/animals/:id/status",
     {
       schema: {
         tags: ["Animais"],
-        summary: "Muda o status (vendido/morto)",
+        summary: "Muda o status (ativo/vendido/morto)",
         params: animalIdParamSchema,
         body: updateStatusSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
+        include: { sale: { select: { id: true } } },
       });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
+      if (!animal) throw animalNotFound();
+
+      if (animal.sale && request.body.status !== "SOLD") {
+        throw conflict(
+          ErrorCode.ANIMAL_HAS_SALE,
+          "Este animal tem uma venda registrada. Para mudar o status, desfaça a venda.",
+        );
       }
-      const updated = await prisma.animal.update({
+
+      return prisma.animal.update({
         where: { id: request.params.id },
         data: { status: request.body.status },
       });
-      return updated;
     },
   );
 
-  // POST /animals/:id/pesagens
+  // POST /animals/:id/weighings
   r.post(
-    "/animals/:id/pesagens",
+    "/animals/:id/weighings",
     {
       schema: {
         tags: ["Pesagens"],
         summary: "Registra uma pesagem",
         params: animalIdParamSchema,
-        body: createWeighingSchema,
+        body: weighingBodySchema,
       },
     },
     async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
+      await findAnimalOrFail(request.params.id);
       const weighing = await prisma.weighing.create({
         data: {
-          date: new Date(request.body.date),
+          date: toDbDate(request.body.date),
           weightKg: request.body.weightKg,
           animalId: request.params.id,
         },
@@ -200,9 +224,9 @@ export async function animalRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /animals/:id/pesagens
+  // GET /animals/:id/weighings
   r.get(
-    "/animals/:id/pesagens",
+    "/animals/:id/weighings",
     {
       schema: {
         tags: ["Pesagens"],
@@ -210,13 +234,8 @@ export async function animalRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
-      }
+    async (request) => {
+      await findAnimalOrFail(request.params.id);
       return prisma.weighing.findMany({
         where: { animalId: request.params.id },
         orderBy: { date: "desc" },
@@ -224,42 +243,37 @@ export async function animalRoutes(app: FastifyInstance) {
     },
   );
 
-  // PUT /animals/:id/pesagens/:weighingId  — edita uma pesagem
+  // PUT /animals/:id/weighings/:weighingId — edita uma pesagem
   r.put(
-    "/animals/:id/pesagens/:weighingId",
+    "/animals/:id/weighings/:weighingId",
     {
       schema: {
         tags: ["Pesagens"],
         summary: "Edita uma pesagem",
         params: weighingParamsSchema,
-        body: updateWeighingSchema,
+        body: weighingBodySchema,
       },
     },
-    async (request, reply) => {
-      // confere se a pesagem existe E pertence a este animal (segurança)
-      const weighing = await prisma.weighing.findFirst({
-        where: {
-          id: request.params.weighingId,
-          animalId: request.params.id,
-        },
-      });
-      if (!weighing) {
-        return reply.status(404).send({ message: "Pesagem não encontrada." });
-      }
-      const updated = await prisma.weighing.update({
-        where: { id: request.params.weighingId },
+    async (request) => {
+      // a pesagem tem que existir E pertencer a este animal
+      const { count } = await prisma.weighing.updateMany({
+        where: { id: request.params.weighingId, animalId: request.params.id },
         data: {
-          date: new Date(request.body.date),
+          date: toDbDate(request.body.date),
           weightKg: request.body.weightKg,
         },
       });
-      return updated;
+      if (count === 0) throw weighingNotFound();
+
+      return prisma.weighing.findUniqueOrThrow({
+        where: { id: request.params.weighingId },
+      });
     },
   );
 
-  // DELETE /animals/:id/pesagens/:weighingId  — exclui uma pesagem
+  // DELETE /animals/:id/weighings/:weighingId — exclui uma pesagem
   r.delete(
-    "/animals/:id/pesagens/:weighingId",
+    "/animals/:id/weighings/:weighingId",
     {
       schema: {
         tags: ["Pesagens"],
@@ -268,26 +282,18 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      // confere se a pesagem existe E pertence a este animal (segurança)
-      const weighing = await prisma.weighing.findFirst({
-        where: {
-          id: request.params.weighingId,
-          animalId: request.params.id,
-        },
+      // a pesagem tem que existir E pertencer a este animal
+      const { count } = await prisma.weighing.deleteMany({
+        where: { id: request.params.weighingId, animalId: request.params.id },
       });
-      if (!weighing) {
-        return reply.status(404).send({ message: "Pesagem não encontrada." });
-      }
-      await prisma.weighing.delete({
-        where: { id: request.params.weighingId },
-      });
+      if (count === 0) throw weighingNotFound();
       return reply.status(204).send();
     },
   );
 
-  // GET /animals/:id/ganho-peso
+  // GET /animals/:id/weight-gain
   r.get(
-    "/animals/:id/ganho-peso",
+    "/animals/:id/weight-gain",
     {
       schema: {
         tags: ["Pesagens"],
@@ -295,21 +301,23 @@ export async function animalRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
+    async (request) => {
+      await findAnimalOrFail(request.params.id);
+      const outcome = await calculateWeightGain(request.params.id);
+
+      if (!outcome.ok) {
+        throw outcome.reason === "SAME_DAY_WEIGHINGS"
+          ? unprocessable(
+              ErrorCode.SAME_DAY_WEIGHINGS,
+              "A primeira e a última pesagem são do mesmo dia. Registre uma pesagem em outra data para calcular o ganho de peso.",
+            )
+          : unprocessable(
+              ErrorCode.INSUFFICIENT_WEIGHINGS,
+              "São necessárias pelo menos duas pesagens para calcular o ganho de peso.",
+            );
       }
-      const result = await calculateWeightGain(request.params.id);
-      if (!result) {
-        return reply.status(422).send({
-          message:
-            "São necessárias pelo menos duas pesagens para calcular o ganho de peso.",
-        });
-      }
-      return result;
+
+      return outcome.value;
     },
   );
 }

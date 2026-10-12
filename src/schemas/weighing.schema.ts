@@ -1,36 +1,19 @@
 import { z } from "zod";
+import { pastOrTodayDate, weightKg } from "./common.schema.js";
 
-// Valida o corpo ao registrar uma pesagem
-export const createWeighingSchema = z
+// Valida o corpo ao registrar ou editar uma pesagem (mesmas regras nos dois casos)
+export const weighingBodySchema = z
   .object({
-    date: z
-      .iso
-      .date()
-      .refine((d) => new Date(d) <= new Date(), "A data da pesagem não pode ser no futuro."),
-    weightKg: z.coerce
-      .number()
-      .positive("O peso deve ser maior que zero."),
+    date: pastOrTodayDate("A data da pesagem não pode ser no futuro."),
+    weightKg,
   })
   .strict();
 
-export type CreateWeighingInput = z.infer<typeof createWeighingSchema>;
+export type WeighingBodyInput = z.infer<typeof weighingBodySchema>;
 
 // Valida os parâmetros da URL quando a rota mexe numa pesagem específica
 // (precisa do id do animal E do id da pesagem — a pesagem "pertence" ao animal)
 export const weighingParamsSchema = z.object({
-  id: z.string().uuid("ID do animal inválido."),
-  weighingId: z.string().uuid("ID da pesagem inválido."),
+  id: z.uuid("ID do animal inválido."),
+  weighingId: z.uuid("ID da pesagem inválido."),
 });
-
-// Valida o corpo ao editar uma pesagem (mesmas regras do cadastro)
-export const updateWeighingSchema = z
-  .object({
-    date: z
-      .iso
-      .date()
-      .refine((d) => new Date(d) <= new Date(), "A data da pesagem não pode ser no futuro."),
-    weightKg: z.coerce
-      .number()
-      .positive("O peso deve ser maior que zero."),
-  })
-  .strict();

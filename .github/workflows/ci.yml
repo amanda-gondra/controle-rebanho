@@ -7,25 +7,69 @@ on:
 
 jobs:
   backend:
-    name: Backend — typecheck, testes e build
+    name: Backend — migrations, typecheck, testes, lint e build
     runs-on: ubuntu-latest
+
+    # Banco de TESTE descartável, só para este job (não é dado real).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: rebanho_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d rebanho_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://ci:ci_only_password@localhost:5432/rebanho_test?schema=public
+      # banco "sombra" usado só pela checagem de divergência entre migrations e schema
+      SHADOW_DATABASE_URL: postgresql://ci:ci_only_password@localhost:5432/rebanho_shadow_test?schema=public
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
           cache: "npm"
 
       - run: npm ci
       - run: npx prisma generate
+
+      # Auditoria de dependências (F-36). Por enquanto só AVISA: há alertas
+      # altos abertos (fast-uri, brace-expansion, deepmerge-ts) cuja correção
+      # atualiza dependências e aguarda aprovação. Depois de corrigir, remover
+      # o continue-on-error para que um alerta alto pare o CI.
+      - run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+      # As migrations versionadas aplicam do zero num banco limpo
+      - run: npm run db:test:migrate
+
+      - name: Criar o banco sombra (descartável)
+        run: psql "postgresql://ci:ci_only_password@localhost:5432/rebanho_test" -c "CREATE DATABASE rebanho_shadow_test"
+
+      # As migrations produzem exatamente o schema.prisma (sem divergência)
+      - run: >-
+          npx prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "$SHADOW_DATABASE_URL"
+          --exit-code
+
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
       - run: npm run build
 
   frontend:
-    name: Frontend — lint, typecheck e build
+    name: Frontend — lint e build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,10 +79,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run build
