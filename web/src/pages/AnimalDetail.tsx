@@ -57,6 +57,8 @@ export function AnimalDetail() {
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [weighings, setWeighings] = useState<Weighing[]>([]);
   const [gain, setGain] = useState<WeightGain | null>(null);
+  // Por que o ganho não foi calculado (código vindo da API)
+  const [gainUnavailableCode, setGainUnavailableCode] = useState<string | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [sale, setSale] = useState<Sale | null>(null);
@@ -94,8 +96,14 @@ export function AnimalDetail() {
       .then((data) => setWeighings(data))
       .catch((err) => console.error(err));
     getWeightGain(id)
-      .then((data) => setGain(data))
-      .catch(() => setGain(null)); // sem 2 pesagens: fica null
+      .then((data) => {
+        setGain(data);
+        setGainUnavailableCode(null);
+      })
+      .catch((err) => {
+        setGain(null); // sem cálculo possível: fica null
+        setGainUnavailableCode(err?.code ?? null);
+      });
     listAnimalApplications(id)
       .then((data) => setApplications(data))
       .catch((err) => console.error(err));
@@ -316,7 +324,9 @@ export function AnimalDetail() {
               Ainda não dá para calcular o ganho de peso
             </p>
             <p className="text-texto-suave text-sm mb-4">
-              Registre pelo menos duas pesagens e o gráfico aparece aqui.
+              {gainUnavailableCode === "SAME_DAY_WEIGHINGS"
+                ? "A primeira e a última pesagem são do mesmo dia. Registre uma pesagem em outra data."
+                : "Registre pelo menos duas pesagens e o gráfico aparece aqui."}
             </p>
             <button
               onClick={() => setShowWeighingModal(true)}

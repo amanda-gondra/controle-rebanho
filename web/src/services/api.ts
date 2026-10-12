@@ -22,6 +22,7 @@ export async function request<T>(
     const body = await response.json().catch(() => null);
     throw {
       status: response.status,
+      code: body?.code, // código estável do erro (ex.: DUPLICATE_TAG)
       message: body?.message ?? "Algo deu errado.",
       errors: body?.errors,
     };

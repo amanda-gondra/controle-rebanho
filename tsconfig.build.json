@@ -1,0 +1,12 @@
+{
+  // Configuração do "npm run build": compila só o código da aplicação
+  // (sem testes) para a pasta dist/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

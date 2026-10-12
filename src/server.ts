@@ -1,103 +1,33 @@
-import Fastify from "fastify";
-import { ZodError } from "zod";
-import { Prisma } from "@prisma/client";
-import swagger from "@fastify/swagger";
-import swaggerUi from "@fastify/swagger-ui";
-import helmet from "@fastify/helmet";
-import rateLimit from "@fastify/rate-limit";
-import cors from "@fastify/cors";
-import {
-  serializerCompiler,
-  validatorCompiler,
-  jsonSchemaTransform,
-  hasZodFastifySchemaValidationErrors,
-  type ZodTypeProvider,
-} from "fastify-type-provider-zod";
-import { animalRoutes } from "./routes/animals.routes.js";
-import { sanitaryRoutes } from "./routes/sanitary.routes.js";
-import { financeRoutes } from "./routes/finance.routes.js";
+import { buildApp } from "./app.js";
+import { loadConfig } from "./config/env.js";
+import { prisma } from "./lib/prisma.js";
 
-const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
+// Ponto de entrada: lê a configuração, monta a aplicação e sobe o servidor.
+// Se a configuração estiver errada, o processo para aqui com uma mensagem clara.
+const config = loadConfig();
+const app = await buildApp(config);
 
-// Zod como fonte única: valida as requisições E alimenta a documentação
-app.setValidatorCompiler(validatorCompiler);
-app.setSerializerCompiler(serializerCompiler);
-
-// Segurança: cabeçalhos de proteção
-await app.register(helmet);
-
-// Segurança: limite de requisições (100 por minuto por IP)
-await app.register(rateLimit, {
-  max: 100,
-  timeWindow: "1 minute",
-});
-
-// Libera o acesso do frontend (CORS)
-await app.register(cors, {
-  origin: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-});
-
-// Documentação (Swagger / OpenAPI) — registrada ANTES das rotas
-await app.register(swagger, {
-  openapi: {
-    info: {
-      title: "Controle de Rebanho API",
-      description: "API para controle de um rebanho de gado de corte.",
-      version: "1.0.0",
-    },
-  },
-  transform: jsonSchemaTransform,
-});
-
-await app.register(swaggerUi, { routePrefix: "/docs" });
-
-app.get("/health", async () => {
-  return { status: "ok" };
-});
-
-app.register(animalRoutes);
-app.register(sanitaryRoutes);
-app.register(financeRoutes);
-
-// Tratador de erros central
-app.setErrorHandler((error, request, reply) => {
-  // Validação automática (schemas Zod nas rotas) → 400
-  if (hasZodFastifySchemaValidationErrors(error)) {
-    return reply.status(400).send({
-      message: "Dados inválidos.",
-      errors: error.validation.map((issue: any) => ({
-        field: issue.instancePath ? issue.instancePath.replace(/^\//, "") : "",
-        error: issue.message,
-      })),
-    });
+// Desligamento limpo: termina as requisições em andamento e fecha o banco.
+// (A hospedagem manda SIGTERM antes de trocar de versão.)
+async function shutdown(signal: string) {
+  app.log.info({ signal }, "Encerrando o servidor...");
+  try {
+    await app.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  } catch (error) {
+    app.log.error(error, "Falha ao encerrar o servidor.");
+    process.exit(1);
   }
+}
 
-  // Validação manual (.parse) — rede de segurança
-  if (error instanceof ZodError) {
-    return reply.status(400).send({
-      message: "Dados inválidos.",
-      errors: error.issues.map((i) => ({
-        field: i.path.join("."),
-        error: i.message,
-      })),
-    });
-  }
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
-  // Brinco duplicado (Prisma P2002) → 409
-  if (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002"
-  ) {
-    return reply.status(409).send({
-      message: "Já existe um animal cadastrado com este brinco.",
-    });
-  }
-
-  request.log.error(error);
-  return reply.status(500).send({ message: "Erro interno do servidor." });
-});
-
-app.listen({ port: 3333 }).then(() => {
-  console.log("🚀 Server running at http://localhost:3333");
-});
+try {
+  await app.listen({ host: config.host, port: config.port });
+} catch (error) {
+  app.log.error(error, "Não foi possível subir o servidor.");
+  await prisma.$disconnect();
+  process.exit(1);
+}

@@ -2,13 +2,29 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// Dados de exemplo para DESENVOLVIMENTO.
+//
+// Segurança (F-02): este comando NUNCA apaga nada. Ele se recusa a rodar
+// em produção e em qualquer banco que já tenha dados — antes, ele apagava
+// todos os animais sem perguntar.
 async function main() {
-  console.log("🌱 Populando o banco...");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("O seed de exemplo não roda em produção.");
+  }
 
-  // limpa os dados antigos (primeiro as pesagens, depois os animais,
-  // por causa da relação entre eles)
-  await prisma.weighing.deleteMany();
-  await prisma.animal.deleteMany();
+  const [animals, products, applications] = await Promise.all([
+    prisma.animal.count(),
+    prisma.product.count(),
+    prisma.application.count(),
+  ]);
+  if (animals + products + applications > 0) {
+    console.log(
+      "⚠️  O banco já tem dados. O seed só roda em banco vazio e não apagou nada.",
+    );
+    return;
+  }
+
+  console.log("🌱 Populando o banco...");
 
   // Animal 1 — um novilho com histórico de pesagens (pra ter GMD)
   const boi = await prisma.animal.create({

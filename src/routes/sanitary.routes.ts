@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
+import { toDbDate } from "../lib/dates.js";
+import { ErrorCode, badRequest, notFound } from "../lib/errors.js";
 import {
   createProductSchema,
   listProductsQuerySchema,
@@ -11,6 +13,12 @@ import {
 } from "../schemas/sanitary.schema.js";
 import { animalIdParamSchema } from "../schemas/animal.schema.js";
 import { classifyReapplication } from "../services/sanitary.service.js";
+
+const productNotFound = () =>
+  notFound(ErrorCode.PRODUCT_NOT_FOUND, "Produto não encontrado.");
+
+const applicationNotFound = () =>
+  notFound(ErrorCode.APPLICATION_NOT_FOUND, "Aplicação não encontrada.");
 
 export async function sanitaryRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -73,26 +81,25 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       const product = await prisma.product.findUnique({
         where: { id: productId },
       });
-      if (!product) {
-        return reply.status(404).send({ message: "Produto não encontrado." });
-      }
+      if (!product) throw productNotFound();
 
-      // 2. confere se todos os animais existem
+      // 2. confere se todos os animais existem (o schema já recusa ids repetidos)
       const found = await prisma.animal.count({
         where: { id: { in: animalIds } },
       });
       if (found !== animalIds.length) {
-        return reply
-          .status(400)
-          .send({ message: "Um ou mais animais não foram encontrados." });
+        throw badRequest(
+          ErrorCode.ANIMALS_NOT_FOUND,
+          "Um ou mais animais não foram encontrados.",
+        );
       }
 
       // 3. cria a aplicação (evento) JÁ com as ligações por animal
       const application = await prisma.application.create({
         data: {
           productId,
-          date: new Date(date),
-          reapplyDate: reapplyDate ? new Date(reapplyDate) : null,
+          date: toDbDate(date),
+          reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
           notes,
           animals: {
             create: animalIds.map((animalId) => ({ animalId })),
@@ -175,7 +182,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         params: applicationIdParamSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const application = await prisma.application.findUnique({
         where: { id: request.params.id },
         include: {
@@ -183,9 +190,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
           animals: { include: { animal: true } },
         },
       });
-      if (!application) {
-        return reply.status(404).send({ message: "Aplicação não encontrada." });
-      }
+      if (!application) throw applicationNotFound();
       return application;
     },
   );
@@ -201,14 +206,12 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         body: updateApplicationSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       // confere se a aplicação existe
       const existing = await prisma.application.findUnique({
         where: { id: request.params.id },
       });
-      if (!existing) {
-        return reply.status(404).send({ message: "Aplicação não encontrada." });
-      }
+      if (!existing) throw applicationNotFound();
 
       const { productId, date, reapplyDate, notes } = request.body;
 
@@ -216,16 +219,14 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       const product = await prisma.product.findUnique({
         where: { id: productId },
       });
-      if (!product) {
-        return reply.status(404).send({ message: "Produto não encontrado." });
-      }
+      if (!product) throw productNotFound();
 
       const updated = await prisma.application.update({
         where: { id: request.params.id },
         data: {
           productId,
-          date: new Date(date),
-          reapplyDate: reapplyDate ? new Date(reapplyDate) : null,
+          date: toDbDate(date),
+          reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
           notes,
         },
         include: {
@@ -248,16 +249,11 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const existing = await prisma.application.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!existing) {
-        return reply.status(404).send({ message: "Aplicação não encontrada." });
-      }
       // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
-      await prisma.application.delete({
+      const { count } = await prisma.application.deleteMany({
         where: { id: request.params.id },
       });
+      if (count === 0) throw applicationNotFound();
       return reply.status(204).send();
     },
   );
@@ -272,12 +268,12 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         params: animalIdParamSchema,
       },
     },
-    async (request, reply) => {
+    async (request) => {
       const animal = await prisma.animal.findUnique({
         where: { id: request.params.id },
       });
       if (!animal) {
-        return reply.status(404).send({ message: "Animal não encontrado." });
+        throw notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
       }
       const links = await prisma.applicationAnimal.findMany({
         where: { animalId: request.params.id },
