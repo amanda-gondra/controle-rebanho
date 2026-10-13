@@ -1,4 +1,4 @@
-import { List, PlusCircle, Syringe, LogOut } from "lucide-react";
+import { List, PlusCircle, Syringe, LogOut, Settings } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider.js";
 
@@ -15,6 +15,10 @@ const NAV_ITEMS = [
   { to: "/animais/novo", end: false, label: "Cadastrar animal", Icon: PlusCircle },
   { to: "/manejo", end: false, label: "Manejo sanitário", Icon: Syringe },
 ];
+
+// Configurações (G2): fica separada, logo acima do usuário (desktop); no
+// celular entra como mais um botão da barra inferior.
+const SETTINGS_ITEM = { to: "/configuracoes", end: false, label: "Configurações", Icon: Settings };
 
 export function Sidebar() {
   const { account, logout } = useAuth();
@@ -68,6 +72,20 @@ export function Sidebar() {
           {/* Empurra o bloco de usuário pra base */}
           <div className="flex-1" />
 
+          <NavLink
+            to={SETTINGS_ITEM.to}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 mb-2 rounded-lg text-sm cursor-pointer transition-colors ${
+                isActive
+                  ? "bg-sidebar-ativo text-white font-medium"
+                  : "text-white/70 hover:bg-white/10 hover:text-white"
+              }`
+            }
+          >
+            <SETTINGS_ITEM.Icon size={18} />
+            {SETTINGS_ITEM.label}
+          </NavLink>
+
           {/* Usuário logado + sair (F-24) */}
           <div className="flex items-center gap-3 px-2 py-3 border-t border-white/10">
             <span
@@ -116,7 +134,7 @@ export function Sidebar() {
 
       {/* BARRA INFERIOR — só no mobile (some no md pra cima) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar flex justify-around items-center h-16 z-40">
-        {NAV_ITEMS.map(({ to, end, label, Icon }) => (
+        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ to, end, label, Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -128,7 +146,11 @@ export function Sidebar() {
             }
           >
             <Icon size={20} />
-            {label === "Cadastrar animal" ? "Cadastrar" : label.split(" ")[0]}
+            {label === "Cadastrar animal"
+              ? "Cadastrar"
+              : label === "Configurações"
+                ? "Ajustes"
+                : label.split(" ")[0]}
           </NavLink>
         ))}
         <button

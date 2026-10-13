@@ -1,8 +1,9 @@
 import { request } from "./api.js";
+import type { Farm } from "./farm.js";
 
 export type Account = {
   user: { id: string; name: string; email: string };
-  farm: { id: string; name: string; country: string; timezone: string };
+  farm: Farm; // inclui as configurações (G2)
 };
 
 export type RegisterInput = {

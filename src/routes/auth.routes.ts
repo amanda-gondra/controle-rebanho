@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { AppConfig } from "../config/env.js";
 import { prisma } from "../lib/prisma.js";
@@ -12,6 +13,7 @@ import {
   setSessionCookie,
 } from "../lib/session.js";
 import { authenticate } from "../lib/auth.js";
+import { FARM_SELECT, toFarmView } from "../lib/farm.js";
 import { loginSchema, registerSchema } from "../schemas/auth.schema.js";
 
 // O que a API devolve sobre a conta (nunca o hash da senha).
@@ -19,17 +21,13 @@ const accountSelect = {
   id: true,
   name: true,
   email: true,
-  farm: { select: { id: true, name: true, country: true, timezone: true } },
-} as const;
+  farm: { select: FARM_SELECT },
+} as const satisfies Prisma.UserSelect;
 
-type Account = {
-  id: string;
-  name: string;
-  email: string;
-  farm: { id: string; name: string; country: string; timezone: string };
-};
+type Account = Prisma.UserGetPayload<{ select: typeof accountSelect }>;
 
-const toResponse = ({ farm, ...user }: Account) => ({ user, farm });
+// Mesmo formato de GET /auth/me: { user, farm } (farm com as configurações)
+const toResponse = ({ farm, ...user }: Account) => ({ user, farm: toFarmView(farm) });
 
 export async function authRoutes(app: FastifyInstance, config: AppConfig) {
   const r = app.withTypeProvider<ZodTypeProvider>();

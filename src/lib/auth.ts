@@ -2,11 +2,12 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { ErrorCode, unauthorized } from "./errors.js";
 import { SESSION_COOKIE, clearSessionCookie, findSession } from "./session.js";
 import { forFarm, type FarmDb } from "./tenant.js";
+import type { FarmView } from "./farm.js";
 
 // Quem está logado e de qual fazenda.
 export type AuthContext = {
   user: { id: string; name: string; email: string };
-  farm: { id: string; name: string; country: string; timezone: string };
+  farm: FarmView; // inclui as configurações (G2)
 };
 
 // Toda rota PROTEGIDA recebe em `request`:

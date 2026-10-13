@@ -60,4 +60,28 @@ describe("classifyReapplication", () => {
     const result = classifyReapplication({ reapplyDate: ontemNoBanco }, meiaNoite);
     expect(result.overdue).toBe(true);
   });
+
+  // ── Antecedência configurável (G2 — RN-CFG-006) ──
+  describe("com a antecedência da fazenda", () => {
+    const tz = "America/Sao_Paulo";
+
+    it("com 15 dias, a reaplicação daqui a 10 dias vira alerta", () => {
+      const daquiA10Dias = new Date("2026-09-08T00:00:00.000Z");
+      const result = classifyReapplication({ reapplyDate: daquiA10Dias }, hoje, tz, 15);
+      expect(result.isAlert).toBe(true);
+      expect(result.overdue).toBe(false);
+    });
+
+    it("com 0 dias, só a de hoje e as vencidas são alerta", () => {
+      const hojeNoBanco = new Date("2026-08-29T00:00:00.000Z");
+      const amanha = new Date("2026-08-30T00:00:00.000Z");
+      const ontem = new Date("2026-08-28T00:00:00.000Z");
+      expect(classifyReapplication({ reapplyDate: hojeNoBanco }, hoje, tz, 0).isAlert).toBe(true);
+      expect(classifyReapplication({ reapplyDate: amanha }, hoje, tz, 0).isAlert).toBe(false);
+      expect(classifyReapplication({ reapplyDate: ontem }, hoje, tz, 0)).toEqual({
+        isAlert: true,
+        overdue: true,
+      });
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyReply } from "fastify";
 import { prisma } from "./prisma.js";
+import { FARM_SELECT, toFarmView, type FarmView } from "./farm.js";
 
 // Sessão de login (D-23).
 //
@@ -50,7 +51,7 @@ export type SessionLookup =
   | {
       status: "valid";
       user: { id: string; name: string; email: string };
-      farm: { id: string; name: string; country: string; timezone: string };
+      farm: FarmView;
     };
 
 // Confere o token do cookie. Sessão vencida é apagada na hora.
@@ -68,7 +69,7 @@ export async function findSession(
           id: true,
           name: true,
           email: true,
-          farm: { select: { id: true, name: true, country: true, timezone: true } },
+          farm: { select: FARM_SELECT },
         },
       },
     },
@@ -93,7 +94,7 @@ export async function findSession(
   }
 
   const { farm, ...user } = session.user;
-  return { status: "valid", user, farm };
+  return { status: "valid", user, farm: toFarmView(farm) };
 }
 
 export async function deleteSession(token: string | undefined) {

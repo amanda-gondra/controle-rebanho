@@ -166,6 +166,8 @@ describe("sessão", () => {
       ["PUT", `/animals/${id}/weighings/${id}`],
       ["DELETE", `/animals/${id}/weighings/${id}`],
       ["GET", `/animals/${id}/weight-gain`],
+      ["GET", "/farm"],
+      ["PATCH", "/farm"],
       ["GET", "/products"],
       ["POST", "/products"],
       ["GET", "/applications"],

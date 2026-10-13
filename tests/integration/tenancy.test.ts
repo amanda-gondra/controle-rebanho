@@ -67,6 +67,7 @@ async function snapshotFarmB() {
       prisma.applicationAnimal.findMany({ where, orderBy: { id: "asc" } }),
       prisma.animalPurchase.findMany({ where, orderBy: { id: "asc" } }),
       prisma.animalSale.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.farm.findUnique({ where: { id: farmB.farm.id } }),
     ]),
   );
 }

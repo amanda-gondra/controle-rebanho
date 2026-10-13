@@ -77,24 +77,27 @@ Backend (raiz):
   src/app.ts                    buildApp(config): plugins, erros, rotas (sem abrir porta)
   src/config/env.ts             variáveis de ambiente validadas
   src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
-                                password.ts, errors.ts, error-handler.ts, dates.ts
+                                password.ts, errors.ts, error-handler.ts, dates.ts,
+                                farm.ts (configurações: campos, padrões, fusos do Brasil)
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
-  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance
-  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance (protegidas)
+  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance, farm, auth
+  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance, farm (protegidas)
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
                                 finance.service.ts (resultado por animal)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
 
 Frontend (web/):
   src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
-                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail
+                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
+                                Settings (Configurações da fazenda)
   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
                                 EditApplication, Trade, EstimatedPrice), ToastProvider
-  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts,
+  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts, farm.ts,
                                 api.ts (request<T>: manda o cookie; 401 → volta para o login)
-  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata)
+  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
+                                timezones.ts (nomes dos fusos do Brasil)
   src/index.css                 tema "campo moderno" (paleta em @theme)
 ```
 
@@ -129,7 +132,8 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
 
 ### Banco (resumo — fonte da verdade: `prisma/schema.prisma`)
 
-- Conta: `Farm` (nome, país, fuso) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
+- Conta: `Farm` (nome, país, fuso + configurações da G2: moeda, unidade, fator da arroba,
+  unidade de preço, antecedência do lembrete, castrado padrão) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
   `Session` (hash do token, validade).
 - Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda) · `Weighing` ·
   `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
@@ -140,6 +144,7 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
 ```
 Conta:      POST /auth/register · POST /auth/login · POST /auth/logout   (públicas)
             GET /auth/me                                                (protegida)
+Fazenda:    GET /farm · PATCH /farm   (sem id: sempre a fazenda da sessão; G2)
             → TODAS as rotas abaixo exigem login (401 UNAUTHENTICATED / SESSION_EXPIRED)
               e só enxergam a fazenda da sessão (outra fazenda → 404)
 Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
@@ -154,7 +159,7 @@ Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
 Sanitário:  POST /products · GET /products (filtro type)
             POST /applications · GET /applications (filtro type) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
-            GET /alerts   (reaplicações ≤7 dias + vencidas)
+            GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
             GET /animals/:id/applications
 Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
             POST/GET/PUT/DELETE /animals/:id/sale       (POST marca SOLD; DELETE volta ACTIVE;
@@ -184,3 +189,9 @@ testes de integração de todas as rotas e CI com Postgres.
 **G1 (2026-10-12):** fazenda, usuário, login com sessão em cookie (D-23), senha scrypt (D-24),
 telas de entrar/criar conta/sair (D-25), `farmId` em tudo + filtro único, testes de acesso
 cruzado. Falta: recuperação de senha (precisa de e-mail), chaves compostas `[id, farmId]` (🟡).
+
+**G2 (2026-10-13):** configurações da fazenda (`GET/PATCH /farm`, tela "Configurações"):
+nome, fuso (só Brasil — D-31), antecedência do lembrete (vale na hora em `/alerts`); moeda e
+unidade fixas na 1.0 (D-30). Fator da arroba, unidade de preço e castrado padrão já ficam
+guardados, mas os cartões só aparecem com a G5/G4; nomes das categorias entram na G4.
+`request.auth.farm.settings` traz as configurações em toda rota protegida.

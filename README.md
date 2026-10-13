@@ -177,6 +177,8 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `POST`   | `/auth/register`          | Cria a conta (fazenda + usuário) e entra |
 | `POST`   | `/auth/login`             | Entra na conta (sessão em cookie HttpOnly) |
 | `POST`   | `/auth/logout`            | Sai da conta                            |
+| `GET`    | `/farm`                   | Dados e configurações da fazenda        |
+| `PATCH`  | `/farm`                   | Altera nome, fuso e configurações da fazenda |
 | `POST`   | `/animals`                | Cadastra um novo animal                 |
 | `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
 | `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |

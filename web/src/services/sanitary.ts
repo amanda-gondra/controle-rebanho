@@ -54,7 +54,7 @@ export function listAnimalApplications(
   return request<Application[]>(`/animals/${animalId}/applications`);
 }
 
-// Reaplicações chegando (próximos 7 dias) ou vencidas.
+// Reaplicações chegando (antecedência definida nas Configurações, padrão 7 dias) ou vencidas.
 export function listAlerts(): Promise<Application[]> {
   return request<Application[]>("/alerts");
 }

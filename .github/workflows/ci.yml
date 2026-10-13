@@ -42,10 +42,10 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
 
-      # Auditoria de dependências (F-36). Por enquanto só AVISA: há alertas
-      # altos abertos (fast-uri, brace-expansion, deepmerge-ts) cuja correção
-      # atualiza dependências e aguarda aprovação. Depois de corrigir, remover
-      # o continue-on-error para que um alerta alto pare o CI.
+      # Auditoria de dependências (F-36). Por enquanto só AVISA: o único alerta
+      # alto restante é do Prisma CLI (deepmerge-ts, ferramenta de
+      # desenvolvimento, não roda no servidor); a correção exige o Prisma 7.
+      # Depois dessa atualização, remover o continue-on-error.
       - run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
 

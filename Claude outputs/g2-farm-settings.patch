@@ -1,0 +1,1522 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index b02eaee..8ae0717 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -77,24 +77,27 @@ Backend (raiz):
+   src/app.ts                    buildApp(config): plugins, erros, rotas (sem abrir porta)
+   src/config/env.ts             variáveis de ambiente validadas
+   src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
+-                                password.ts, errors.ts, error-handler.ts, dates.ts
++                                password.ts, errors.ts, error-handler.ts, dates.ts,
++                                farm.ts (configurações: campos, padrões, fusos do Brasil)
+   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
+-  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance
+-  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance (protegidas)
++  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance, farm, auth
++  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance, farm (protegidas)
+   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
+                                 finance.service.ts (resultado por animal)
+   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
+ 
+ Frontend (web/):
+   src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
+-                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail
++                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
++                                Settings (Configurações da fazenda)
+   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
+                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
+                                 modais (Weighing, EditWeighing, Status, Delete,
+                                 EditApplication, Trade, EstimatedPrice), ToastProvider
+-  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts,
++  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts, farm.ts,
+                                 api.ts (request<T>: manda o cookie; 401 → volta para o login)
+-  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata)
++  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
++                                timezones.ts (nomes dos fusos do Brasil)
+   src/index.css                 tema "campo moderno" (paleta em @theme)
+ ```
+ 
+@@ -129,7 +132,8 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
+ 
+ ### Banco (resumo — fonte da verdade: `prisma/schema.prisma`)
+ 
+-- Conta: `Farm` (nome, país, fuso) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
++- Conta: `Farm` (nome, país, fuso + configurações da G2: moeda, unidade, fator da arroba,
++  unidade de preço, antecedência do lembrete, castrado padrão) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
+   `Session` (hash do token, validade).
+ - Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda) · `Weighing` ·
+   `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
+@@ -140,6 +144,7 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
+ ```
+ Conta:      POST /auth/register · POST /auth/login · POST /auth/logout   (públicas)
+             GET /auth/me                                                (protegida)
++Fazenda:    GET /farm · PATCH /farm   (sem id: sempre a fazenda da sessão; G2)
+             → TODAS as rotas abaixo exigem login (401 UNAUTHENTICATED / SESSION_EXPIRED)
+               e só enxergam a fazenda da sessão (outra fazenda → 404)
+ Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
+@@ -154,7 +159,7 @@ Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
+ Sanitário:  POST /products · GET /products (filtro type)
+             POST /applications · GET /applications (filtro type) · GET /applications/:id
+             PUT /applications/:id · DELETE /applications/:id
+-            GET /alerts   (reaplicações ≤7 dias + vencidas)
++            GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
+             GET /animals/:id/applications
+ Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
+             POST/GET/PUT/DELETE /animals/:id/sale       (POST marca SOLD; DELETE volta ACTIVE;
+@@ -184,3 +189,9 @@ testes de integração de todas as rotas e CI com Postgres.
+ **G1 (2026-10-12):** fazenda, usuário, login com sessão em cookie (D-23), senha scrypt (D-24),
+ telas de entrar/criar conta/sair (D-25), `farmId` em tudo + filtro único, testes de acesso
+ cruzado. Falta: recuperação de senha (precisa de e-mail), chaves compostas `[id, farmId]` (🟡).
++
++**G2 (2026-10-13):** configurações da fazenda (`GET/PATCH /farm`, tela "Configurações"):
++nome, fuso (só Brasil — D-31), antecedência do lembrete (vale na hora em `/alerts`); moeda e
++unidade fixas na 1.0 (D-30). Fator da arroba, unidade de preço e castrado padrão já ficam
++guardados, mas os cartões só aparecem com a G5/G4; nomes das categorias entram na G4.
++`request.auth.farm.settings` traz as configurações em toda rota protegida.
+diff --git a/README.md b/README.md
+index efc8608..22d1aad 100644
+--- a/README.md
++++ b/README.md
+@@ -177,6 +177,8 @@ O frontend será iniciado na porta configurada pelo Vite.
+ | `POST`   | `/auth/register`          | Cria a conta (fazenda + usuário) e entra |
+ | `POST`   | `/auth/login`             | Entra na conta (sessão em cookie HttpOnly) |
+ | `POST`   | `/auth/logout`            | Sai da conta                            |
++| `GET`    | `/farm`                   | Dados e configurações da fazenda        |
++| `PATCH`  | `/farm`                   | Altera nome, fuso e configurações da fazenda |
+ | `POST`   | `/animals`                | Cadastra um novo animal                 |
+ | `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
+ | `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 3961da0..83b4a24 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -1,7 +1,7 @@
+ # Arquitetura do backend
+ 
+-> Estado em 2026-10-12: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
+-> por fazenda).
++> Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
++> por fazenda) + G2 (configurações da fazenda).
+ 
+ ## Visão geral (atual)
+ 
+@@ -33,8 +33,9 @@ requisição
+ | `src/lib/auth.ts` | Gancho `authenticate` das rotas protegidas |
+ | `src/lib/session.ts` | Criar, conferir, renovar e apagar sessões; cookie |
+ | `src/lib/password.ts` | Hash e verificação de senha (scrypt) |
++| `src/lib/farm.ts` | Fazenda e configurações (G2): campos lidos, formato da resposta, padrões e fusos do Brasil |
+ | `src/schemas/` | Schemas Zod (fonte única de validação e do Swagger); limites em `common.schema.ts` |
+-| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance` (protegidas) |
++| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance`, `farm` (protegidas) |
+ | `src/services/` | Regras de cálculo puras (GMD, alertas, resultado) + testes unitários |
+ 
+ ## Convenções
+@@ -45,8 +46,8 @@ requisição
+   brinco ≤ 50, nomes ≤ 100, observações ≤ 1000 caracteres; aplicação ≤ 5000 animais.
+   (Limites técnicos — mudar aqui se o produto pedir.)
+ - Datas de calendário entram como `AAAA-MM-DD` e são gravadas como meia-noite UTC
+-  (`toDbDate`). "Hoje/futuro/vencido" usam o fuso `America/Sao_Paulo` (D-16) até a fazenda
+-  ter cadastro próprio (G1/G2).
++  (`toDbDate`). "Hoje/futuro/vencido" usam o **fuso da fazenda** (`Farm.timezone`, padrão
++  `America/Sao_Paulo` — D-16), escolhido nas Configurações entre os fusos do Brasil (D-31).
+ - Regras que podem falhar lançam `AppError` (`notFound`, `conflict`, `unprocessable`,
+   `badRequest`); a rota não monta resposta de erro na mão.
+ - Operações que precisam andar juntas usam `prisma.$transaction` (venda + status).
+@@ -122,3 +123,22 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
+   aceita corpo JSON (formulário de outro site não consegue enviar).
+ - **Fora desta etapa (D-25):** recuperação de senha (precisa de serviço de e-mail), troca de
+   senha, vários usuários por fazenda.
++
++## Configurações da fazenda (G2 — D-21, D-30, D-31)
++
++- Colunas em `Farm`, todas com padrão (conta nova funciona sem configurar nada):
++  `currency` (BRL, fixa na 1.0), `weightUnit` (kg, fixa na 1.0), `arrobaLiveFactorKg` (30),
++  `preferredPriceUnit` (`PER_KG`), `reapplyAlertDays` (7, de 0 a 60), `defaultCastrated` (não).
++- `src/lib/farm.ts` é a fonte única: `FARM_SELECT` (o que a sessão, `/auth/*` e `/farm` leem),
++  `toFarmView` (formato da resposta), `FARM_DEFAULTS` (iguais aos `@default` do banco — um teste
++  confere) e `BRAZIL_TIME_ZONES` (os únicos fusos aceitos).
++- `request.auth.farm` já traz as configurações (`settings`): as rotas usam o fuso e a
++  antecedência da fazenda sem consulta extra. Mudar uma configuração vale na próxima requisição
++  (nada é recalculado nem regravado).
++- `GET /farm` e `PATCH /farm` **não têm id na rota**: a fazenda é sempre a da sessão. O schema
++  `.strict()` recusa `id`, `country`, `currency` e `weightUnit`.
++- `GET /alerts` usa `reapplyAlertDays` e o fuso da fazenda (`classifyReapplication`).
++- Ainda sem efeito (esperando a parte que usa): `arrobaLiveFactorKg` e `preferredPriceUnit`
++  (G5), `defaultCastrated` (G4/Animais). Ficam guardados e editáveis pela API; os cartões da
++  tela entram junto com essas partes. Nomes das categorias (`categoryLabels`) entram na G4,
++  com as 7 categorias novas.
+diff --git a/docs/database.md b/docs/database.md
+index c7b33f2..cf675f9 100644
+--- a/docs/database.md
++++ b/docs/database.md
+@@ -1,6 +1,6 @@
+ # Banco de dados, migrations e ambientes
+ 
+-> Estado em 2026-10-12.
++> Estado em 2026-10-13.
+ 
+ ## Banco (atual)
+ 
+@@ -22,6 +22,7 @@ Integridade garantida hoje:
+ | Animal com compra/venda não é excluído (D-10) | rota, numa instrução só (`deleteMany` com filtro) |
+ | Venda não anterior à compra (D-06) | rota (compra e venda, POST e PUT) |
+ | Venda + status `SOLD` juntos | transação |
++| Configurações da fazenda dentro dos limites (G2) | API (Zod) + banco (`CHECK`: fator da arroba > 0, antecedência 0–60, moeda com 3 letras, unidade kg/lb) |
+ 
+ ⚠️ No banco, `AnimalPurchase` e `AnimalSale` ainda têm `onDelete: Cascade` (F-05). A
+ proteção hoje é da aplicação; a garantia no banco vem com o modelo `Trade` (G5), que já
+@@ -29,7 +30,7 @@ nasce com `Restrict`.
+ 
+ ## Migrations
+ 
+-Sete migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
++Oito migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+ como está: **não reescrever migrations já aplicadas**.
+ 
+ **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
+@@ -39,6 +40,11 @@ todos os registros nela; só então torna `farmId` obrigatório; converte as dat
+ troca o brinco único global por único por fazenda. Testada nos dois cenários (banco com dados
+ antigos e banco vazio). Para entrar na fazenda inicial: `npm run dev:claim-initial-farm`.
+ 
++**G2 (`20261013000000_g2_farm_settings`)** — só **adiciona** colunas de configuração em `Farm`
++(todas com padrão; nenhuma fazenda existente muda) e o tipo `PriceUnit`. As restrições `CHECK`
++foram escritas à mão no fim do arquivo: o Prisma não as representa no schema e também não as
++apaga.
++
+ Procedimento:
+ 
+ 1. Desenvolvimento: altere `prisma/schema.prisma` e rode `npx prisma migrate dev --name <nome>`.
+diff --git a/docs/testing.md b/docs/testing.md
+index de256ec..c96541b 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -34,6 +34,16 @@
+ - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
+   cabeçalhos de segurança, proteção do banco de teste.
+ 
++## Configurações da fazenda (G2)
++
++- `farm.test.ts`: conta nova com todos os padrões (e os padrões do código iguais aos do banco),
++  alterar só o que foi enviado, limites de cada campo (fator da arroba, antecedência, fuso fora
++  do Brasil, nome vazio), campos fixos na 1.0 recusados, `id` de outra fazenda recusado,
++  cada fazenda vê só as próprias configurações, e o efeito na hora: aumentar a antecedência
++  faz a reaplicação aparecer em `GET /alerts`.
++- `src/lib/farm.test.ts`: todos os fusos da lista existem; `sanitary.service.test.ts`:
++  antecedência configurável (inclusive 0 = só no dia).
++
+ ## Login e isolamento entre fazendas (G1)
+ 
+ - Cada teste começa com um usuário **já logado** numa fazenda nova (`t.client`,
+diff --git a/prisma/migrations/20261013000000_g2_farm_settings/migration.sql b/prisma/migrations/20261013000000_g2_farm_settings/migration.sql
+new file mode 100644
+index 0000000..48e30da
+--- /dev/null
++++ b/prisma/migrations/20261013000000_g2_farm_settings/migration.sql
+@@ -0,0 +1,24 @@
++-- G2 — Configurações da fazenda (D-21, D-30). Só ADICIONA colunas, todas com
++-- valor padrão: nenhuma fazenda existente muda e nada precisa ser preenchido.
++
++-- CreateEnum
++CREATE TYPE "PriceUnit" AS ENUM ('PER_KG', 'PER_ARROBA', 'PER_HEAD');
++
++-- AlterTable
++ALTER TABLE "Farm" ADD COLUMN     "arrobaLiveFactorKg" DECIMAL(4,2) NOT NULL DEFAULT 30,
++ADD COLUMN     "currency" TEXT NOT NULL DEFAULT 'BRL',
++ADD COLUMN     "defaultCastrated" BOOLEAN NOT NULL DEFAULT false,
++ADD COLUMN     "preferredPriceUnit" "PriceUnit" NOT NULL DEFAULT 'PER_KG',
++ADD COLUMN     "reapplyAlertDays" INTEGER NOT NULL DEFAULT 7,
++ADD COLUMN     "weightUnit" TEXT NOT NULL DEFAULT 'kg';
++
++-- Limites também no banco (defesa em profundidade): mesmo que algum código
++-- futuro esqueça a validação da API, o banco não aceita valor fora da regra.
++ALTER TABLE "Farm" ADD CONSTRAINT "Farm_arrobaLiveFactorKg_check"
++  CHECK ("arrobaLiveFactorKg" > 0);
++ALTER TABLE "Farm" ADD CONSTRAINT "Farm_reapplyAlertDays_check"
++  CHECK ("reapplyAlertDays" BETWEEN 0 AND 60);
++ALTER TABLE "Farm" ADD CONSTRAINT "Farm_currency_check"
++  CHECK ("currency" ~ '^[A-Z]{3}$');
++ALTER TABLE "Farm" ADD CONSTRAINT "Farm_weightUnit_check"
++  CHECK ("weightUnit" IN ('kg', 'lb'));
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index eefb21f..6c83f3e 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -37,6 +37,14 @@ enum ProductType {
+   DEWORMER // vermífugo
+ }
+ 
++// Unidade de preço de uma negociação (compra/venda). Na fazenda, é só a que
++// vem marcada por padrão (G2); cada negociação grava a sua (G5).
++enum PriceUnit {
++  PER_KG     // por kg
++  PER_ARROBA // por arroba
++  PER_HEAD   // por cabeça
++}
++
+ // ── Conta (G1) ──────────────────────────────────────────────────────────────
+ // Cada produtor tem a sua fazenda. TODO dado do rebanho pertence a uma fazenda
+ // (farmId) e uma fazenda nunca enxerga os dados de outra.
+@@ -46,6 +54,17 @@ model Farm {
+   name      String
+   country   String   @default("BR")
+   timezone  String   @default("America/Sao_Paulo") // D-16: usado em "hoje", "futuro" e "vencido"
++
++  // ── Configurações (G2 — D-21). Todas têm padrão: conta nova funciona sem
++  // configurar nada. Os padrões também estão em src/lib/farm.ts (FARM_DEFAULTS)
++  // e um teste confere que os dois batem.
++  currency           String    @default("BRL") // D-30: fixa na 1.0, só leitura
++  weightUnit         String    @default("kg") // D-30: unidade EXIBIDA; peso é sempre guardado em kg
++  arrobaLiveFactorKg Decimal   @default(30) @db.Decimal(4, 2) // sugestão para arroba sobre peso vivo
++  preferredPriceUnit PriceUnit @default(PER_KG) // o que vem marcado ao registrar compra/venda
++  reapplyAlertDays   Int       @default(7) // antecedência do lembrete de reaplicação (0–60)
++  defaultCastrated   Boolean   @default(false) // padrão do campo "castrado" no cadastro de machos
++
+   createdAt DateTime @default(now())
+   updatedAt DateTime @updatedAt
+ 
+diff --git a/src/app.ts b/src/app.ts
+index cbd79e4..01bec02 100644
+--- a/src/app.ts
++++ b/src/app.ts
+@@ -20,6 +20,7 @@ import { authRoutes } from "./routes/auth.routes.js";
+ import { animalRoutes } from "./routes/animals.routes.js";
+ import { sanitaryRoutes } from "./routes/sanitary.routes.js";
+ import { financeRoutes } from "./routes/finance.routes.js";
++import { farmRoutes } from "./routes/farm.routes.js";
+ 
+ // Monta a aplicação SEM subir o servidor. Assim os testes conseguem criar a
+ // API, fazer requisições com app.inject() e fechar, sem abrir porta de rede.
+@@ -111,6 +112,7 @@ export async function buildApp(config: AppConfig) {
+     await protectedApp.register(animalRoutes);
+     await protectedApp.register(sanitaryRoutes);
+     await protectedApp.register(financeRoutes);
++    await protectedApp.register(farmRoutes);
+   });
+ 
+   return app;
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+index b0423e0..6a4e750 100644
+--- a/src/lib/auth.ts
++++ b/src/lib/auth.ts
+@@ -2,11 +2,12 @@ import type { FastifyReply, FastifyRequest } from "fastify";
+ import { ErrorCode, unauthorized } from "./errors.js";
+ import { SESSION_COOKIE, clearSessionCookie, findSession } from "./session.js";
+ import { forFarm, type FarmDb } from "./tenant.js";
++import type { FarmView } from "./farm.js";
+ 
+ // Quem está logado e de qual fazenda.
+ export type AuthContext = {
+   user: { id: string; name: string; email: string };
+-  farm: { id: string; name: string; country: string; timezone: string };
++  farm: FarmView; // inclui as configurações (G2)
+ };
+ 
+ // Toda rota PROTEGIDA recebe em `request`:
+diff --git a/src/lib/farm.test.ts b/src/lib/farm.test.ts
+new file mode 100644
+index 0000000..652a17b
+--- /dev/null
++++ b/src/lib/farm.test.ts
+@@ -0,0 +1,21 @@
++import { describe, expect, it } from "vitest";
++import { BRAZIL_TIME_ZONES, FARM_DEFAULTS } from "./farm.js";
++import { todayInTimeZone } from "./dates.js";
++
++describe("fusos do Brasil (D-31)", () => {
++  it("todos existem no banco de fusos do sistema (Intl)", () => {
++    const known = new Set(Intl.supportedValuesOf("timeZone"));
++    for (const zone of BRAZIL_TIME_ZONES) {
++      expect(known.has(zone), zone).toBe(true);
++      expect(() => todayInTimeZone(zone), zone).not.toThrow();
++    }
++  });
++
++  it("o fuso padrão está na lista", () => {
++    expect(BRAZIL_TIME_ZONES).toContain(FARM_DEFAULTS.timezone);
++  });
++
++  it("não tem repetidos", () => {
++    expect(new Set(BRAZIL_TIME_ZONES).size).toBe(BRAZIL_TIME_ZONES.length);
++  });
++});
+diff --git a/src/lib/farm.ts b/src/lib/farm.ts
+new file mode 100644
+index 0000000..6ad3ded
+--- /dev/null
++++ b/src/lib/farm.ts
+@@ -0,0 +1,98 @@
++import type { PriceUnit, Prisma } from "@prisma/client";
++
++// Fazenda e configurações (G2 — D-21, D-30, D-31).
++//
++// Este arquivo é a ÚNICA fonte de:
++// - quais campos da fazenda são lidos (FARM_SELECT) — usado pela sessão, por
++//   /auth/* e por /farm, para todos devolverem a mesma coisa;
++// - o formato que a API devolve (toFarmView);
++// - os padrões (FARM_DEFAULTS) — iguais aos @default do schema.prisma
++//   (um teste de integração confere que batem);
++// - os fusos aceitos na 1.0 (só Brasil — D-31).
++
++export const FARM_DEFAULTS = {
++  timezone: "America/Sao_Paulo", // D-16
++  currency: "BRL", // D-30 (fixa na 1.0)
++  weightUnit: "kg", // D-30 (fixa na 1.0)
++  settings: {
++    arrobaLiveFactorKg: 30,
++    preferredPriceUnit: "PER_KG" as PriceUnit,
++    reapplyAlertDays: 7,
++    defaultCastrated: false,
++  },
++} as const;
++
++// Limites das configurações (iguais aos CHECK da migration G2).
++export const MAX_ARROBA_LIVE_FACTOR_KG = 99.99; // Decimal(4, 2)
++export const MAX_REAPPLY_ALERT_DAYS = 60;
++
++// Fusos do Brasil no banco de fusos IANA (D-31). O frontend mostra cada um com
++// o nome dos estados; aqui fica só a lista que a API aceita.
++export const BRAZIL_TIME_ZONES = [
++  "America/Noronha",
++  "America/Belem",
++  "America/Fortaleza",
++  "America/Recife",
++  "America/Araguaina",
++  "America/Maceio",
++  "America/Bahia",
++  "America/Sao_Paulo",
++  "America/Campo_Grande",
++  "America/Cuiaba",
++  "America/Santarem",
++  "America/Porto_Velho",
++  "America/Boa_Vista",
++  "America/Manaus",
++  "America/Eirunepe",
++  "America/Rio_Branco",
++] as const;
++
++export const FARM_SELECT = {
++  id: true,
++  name: true,
++  country: true,
++  timezone: true,
++  currency: true,
++  weightUnit: true,
++  arrobaLiveFactorKg: true,
++  preferredPriceUnit: true,
++  reapplyAlertDays: true,
++  defaultCastrated: true,
++} as const satisfies Prisma.FarmSelect;
++
++type FarmRow = Prisma.FarmGetPayload<{ select: typeof FARM_SELECT }>;
++
++export type FarmSettings = {
++  arrobaLiveFactorKg: number;
++  preferredPriceUnit: PriceUnit;
++  reapplyAlertDays: number;
++  defaultCastrated: boolean;
++};
++
++export type FarmView = {
++  id: string;
++  name: string;
++  country: string;
++  timezone: string;
++  currency: string;
++  weightUnit: string;
++  settings: FarmSettings;
++};
++
++// Linha do banco → o que a API devolve (Decimal vira número).
++export function toFarmView(row: FarmRow): FarmView {
++  return {
++    id: row.id,
++    name: row.name,
++    country: row.country,
++    timezone: row.timezone,
++    currency: row.currency,
++    weightUnit: row.weightUnit,
++    settings: {
++      arrobaLiveFactorKg: Number(row.arrobaLiveFactorKg),
++      preferredPriceUnit: row.preferredPriceUnit,
++      reapplyAlertDays: row.reapplyAlertDays,
++      defaultCastrated: row.defaultCastrated,
++    },
++  };
++}
+diff --git a/src/lib/session.ts b/src/lib/session.ts
+index 96288de..d00eaee 100644
+--- a/src/lib/session.ts
++++ b/src/lib/session.ts
+@@ -1,6 +1,7 @@
+ import { createHash, randomBytes } from "node:crypto";
+ import type { FastifyReply } from "fastify";
+ import { prisma } from "./prisma.js";
++import { FARM_SELECT, toFarmView, type FarmView } from "./farm.js";
+ 
+ // Sessão de login (D-23).
+ //
+@@ -50,7 +51,7 @@ export type SessionLookup =
+   | {
+       status: "valid";
+       user: { id: string; name: string; email: string };
+-      farm: { id: string; name: string; country: string; timezone: string };
++      farm: FarmView;
+     };
+ 
+ // Confere o token do cookie. Sessão vencida é apagada na hora.
+@@ -68,7 +69,7 @@ export async function findSession(
+           id: true,
+           name: true,
+           email: true,
+-          farm: { select: { id: true, name: true, country: true, timezone: true } },
++          farm: { select: FARM_SELECT },
+         },
+       },
+     },
+@@ -93,7 +94,7 @@ export async function findSession(
+   }
+ 
+   const { farm, ...user } = session.user;
+-  return { status: "valid", user, farm };
++  return { status: "valid", user, farm: toFarmView(farm) };
+ }
+ 
+ export async function deleteSession(token: string | undefined) {
+diff --git a/src/routes/auth.routes.ts b/src/routes/auth.routes.ts
+index 1cf7cf3..d4bc358 100644
+--- a/src/routes/auth.routes.ts
++++ b/src/routes/auth.routes.ts
+@@ -1,4 +1,5 @@
+ import type { FastifyInstance } from "fastify";
++import type { Prisma } from "@prisma/client";
+ import type { ZodTypeProvider } from "fastify-type-provider-zod";
+ import type { AppConfig } from "../config/env.js";
+ import { prisma } from "../lib/prisma.js";
+@@ -12,6 +13,7 @@ import {
+   setSessionCookie,
+ } from "../lib/session.js";
+ import { authenticate } from "../lib/auth.js";
++import { FARM_SELECT, toFarmView } from "../lib/farm.js";
+ import { loginSchema, registerSchema } from "../schemas/auth.schema.js";
+ 
+ // O que a API devolve sobre a conta (nunca o hash da senha).
+@@ -19,17 +21,13 @@ const accountSelect = {
+   id: true,
+   name: true,
+   email: true,
+-  farm: { select: { id: true, name: true, country: true, timezone: true } },
+-} as const;
++  farm: { select: FARM_SELECT },
++} as const satisfies Prisma.UserSelect;
+ 
+-type Account = {
+-  id: string;
+-  name: string;
+-  email: string;
+-  farm: { id: string; name: string; country: string; timezone: string };
+-};
++type Account = Prisma.UserGetPayload<{ select: typeof accountSelect }>;
+ 
+-const toResponse = ({ farm, ...user }: Account) => ({ user, farm });
++// Mesmo formato de GET /auth/me: { user, farm } (farm com as configurações)
++const toResponse = ({ farm, ...user }: Account) => ({ user, farm: toFarmView(farm) });
+ 
+ export async function authRoutes(app: FastifyInstance, config: AppConfig) {
+   const r = app.withTypeProvider<ZodTypeProvider>();
+diff --git a/src/routes/farm.routes.ts b/src/routes/farm.routes.ts
+new file mode 100644
+index 0000000..73f4136
+--- /dev/null
++++ b/src/routes/farm.routes.ts
+@@ -0,0 +1,43 @@
++import type { FastifyInstance } from "fastify";
++import type { ZodTypeProvider } from "fastify-type-provider-zod";
++import { prisma } from "../lib/prisma.js";
++import { FARM_DEFAULTS, FARM_SELECT, toFarmView } from "../lib/farm.js";
++import { updateFarmSchema } from "../schemas/farm.schema.js";
++
++// Configurações da fazenda (G2).
++//
++// Não existe `:id` na rota: a fazenda é SEMPRE a da sessão (RN-CFG-010).
++// `Farm` não está no filtro automático de request.db (é a própria fazenda, não
++// um dado "dentro" dela), então aqui o id vem explicitamente de request.auth.
++export async function farmRoutes(app: FastifyInstance) {
++  const r = app.withTypeProvider<ZodTypeProvider>();
++
++  // GET /farm — dados e configurações da fazenda logada (+ os padrões, para a
++  // tela mostrar "padrão: 30 kg" sem repetir os valores no frontend)
++  r.get(
++    "/farm",
++    { schema: { tags: ["Fazenda"], summary: "Dados e configurações da fazenda" } },
++    async (request) => ({ ...request.auth.farm, defaults: FARM_DEFAULTS.settings }),
++  );
++
++  // PATCH /farm — altera só os campos enviados
++  r.patch(
++    "/farm",
++    {
++      schema: {
++        tags: ["Fazenda"],
++        summary: "Altera dados e configurações da fazenda",
++        body: updateFarmSchema,
++      },
++    },
++    async (request) => {
++      const farm = await prisma.farm.update({
++        where: { id: request.auth.farm.id },
++        data: request.body,
++        select: FARM_SELECT,
++      });
++
++      return { ...toFarmView(farm), defaults: FARM_DEFAULTS.settings };
++    },
++  );
++}
+diff --git a/src/routes/sanitary.routes.ts b/src/routes/sanitary.routes.ts
+index 2267e88..c58ef7b 100644
+--- a/src/routes/sanitary.routes.ts
++++ b/src/routes/sanitary.routes.ts
+@@ -144,7 +144,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
+     },
+   );
+ 
+-  // GET /alerts — reaplicações chegando (próximos 7 dias) e vencidas
++  // GET /alerts — reaplicações chegando (antecedência da fazenda, padrão 7 dias) e vencidas
+   r.get(
+     "/alerts",
+     {
+@@ -155,7 +155,9 @@ export async function sanitaryRoutes(app: FastifyInstance) {
+     },
+     async (request) => {
+       const now = new Date();
+-      const { timezone } = request.auth.farm;
++      // fuso e antecedência são da fazenda logada (G2): mudar a configuração
++      // muda a lista na hora, sem regravar nada (RN-CFG-006)
++      const { timezone, settings } = request.auth.farm;
+ 
+       // busca as que têm data de reaplicação (a regra de "é alerta" fica na função)
+       const applications = await request.db.application.findMany({
+@@ -170,7 +172,12 @@ export async function sanitaryRoutes(app: FastifyInstance) {
+       // usa a função pura pra decidir quais são alerta e quais estão vencidas
+       return applications
+         .map((app) => {
+-          const { isAlert, overdue } = classifyReapplication(app, now, timezone);
++          const { isAlert, overdue } = classifyReapplication(
++            app,
++            now,
++            timezone,
++            settings.reapplyAlertDays,
++          );
+           return { ...app, isAlert, overdue };
+         })
+         .filter((app) => app.isAlert)
+diff --git a/src/schemas/farm.schema.ts b/src/schemas/farm.schema.ts
+new file mode 100644
+index 0000000..6e7c687
+--- /dev/null
++++ b/src/schemas/farm.schema.ts
+@@ -0,0 +1,47 @@
++import { z } from "zod";
++import { MAX_NAME_LENGTH, requiredText } from "./common.schema.js";
++import {
++  BRAZIL_TIME_ZONES,
++  MAX_ARROBA_LIVE_FACTOR_KG,
++  MAX_REAPPLY_ALERT_DAYS,
++} from "../lib/farm.js";
++
++// Configurações da fazenda (G2). Só os campos EDITÁVEIS na 1.0.
++//
++// `.strict()` recusa qualquer outro campo — inclusive `id`, `country`,
++// `currency` e `weightUnit` (D-30: fixos na 1.0). Assim ninguém consegue
++// "mandar" outra fazenda nem mudar o que ainda não é configurável.
++// Todos os campos são opcionais (PATCH = muda só o que veio), mas precisa vir
++// pelo menos um.
++
++const hasAtMostTwoDecimals = (value: number) =>
++  Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
++
++export const updateFarmSchema = z
++  .object({
++    name: requiredText(MAX_NAME_LENGTH, "O nome da fazenda é obrigatório."),
++    timezone: z.enum(BRAZIL_TIME_ZONES, "Escolha um fuso horário do Brasil."),
++    arrobaLiveFactorKg: z
++      .number({ error: "O fator da arroba deve ser um número." })
++      .positive("O fator da arroba deve ser maior que zero.")
++      .max(
++        MAX_ARROBA_LIVE_FACTOR_KG,
++        `O fator da arroba pode ser no máximo ${MAX_ARROBA_LIVE_FACTOR_KG} kg.`,
++      )
++      .refine(hasAtMostTwoDecimals, "O fator da arroba aceita no máximo 2 casas decimais."),
++    preferredPriceUnit: z.enum(
++      ["PER_KG", "PER_ARROBA", "PER_HEAD"],
++      "Escolha por kg, por arroba ou por cabeça.",
++    ),
++    reapplyAlertDays: z
++      .number({ error: "A antecedência deve ser um número de dias." })
++      .int("A antecedência deve ser um número inteiro de dias.")
++      .min(0, "A antecedência não pode ser negativa.")
++      .max(MAX_REAPPLY_ALERT_DAYS, `A antecedência pode ser no máximo ${MAX_REAPPLY_ALERT_DAYS} dias.`),
++    defaultCastrated: z.boolean({ error: "Informe sim ou não." }),
++  })
++  .partial()
++  .strict()
++  .refine((data) => Object.keys(data).length > 0, "Envie pelo menos uma configuração para alterar.");
++
++export type UpdateFarmInput = z.infer<typeof updateFarmSchema>;
+diff --git a/src/services/sanitary.service.test.ts b/src/services/sanitary.service.test.ts
+index ab45b70..b85952d 100644
+--- a/src/services/sanitary.service.test.ts
++++ b/src/services/sanitary.service.test.ts
+@@ -60,4 +60,28 @@ describe("classifyReapplication", () => {
+     const result = classifyReapplication({ reapplyDate: ontemNoBanco }, meiaNoite);
+     expect(result.overdue).toBe(true);
+   });
++
++  // ── Antecedência configurável (G2 — RN-CFG-006) ──
++  describe("com a antecedência da fazenda", () => {
++    const tz = "America/Sao_Paulo";
++
++    it("com 15 dias, a reaplicação daqui a 10 dias vira alerta", () => {
++      const daquiA10Dias = new Date("2026-09-08T00:00:00.000Z");
++      const result = classifyReapplication({ reapplyDate: daquiA10Dias }, hoje, tz, 15);
++      expect(result.isAlert).toBe(true);
++      expect(result.overdue).toBe(false);
++    });
++
++    it("com 0 dias, só a de hoje e as vencidas são alerta", () => {
++      const hojeNoBanco = new Date("2026-08-29T00:00:00.000Z");
++      const amanha = new Date("2026-08-30T00:00:00.000Z");
++      const ontem = new Date("2026-08-28T00:00:00.000Z");
++      expect(classifyReapplication({ reapplyDate: hojeNoBanco }, hoje, tz, 0).isAlert).toBe(true);
++      expect(classifyReapplication({ reapplyDate: amanha }, hoje, tz, 0).isAlert).toBe(false);
++      expect(classifyReapplication({ reapplyDate: ontem }, hoje, tz, 0)).toEqual({
++        isAlert: true,
++        overdue: true,
++      });
++    });
++  });
+ });
+diff --git a/src/services/sanitary.service.ts b/src/services/sanitary.service.ts
+index 634fe04..8c097be 100644
+--- a/src/services/sanitary.service.ts
++++ b/src/services/sanitary.service.ts
+@@ -6,8 +6,9 @@ import {
+   todayInTimeZone,
+ } from "../lib/dates.js";
+ 
+-// Quantos dias de antecedência o alerta aparece.
+-export const REAPPLY_ALERT_WINDOW_DAYS = 7;
++// Antecedência padrão do alerta, em dias. Cada fazenda pode mudar a sua nas
++// configurações (G2 — Farm.reapplyAlertDays); este é só o valor quando nada é informado.
++export const DEFAULT_REAPPLY_ALERT_DAYS = 7;
+ 
+ // Uma aplicação, do ponto de vista da regra de alerta (só o que importa aqui).
+ type ReapplyInput = {
+@@ -15,8 +16,8 @@ type ReapplyInput = {
+ };
+ 
+ // Diz se uma reaplicação deve virar alerta hoje, e se está vencida.
+-// Regra: é alerta se tem data de reaplicação E essa data é <= hoje + janela
+-// (isso inclui as vencidas). "overdue" = a data é ANTERIOR a hoje.
++// Regra: é alerta se tem data de reaplicação E essa data é <= hoje + antecedência
++// (isso inclui as vencidas). Antecedência 0 = só no dia (e as vencidas). "overdue" = a data é ANTERIOR a hoje.
+ //
+ // "Hoje" é o dia de calendário no fuso da fazenda (F-04): antes, às 21h em
+ // Brasília a reaplicação de amanhã já aparecia como vencida, porque a conta
+@@ -25,6 +26,7 @@ export function classifyReapplication(
+   application: ReapplyInput,
+   now: Date = new Date(),
+   timeZone: string = DEFAULT_TIME_ZONE,
++  alertDays: number = DEFAULT_REAPPLY_ALERT_DAYS,
+ ): { isAlert: boolean; overdue: boolean } {
+   if (!application.reapplyDate) {
+     return { isAlert: false, overdue: false };
+@@ -32,7 +34,7 @@ export function classifyReapplication(
+ 
+   const today = todayInTimeZone(timeZone, now);
+   const reapplyDay = calendarDateOf(application.reapplyDate);
+-  const limit = addDays(today, REAPPLY_ALERT_WINDOW_DAYS);
++  const limit = addDays(today, alertDays);
+ 
+   return {
+     isAlert: reapplyDay <= limit,
+diff --git a/tests/integration/auth.test.ts b/tests/integration/auth.test.ts
+index 179a10e..59e8acf 100644
+--- a/tests/integration/auth.test.ts
++++ b/tests/integration/auth.test.ts
+@@ -166,6 +166,8 @@ describe("sessão", () => {
+       ["PUT", `/animals/${id}/weighings/${id}`],
+       ["DELETE", `/animals/${id}/weighings/${id}`],
+       ["GET", `/animals/${id}/weight-gain`],
++      ["GET", "/farm"],
++      ["PATCH", "/farm"],
+       ["GET", "/products"],
+       ["POST", "/products"],
+       ["GET", "/applications"],
+diff --git a/tests/integration/farm.test.ts b/tests/integration/farm.test.ts
+new file mode 100644
+index 0000000..9ce562e
+--- /dev/null
++++ b/tests/integration/farm.test.ts
+@@ -0,0 +1,178 @@
++import { describe, expect, it } from "vitest";
++import { useTestApp } from "../helpers/suite.js";
++import { createLoggedClient } from "../helpers/client.js";
++import { createAnimal, createProduct, daysFromToday } from "../helpers/factories.js";
++import { prisma } from "../../src/lib/prisma.js";
++import { FARM_DEFAULTS } from "../../src/lib/farm.js";
++
++// CONFIGURAÇÕES DA FAZENDA (G2) — critérios de aceitação da
++// "Espec — Configurações da fazenda" (números entre parênteses).
++
++const t = useTestApp();
++
++const patchFarm = (payload: unknown) =>
++  t.client.inject({ method: "PATCH", url: "/farm", payload: payload as object });
++
++const fieldOf = (response: { json: () => { errors?: { field: string }[] } }) =>
++  response.json().errors?.map((e) => e.field);
++
++describe("GET /farm", () => {
++  it("conta nova já vem com todos os padrões (1) — e eles batem com o banco", async () => {
++    const response = await t.client.inject({ url: "/farm" });
++
++    expect(response.statusCode).toBe(200);
++    const farm = response.json();
++    expect(farm).toMatchObject({
++      id: t.client.farm.id,
++      name: t.client.farm.name,
++      country: "BR",
++      timezone: FARM_DEFAULTS.timezone,
++      currency: FARM_DEFAULTS.currency,
++      weightUnit: FARM_DEFAULTS.weightUnit,
++    });
++    // Os @default do schema.prisma (banco) e FARM_DEFAULTS (código) são iguais
++    expect(farm.settings).toEqual(FARM_DEFAULTS.settings);
++    expect(farm.defaults).toEqual(FARM_DEFAULTS.settings);
++  });
++
++  it("GET /auth/me traz as mesmas configurações (uma chamada só ao abrir o app)", async () => {
++    await patchFarm({ reapplyAlertDays: 12 });
++    const me = await t.client.inject({ url: "/auth/me" });
++    expect(me.json().farm.settings.reapplyAlertDays).toBe(12);
++  });
++});
++
++describe("PATCH /farm", () => {
++  it("altera só o que foi enviado", async () => {
++    const response = await patchFarm({ name: "  Fazenda Boa Vista  ", reapplyAlertDays: 15 });
++
++    expect(response.statusCode).toBe(200);
++    expect(response.json()).toMatchObject({
++      name: "Fazenda Boa Vista",
++      timezone: FARM_DEFAULTS.timezone,
++      settings: { ...FARM_DEFAULTS.settings, reapplyAlertDays: 15 },
++    });
++  });
++
++  it("aceita fuso do Brasil e o fator da arroba com 2 casas", async () => {
++    const response = await patchFarm({
++      timezone: "America/Cuiaba",
++      arrobaLiveFactorKg: 30.5,
++      preferredPriceUnit: "PER_ARROBA",
++      defaultCastrated: true,
++    });
++
++    expect(response.statusCode).toBe(200);
++    expect(response.json()).toMatchObject({
++      timezone: "America/Cuiaba",
++      settings: { arrobaLiveFactorKg: 30.5, preferredPriceUnit: "PER_ARROBA", defaultCastrated: true },
++    });
++  });
++
++  it("voltar ao padrão = mandar o valor padrão (11)", async () => {
++    await patchFarm({ arrobaLiveFactorKg: 32 });
++    const response = await patchFarm({ arrobaLiveFactorKg: FARM_DEFAULTS.settings.arrobaLiveFactorKg });
++    expect(response.json().settings.arrobaLiveFactorKg).toBe(30);
++  });
++
++  it.each([0, -1, 100, 30.123, "30"])("fator da arroba %s → 400 no campo (5)", async (value) => {
++    const response = await patchFarm({ arrobaLiveFactorKg: value });
++    expect(response.statusCode).toBe(400);
++    expect(response.json().code).toBe("VALIDATION_ERROR");
++    expect(fieldOf(response)).toContain("arrobaLiveFactorKg");
++  });
++
++  it.each([-1, 61, 2.5])("antecedência %s → 400 no campo (6)", async (value) => {
++    const response = await patchFarm({ reapplyAlertDays: value });
++    expect(response.statusCode).toBe(400);
++    expect(fieldOf(response)).toContain("reapplyAlertDays");
++  });
++
++  it("aceita os limites: antecedência 0 e 60", async () => {
++    expect((await patchFarm({ reapplyAlertDays: 0 })).statusCode).toBe(200);
++    expect((await patchFarm({ reapplyAlertDays: 60 })).statusCode).toBe(200);
++  });
++
++  it.each(["America/Nao_Existe", "Europe/Lisbon", "UTC", ""])(
++    "fuso %s → 400 (só fusos do Brasil — 8, D-31)",
++    async (timezone) => {
++      const response = await patchFarm({ timezone });
++      expect(response.statusCode).toBe(400);
++      expect(fieldOf(response)).toContain("timezone");
++    },
++  );
++
++  it("nome vazio → 400", async () => {
++    const response = await patchFarm({ name: "   " });
++    expect(response.statusCode).toBe(400);
++    expect(fieldOf(response)).toContain("name");
++  });
++
++  it("corpo vazio → 400", async () => {
++    const response = await patchFarm({});
++    expect(response.statusCode).toBe(400);
++  });
++
++  it.each([
++    ["country", "US"],
++    ["currency", "USD"],
++    ["weightUnit", "lb"],
++  ])("%s não é editável na 1.0 (D-30) → 400 e nada muda", async (field, value) => {
++    const response = await patchFarm({ [field]: value });
++    expect(response.statusCode).toBe(400);
++
++    const farm = await prisma.farm.findUniqueOrThrow({ where: { id: t.client.farm.id } });
++    expect(farm).toMatchObject({ country: "BR", currency: "BRL", weightUnit: "kg" });
++  });
++});
++
++describe("isolamento (9, RN-CFG-010)", () => {
++  it("mandar o id de outra fazenda é recusado e a outra fazenda não muda", async () => {
++    const farmB = await createLoggedClient(t.app, "Fazenda B");
++
++    const response = await patchFarm({ id: farmB.farm.id, name: "Invadida" });
++    expect(response.statusCode).toBe(400);
++
++    const b = await prisma.farm.findUniqueOrThrow({ where: { id: farmB.farm.id } });
++    expect(b.name).toBe("Fazenda B");
++  });
++
++  it("cada fazenda vê e altera só as próprias configurações", async () => {
++    const farmB = await createLoggedClient(t.app, "Fazenda B");
++    await patchFarm({ reapplyAlertDays: 30 });
++
++    const fromB = await farmB.inject({ url: "/farm" });
++    expect(fromB.json()).toMatchObject({ id: farmB.farm.id, name: "Fazenda B" });
++    expect(fromB.json().settings.reapplyAlertDays).toBe(7);
++  });
++});
++
++describe("efeito das configurações", () => {
++  async function applicationWithReapply(reapplyDate: string) {
++    const product = await createProduct(t.client);
++    const animal = await createAnimal(t.client);
++    const response = await t.client.inject({
++      method: "POST",
++      url: "/applications",
++      payload: { productId: product.id, date: daysFromToday(-1), reapplyDate, animalIds: [animal.id] },
++    });
++    expect(response.statusCode).toBe(201);
++  }
++
++  it("aumentar a antecedência de 7 para 15 mostra na hora a reaplicação daqui a 10 dias (4, RN-CFG-006)", async () => {
++    await applicationWithReapply(daysFromToday(10));
++
++    expect((await t.client.inject({ url: "/alerts" })).json()).toHaveLength(0);
++    await patchFarm({ reapplyAlertDays: 15 });
++    expect((await t.client.inject({ url: "/alerts" })).json()).toHaveLength(1);
++  });
++
++  it("o fuso novo passa a valer na sessão na hora (RN-CFG-007)", async () => {
++    // Noronha (UTC−2) e Rio Branco (UTC−5) ficam 3 horas separados: em algum
++    // momento do dia o "hoje" deles é diferente. Basta conferir que o fuso
++    // novo passou a ser o usado pela sessão.
++    await patchFarm({ timezone: "America/Rio_Branco" });
++    const me = await t.client.inject({ url: "/auth/me" });
++    expect(me.json().farm.timezone).toBe("America/Rio_Branco");
++  });
++});
+diff --git a/tests/integration/tenancy.test.ts b/tests/integration/tenancy.test.ts
+index 5407907..d9c0f32 100644
+--- a/tests/integration/tenancy.test.ts
++++ b/tests/integration/tenancy.test.ts
+@@ -67,6 +67,7 @@ async function snapshotFarmB() {
+       prisma.applicationAnimal.findMany({ where, orderBy: { id: "asc" } }),
+       prisma.animalPurchase.findMany({ where, orderBy: { id: "asc" } }),
+       prisma.animalSale.findMany({ where, orderBy: { id: "asc" } }),
++      prisma.farm.findUnique({ where: { id: farmB.farm.id } }),
+     ]),
+   );
+ }
+diff --git a/web/src/App.tsx b/web/src/App.tsx
+index 68d0439..f62a313 100644
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -9,6 +9,7 @@ import { ApplicationDetail } from "./pages/ApplicationDetail.js";
+ import { Sanitary } from "./pages/Sanitary.js";
+ import { Login } from "./pages/Login.js";
+ import { Register } from "./pages/Register.js";
++import { Settings } from "./pages/Settings.js";
+ import { ToastProvider } from "./components/ToastProvider.js";
+ import { AuthProvider } from "./components/AuthProvider.js";
+ import { RedirectIfLoggedIn, RequireAuth } from "./components/RequireAuth.js";
+@@ -35,6 +36,7 @@ function App() {
+               <Route path="/produtos" element={<Products />} />
+               <Route path="/aplicacoes/nova" element={<ApplicationCreate />} />
+               <Route path="/aplicacoes/:id" element={<ApplicationDetail />} />
++              <Route path="/configuracoes" element={<Settings />} />
+             </Route>
+           </Routes>
+         </BrowserRouter>
+diff --git a/web/src/components/AuthProvider.tsx b/web/src/components/AuthProvider.tsx
+index 60938be..78b1a6b 100644
+--- a/web/src/components/AuthProvider.tsx
++++ b/web/src/components/AuthProvider.tsx
+@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
+ import { SESSION_LOST_EVENT } from "../services/api.js";
+ import * as authApi from "../services/auth.js";
+ import type { Account, RegisterInput } from "../services/auth.js";
++import type { Farm } from "../services/farm.js";
+ 
+ // Estado do login, compartilhado por todo o app.
+ //  - "loading": ainda perguntando ao servidor se há sessão (ao abrir o app)
+@@ -15,6 +16,8 @@ type AuthState = {
+   login: (email: string, password: string) => Promise<void>;
+   register: (input: RegisterInput) => Promise<void>;
+   logout: () => Promise<void>;
++  // Atualiza a fazenda depois de salvar as configurações (nome no menu, fuso...)
++  setFarm: (farm: Farm) => void;
+ };
+ 
+ const AuthContext = createContext<AuthState | null>(null);
+@@ -70,9 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+     }
+   }, []);
+ 
++  const setFarm = useCallback((farm: Farm) => {
++    setAccount((current) => (current ? { ...current, farm } : current));
++  }, []);
++
+   return (
+     <AuthContext.Provider
+-      value={{ loading, account, sessionExpired, login, register, logout }}
++      value={{ loading, account, sessionExpired, login, register, logout, setFarm }}
+     >
+       {children}
+     </AuthContext.Provider>
+diff --git a/web/src/components/Sidebar.tsx b/web/src/components/Sidebar.tsx
+index acb413d..f935c20 100644
+--- a/web/src/components/Sidebar.tsx
++++ b/web/src/components/Sidebar.tsx
+@@ -1,4 +1,4 @@
+-import { List, PlusCircle, Syringe, LogOut } from "lucide-react";
++import { List, PlusCircle, Syringe, LogOut, Settings } from "lucide-react";
+ import { NavLink, useNavigate } from "react-router-dom";
+ import { useAuth } from "./AuthProvider.js";
+ 
+@@ -16,6 +16,10 @@ const NAV_ITEMS = [
+   { to: "/manejo", end: false, label: "Manejo sanitário", Icon: Syringe },
+ ];
+ 
++// Configurações (G2): fica separada, logo acima do usuário (desktop); no
++// celular entra como mais um botão da barra inferior.
++const SETTINGS_ITEM = { to: "/configuracoes", end: false, label: "Configurações", Icon: Settings };
++
+ export function Sidebar() {
+   const { account, logout } = useAuth();
+   const navigate = useNavigate();
+@@ -68,6 +72,20 @@ export function Sidebar() {
+           {/* Empurra o bloco de usuário pra base */}
+           <div className="flex-1" />
+ 
++          <NavLink
++            to={SETTINGS_ITEM.to}
++            className={({ isActive }) =>
++              `flex items-center gap-3 px-3 py-2.5 mb-2 rounded-lg text-sm cursor-pointer transition-colors ${
++                isActive
++                  ? "bg-sidebar-ativo text-white font-medium"
++                  : "text-white/70 hover:bg-white/10 hover:text-white"
++              }`
++            }
++          >
++            <SETTINGS_ITEM.Icon size={18} />
++            {SETTINGS_ITEM.label}
++          </NavLink>
++
+           {/* Usuário logado + sair (F-24) */}
+           <div className="flex items-center gap-3 px-2 py-3 border-t border-white/10">
+             <span
+@@ -116,7 +134,7 @@ export function Sidebar() {
+ 
+       {/* BARRA INFERIOR — só no mobile (some no md pra cima) */}
+       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar flex justify-around items-center h-16 z-40">
+-        {NAV_ITEMS.map(({ to, end, label, Icon }) => (
++        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ to, end, label, Icon }) => (
+           <NavLink
+             key={to}
+             to={to}
+@@ -128,7 +146,11 @@ export function Sidebar() {
+             }
+           >
+             <Icon size={20} />
+-            {label === "Cadastrar animal" ? "Cadastrar" : label.split(" ")[0]}
++            {label === "Cadastrar animal"
++              ? "Cadastrar"
++              : label === "Configurações"
++                ? "Ajustes"
++                : label.split(" ")[0]}
+           </NavLink>
+         ))}
+         <button
+diff --git a/web/src/pages/Settings.tsx b/web/src/pages/Settings.tsx
+new file mode 100644
+index 0000000..4d5231b
+--- /dev/null
++++ b/web/src/pages/Settings.tsx
+@@ -0,0 +1,334 @@
++import { useCallback, useEffect, useId, useState } from "react";
++import type { FormEvent, ReactNode } from "react";
++import { Bell, Home, RotateCcw } from "lucide-react";
++import { Sidebar } from "../components/Sidebar.js";
++import { useAuth } from "../components/AuthProvider.js";
++import { useToast } from "../components/ToastProvider.js";
++import { getFarm, updateFarm } from "../services/farm.js";
++import type { FarmWithDefaults, UpdateFarmInput } from "../services/farm.js";
++import type { ApiError } from "../services/api.js";
++import { BRAZIL_TIME_ZONE_LABELS, utcOffsetLabel } from "../types/timezones.js";
++
++// Configurações da fazenda (G2 — "Espec — Configurações da fazenda").
++//
++// Um cartão por assunto, cada um com o próprio "Salvar": se um der erro, o
++// que foi digitado nos outros não se perde. Nesta versão aparecem só os
++// cartões que já têm efeito no sistema (Fazenda e Manejo sanitário). Os de
++// Negociações e Animais entram junto com a compra e venda (G5) e as novas
++// categorias (G4) — nada de botão que não muda nada.
++
++type FieldErrors = Record<string, string>;
++
++// Opções de fuso: Brasília primeiro (o padrão), depois o resto em ordem alfabética
++const TIME_ZONE_OPTIONS = Object.entries(BRAZIL_TIME_ZONE_LABELS)
++  .map(([value, label]) => ({ value, label: `${label} (${utcOffsetLabel(value)})` }))
++  .sort((a, b) =>
++    a.value === "America/Sao_Paulo" ? -1 : b.value === "America/Sao_Paulo" ? 1 : a.label.localeCompare(b.label, "pt-BR"),
++  );
++
++export function Settings() {
++  const [farm, setFarm] = useState<FarmWithDefaults | null>(null);
++  const [loadFailed, setLoadFailed] = useState(false);
++
++  const load = useCallback(() => {
++    getFarm()
++      .then(setFarm)
++      .catch(() => setLoadFailed(true));
++  }, []);
++
++  useEffect(load, [load]);
++
++  function retry() {
++    setLoadFailed(false);
++    load();
++  }
++
++  return (
++    <div className="min-h-screen bg-bege flex">
++      <Sidebar />
++      <main className="flex-1 p-4 pb-24 md:p-8">
++        <div className="mb-6">
++          <h1 className="text-2xl font-medium text-texto">Configurações</h1>
++          <p className="text-texto-suave">
++            Ajuste o Rebanho ao jeito da sua fazenda. Tudo já vem com um padrão que funciona.
++          </p>
++        </div>
++
++        {loadFailed ? (
++          <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
++            <p className="text-texto mb-4">Não foi possível carregar as configurações.</p>
++            <button
++              type="button"
++              onClick={retry}
++              className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
++            >
++              Tentar de novo
++            </button>
++          </div>
++        ) : !farm ? (
++          <SkeletonCards />
++        ) : (
++          <div className="flex flex-col gap-6 max-w-2xl">
++            <FarmCard farm={farm} onSaved={setFarm} />
++            <SanitaryCard farm={farm} onSaved={setFarm} />
++          </div>
++        )}
++      </main>
++    </div>
++  );
++}
++
++// ── Salvar um cartão (lógica comum) ──────────────────────────────────────────
++
++function useSaveFarm(onSaved: (farm: FarmWithDefaults) => void) {
++  const { setFarm: setAccountFarm } = useAuth();
++  const showToast = useToast();
++  const [saving, setSaving] = useState(false);
++  const [errors, setErrors] = useState<FieldErrors>({});
++  const [failed, setFailed] = useState(false);
++
++  async function save(input: UpdateFarmInput) {
++    setSaving(true);
++    setErrors({});
++    setFailed(false);
++    try {
++      const updated = await updateFarm(input);
++      onSaved(updated);
++      // Atualiza o resto do app (nome no menu, fuso, antecedência...)
++      const { defaults: _defaults, ...farmOnly } = updated;
++      setAccountFarm(farmOnly);
++      showToast("Configurações salvas.");
++    } catch (err) {
++      const apiError = err as Partial<ApiError>;
++      if (apiError.status === 400 && Array.isArray(apiError.errors)) {
++        const mapped: FieldErrors = {};
++        for (const { field, error } of apiError.errors) mapped[field] = error;
++        setErrors(mapped);
++      } else if (apiError.status !== 401) {
++        // Sem conexão ou erro no servidor: o que foi digitado continua na tela
++        setFailed(true);
++      }
++    } finally {
++      setSaving(false);
++    }
++  }
++
++  return { save, saving, errors, failed };
++}
++
++// ── Cartão: Fazenda ──────────────────────────────────────────────────────────
++
++function FarmCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: FarmWithDefaults) => void }) {
++  const [name, setName] = useState(farm.name);
++  const [timezone, setTimezone] = useState(farm.timezone);
++  const { save, saving, errors, failed } = useSaveFarm(onSaved);
++  const nameId = useId();
++  const tzId = useId();
++
++  const changed = name.trim() !== farm.name || timezone !== farm.timezone;
++
++  function handleSubmit(e: FormEvent) {
++    e.preventDefault();
++    const input: UpdateFarmInput = {};
++    if (name.trim() !== farm.name) input.name = name;
++    if (timezone !== farm.timezone) input.timezone = timezone;
++    save(input);
++  }
++
++  return (
++    <Card icon={<Home size={18} />} title="Fazenda" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
++      <Field id={nameId} label="Nome da fazenda" error={errors.name}>
++        <input
++          id={nameId}
++          value={name}
++          onChange={(e) => setName(e.target.value)}
++          maxLength={100}
++          aria-invalid={!!errors.name}
++          aria-describedby={errors.name ? `${nameId}-error` : undefined}
++          className={inputClass(!!errors.name)}
++        />
++      </Field>
++
++      <Field
++        id={tzId}
++        label="Fuso horário"
++        error={errors.timezone}
++        help="Define o que é “hoje” para datas e lembretes. Datas já registradas não mudam."
++      >
++        <select
++          id={tzId}
++          value={timezone}
++          onChange={(e) => setTimezone(e.target.value)}
++          aria-invalid={!!errors.timezone}
++          aria-describedby={`${tzId}-help`}
++          className={`${inputClass(!!errors.timezone)} bg-card`}
++        >
++          {TIME_ZONE_OPTIONS.map((option) => (
++            <option key={option.value} value={option.value}>
++              {option.label}
++            </option>
++          ))}
++        </select>
++      </Field>
++
++      {/* Fixos na 1.0 (D-30): mostrados, mas sem edição */}
++      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2 text-sm">
++        <ReadOnly label="País" value="Brasil" />
++        <ReadOnly label="Moeda" value="Real (R$)" />
++        <ReadOnly label="Peso" value="Quilos (kg)" />
++      </dl>
++      <p className="text-xs text-texto-leve mb-5">
++        País, moeda e unidade de peso poderão ser alterados quando o Rebanho atender outros países.
++      </p>
++    </Card>
++  );
++}
++
++// ── Cartão: Manejo sanitário ─────────────────────────────────────────────────
++
++function SanitaryCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: FarmWithDefaults) => void }) {
++  const saved = farm.settings.reapplyAlertDays;
++  const standard = farm.defaults.reapplyAlertDays;
++  const [days, setDays] = useState(String(saved));
++  const { save, saving, errors, failed } = useSaveFarm(onSaved);
++  const [localError, setLocalError] = useState("");
++  const id = useId();
++
++  const changed = days.trim() !== String(saved);
++  const error = localError || errors.reapplyAlertDays;
++
++  function handleSubmit(e: FormEvent) {
++    e.preventDefault();
++    setLocalError("");
++    const value = Number(days);
++    if (days.trim() === "" || !Number.isInteger(value)) {
++      return setLocalError("Informe um número inteiro de dias.");
++    }
++    save({ reapplyAlertDays: value });
++  }
++
++  return (
++    <Card icon={<Bell size={18} />} title="Manejo sanitário" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
++      <Field
++        id={id}
++        label="Avisar reaplicação com quantos dias de antecedência?"
++        error={error}
++        help="A reaplicação aparece nos lembretes esse número de dias antes da data. Use 0 para avisar só no dia."
++      >
++        <div className="flex items-center gap-2">
++          <input
++            id={id}
++            type="number"
++            inputMode="numeric"
++            min={0}
++            max={60}
++            step={1}
++            value={days}
++            onChange={(e) => setDays(e.target.value)}
++            aria-invalid={!!error}
++            aria-describedby={`${id}-help${error ? ` ${id}-error` : ""}`}
++            className={inputClass(!!error, "w-24")}
++          />
++          <span className="text-texto-suave">dias</span>
++        </div>
++      </Field>
++
++      {days.trim() !== String(standard) && (
++        <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-leve -mt-3 mb-5">
++          padrão: {standard} dias
++          <button
++            type="button"
++            onClick={() => setDays(String(standard))}
++            className="inline-flex items-center gap-1 text-verde font-medium cursor-pointer hover:underline"
++          >
++            <RotateCcw size={14} aria-hidden="true" /> Voltar ao padrão
++          </button>
++        </p>
++      )}
++    </Card>
++  );
++}
++
++// ── Peças visuais ────────────────────────────────────────────────────────────
++
++const inputClass = (hasError: boolean, width = "w-full") =>
++  `${width} border rounded-lg px-3 py-2 text-texto ${hasError ? "border-alerta" : "border-borda"}`;
++
++function Card(props: {
++  icon: ReactNode;
++  title: string;
++  children: ReactNode;
++  onSubmit: (e: FormEvent) => void;
++  saving: boolean;
++  changed: boolean;
++  failed: boolean;
++}) {
++  const titleId = useId();
++  return (
++    <section className="bg-card border border-borda rounded-xl p-5 md:p-6" aria-labelledby={titleId}>
++      <h2 id={titleId} className="flex items-center gap-2 font-medium text-texto mb-4">
++        <span className="text-verde">{props.icon}</span>
++        {props.title}
++      </h2>
++      <form onSubmit={props.onSubmit} noValidate>
++        {props.children}
++        {props.failed && (
++          <p role="alert" className="text-sm text-alerta mb-3">
++            Não foi possível salvar. O que você digitou não foi perdido.
++          </p>
++        )}
++        <button
++          type="submit"
++          disabled={props.saving || (!props.changed && !props.failed)}
++          className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
++        >
++          {props.saving ? "Salvando..." : props.failed ? "Tentar de novo" : "Salvar"}
++        </button>
++      </form>
++    </section>
++  );
++}
++
++function Field(props: { id: string; label: string; error?: string; help?: string; children: ReactNode }) {
++  return (
++    <div className="mb-5">
++      <label htmlFor={props.id} className="block font-medium text-texto mb-1">
++        {props.label}
++      </label>
++      {props.children}
++      {props.error && (
++        <p id={`${props.id}-error`} role="alert" className="text-sm text-alerta mt-1">
++          {props.error}
++        </p>
++      )}
++      {props.help && (
++        <p id={`${props.id}-help`} className="text-sm text-texto-leve mt-1">
++          {props.help}
++        </p>
++      )}
++    </div>
++  );
++}
++
++function ReadOnly({ label, value }: { label: string; value: string }) {
++  return (
++    <div className="bg-bege rounded-lg px-3 py-2">
++      <dt className="text-texto-leve text-xs">{label}</dt>
++      <dd className="text-texto-suave">{value}</dd>
++    </div>
++  );
++}
++
++function SkeletonCards() {
++  return (
++    <div className="flex flex-col gap-6 max-w-2xl" aria-busy="true" aria-label="Carregando configurações">
++      {[0, 1].map((i) => (
++        <div key={i} className="bg-card border border-borda rounded-xl p-6 animate-pulse">
++          <div className="h-5 w-40 bg-bege rounded mb-5" />
++          <div className="h-10 w-full bg-bege rounded mb-4" />
++          <div className="h-10 w-2/3 bg-bege rounded" />
++        </div>
++      ))}
++    </div>
++  );
++}
+diff --git a/web/src/services/auth.ts b/web/src/services/auth.ts
+index a18d477..6a09498 100644
+--- a/web/src/services/auth.ts
++++ b/web/src/services/auth.ts
+@@ -1,8 +1,9 @@
+ import { request } from "./api.js";
++import type { Farm } from "./farm.js";
+ 
+ export type Account = {
+   user: { id: string; name: string; email: string };
+-  farm: { id: string; name: string; country: string; timezone: string };
++  farm: Farm; // inclui as configurações (G2)
+ };
+ 
+ export type RegisterInput = {
+diff --git a/web/src/services/farm.ts b/web/src/services/farm.ts
+new file mode 100644
+index 0000000..85450e8
+--- /dev/null
++++ b/web/src/services/farm.ts
+@@ -0,0 +1,39 @@
++import { request } from "./api.js";
++
++// Configurações da fazenda (G2). Os valores padrão vêm do servidor (`defaults`),
++// para a tela não repetir números que já existem no backend.
++
++export type PriceUnit = "PER_KG" | "PER_ARROBA" | "PER_HEAD";
++
++export type FarmSettings = {
++  arrobaLiveFactorKg: number;
++  preferredPriceUnit: PriceUnit;
++  reapplyAlertDays: number;
++  defaultCastrated: boolean;
++};
++
++export type Farm = {
++  id: string;
++  name: string;
++  country: string;
++  timezone: string;
++  currency: string;
++  weightUnit: string;
++  settings: FarmSettings;
++};
++
++export type FarmWithDefaults = Farm & { defaults: FarmSettings };
++
++// Campos que a 1.0 deixa alterar (país, moeda e unidade são fixos — D-30)
++export type UpdateFarmInput = Partial<Pick<Farm, "name" | "timezone"> & FarmSettings>;
++
++export function getFarm() {
++  return request<FarmWithDefaults>("/farm");
++}
++
++export function updateFarm(input: UpdateFarmInput) {
++  return request<FarmWithDefaults>("/farm", {
++    method: "PATCH",
++    body: JSON.stringify(input),
++  });
++}
+diff --git a/web/src/services/sanitary.ts b/web/src/services/sanitary.ts
+index afea9bb..dddfd76 100644
+--- a/web/src/services/sanitary.ts
++++ b/web/src/services/sanitary.ts
+@@ -54,7 +54,7 @@ export function listAnimalApplications(
+   return request<Application[]>(`/animals/${animalId}/applications`);
+ }
+ 
+-// Reaplicações chegando (próximos 7 dias) ou vencidas.
++// Reaplicações chegando (antecedência definida nas Configurações, padrão 7 dias) ou vencidas.
+ export function listAlerts(): Promise<Application[]> {
+   return request<Application[]>("/alerts");
+ }
+diff --git a/web/src/types/timezones.ts b/web/src/types/timezones.ts
+new file mode 100644
+index 0000000..2678850
+--- /dev/null
++++ b/web/src/types/timezones.ts
+@@ -0,0 +1,32 @@
++// Fusos do Brasil (D-31) com o nome que o produtor reconhece: os estados.
++// A lista que a API aceita fica no backend (src/lib/farm.ts); aqui só os nomes.
++
++export const BRAZIL_TIME_ZONE_LABELS: Record<string, string> = {
++  "America/Sao_Paulo": "Horário de Brasília — DF, GO, MG, ES, RJ, SP, PR, SC e RS",
++  "America/Bahia": "Bahia",
++  "America/Fortaleza": "Ceará, Maranhão, Piauí, Rio Grande do Norte e Paraíba",
++  "America/Recife": "Pernambuco",
++  "America/Maceio": "Alagoas e Sergipe",
++  "America/Araguaina": "Tocantins",
++  "America/Belem": "Pará (leste) e Amapá",
++  "America/Santarem": "Pará (oeste)",
++  "America/Noronha": "Fernando de Noronha",
++  "America/Campo_Grande": "Mato Grosso do Sul",
++  "America/Cuiaba": "Mato Grosso",
++  "America/Porto_Velho": "Rondônia",
++  "America/Boa_Vista": "Roraima",
++  "America/Manaus": "Amazonas (maior parte)",
++  "America/Eirunepe": "Amazonas (oeste)",
++  "America/Rio_Branco": "Acre",
++};
++
++// Diferença para o horário universal, calculada pelo navegador (ex.: "UTC−3").
++// Calculada na hora (não fixa no código): se o Brasil voltar a ter horário de
++// verão, o número acompanha sozinho.
++export function utcOffsetLabel(timeZone: string, now: Date = new Date()): string {
++  const part = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
++    .formatToParts(now)
++    .find((p) => p.type === "timeZoneName")?.value; // ex.: "GMT-3"
++  if (!part) return "";
++  return part.replace("GMT", "UTC").replace("-", "−");
++}

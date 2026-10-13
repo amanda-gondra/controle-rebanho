@@ -37,6 +37,14 @@ enum ProductType {
   DEWORMER // vermífugo
 }
 
+// Unidade de preço de uma negociação (compra/venda). Na fazenda, é só a que
+// vem marcada por padrão (G2); cada negociação grava a sua (G5).
+enum PriceUnit {
+  PER_KG     // por kg
+  PER_ARROBA // por arroba
+  PER_HEAD   // por cabeça
+}
+
 // ── Conta (G1) ──────────────────────────────────────────────────────────────
 // Cada produtor tem a sua fazenda. TODO dado do rebanho pertence a uma fazenda
 // (farmId) e uma fazenda nunca enxerga os dados de outra.
@@ -46,6 +54,17 @@ model Farm {
   name      String
   country   String   @default("BR")
   timezone  String   @default("America/Sao_Paulo") // D-16: usado em "hoje", "futuro" e "vencido"
+
+  // ── Configurações (G2 — D-21). Todas têm padrão: conta nova funciona sem
+  // configurar nada. Os padrões também estão em src/lib/farm.ts (FARM_DEFAULTS)
+  // e um teste confere que os dois batem.
+  currency           String    @default("BRL") // D-30: fixa na 1.0, só leitura
+  weightUnit         String    @default("kg") // D-30: unidade EXIBIDA; peso é sempre guardado em kg
+  arrobaLiveFactorKg Decimal   @default(30) @db.Decimal(4, 2) // sugestão para arroba sobre peso vivo
+  preferredPriceUnit PriceUnit @default(PER_KG) // o que vem marcado ao registrar compra/venda
+  reapplyAlertDays   Int       @default(7) // antecedência do lembrete de reaplicação (0–60)
+  defaultCastrated   Boolean   @default(false) // padrão do campo "castrado" no cadastro de machos
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

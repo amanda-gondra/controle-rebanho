@@ -144,7 +144,7 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /alerts — reaplicações chegando (próximos 7 dias) e vencidas
+  // GET /alerts — reaplicações chegando (antecedência da fazenda, padrão 7 dias) e vencidas
   r.get(
     "/alerts",
     {
@@ -155,7 +155,9 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const now = new Date();
-      const { timezone } = request.auth.farm;
+      // fuso e antecedência são da fazenda logada (G2): mudar a configuração
+      // muda a lista na hora, sem regravar nada (RN-CFG-006)
+      const { timezone, settings } = request.auth.farm;
 
       // busca as que têm data de reaplicação (a regra de "é alerta" fica na função)
       const applications = await request.db.application.findMany({
@@ -170,7 +172,12 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       // usa a função pura pra decidir quais são alerta e quais estão vencidas
       return applications
         .map((app) => {
-          const { isAlert, overdue } = classifyReapplication(app, now, timezone);
+          const { isAlert, overdue } = classifyReapplication(
+            app,
+            now,
+            timezone,
+            settings.reapplyAlertDays,
+          );
           return { ...app, isAlert, overdue };
         })
         .filter((app) => app.isAlert)

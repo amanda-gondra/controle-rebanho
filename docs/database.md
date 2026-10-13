@@ -1,6 +1,6 @@
 # Banco de dados, migrations e ambientes
 
-> Estado em 2026-10-12.
+> Estado em 2026-10-13.
 
 ## Banco (atual)
 
@@ -22,6 +22,7 @@ Integridade garantida hoje:
 | Animal com compra/venda não é excluído (D-10) | rota, numa instrução só (`deleteMany` com filtro) |
 | Venda não anterior à compra (D-06) | rota (compra e venda, POST e PUT) |
 | Venda + status `SOLD` juntos | transação |
+| Configurações da fazenda dentro dos limites (G2) | API (Zod) + banco (`CHECK`: fator da arroba > 0, antecedência 0–60, moeda com 3 letras, unidade kg/lb) |
 
 ⚠️ No banco, `AnimalPurchase` e `AnimalSale` ainda têm `onDelete: Cascade` (F-05). A
 proteção hoje é da aplicação; a garantia no banco vem com o modelo `Trade` (G5), que já
@@ -29,7 +30,7 @@ nasce com `Restrict`.
 
 ## Migrations
 
-Sete migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+Oito migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
 como está: **não reescrever migrations já aplicadas**.
 
 **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
@@ -38,6 +39,11 @@ perder dados: cria `Farm/User/Session`; **se o banco já tiver dados do protóti
 todos os registros nela; só então torna `farmId` obrigatório; converte as datas para `DATE`;
 troca o brinco único global por único por fazenda. Testada nos dois cenários (banco com dados
 antigos e banco vazio). Para entrar na fazenda inicial: `npm run dev:claim-initial-farm`.
+
+**G2 (`20261013000000_g2_farm_settings`)** — só **adiciona** colunas de configuração em `Farm`
+(todas com padrão; nenhuma fazenda existente muda) e o tipo `PriceUnit`. As restrições `CHECK`
+foram escritas à mão no fim do arquivo: o Prisma não as representa no schema e também não as
+apaga.
 
 Procedimento:
 

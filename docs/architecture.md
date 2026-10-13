@@ -1,7 +1,7 @@
 # Arquitetura do backend
 
-> Estado em 2026-10-12: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
-> por fazenda).
+> Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
+> por fazenda) + G2 (configurações da fazenda).
 
 ## Visão geral (atual)
 
@@ -33,8 +33,9 @@ requisição
 | `src/lib/auth.ts` | Gancho `authenticate` das rotas protegidas |
 | `src/lib/session.ts` | Criar, conferir, renovar e apagar sessões; cookie |
 | `src/lib/password.ts` | Hash e verificação de senha (scrypt) |
+| `src/lib/farm.ts` | Fazenda e configurações (G2): campos lidos, formato da resposta, padrões e fusos do Brasil |
 | `src/schemas/` | Schemas Zod (fonte única de validação e do Swagger); limites em `common.schema.ts` |
-| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance` (protegidas) |
+| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance`, `farm` (protegidas) |
 | `src/services/` | Regras de cálculo puras (GMD, alertas, resultado) + testes unitários |
 
 ## Convenções
@@ -45,8 +46,8 @@ requisição
   brinco ≤ 50, nomes ≤ 100, observações ≤ 1000 caracteres; aplicação ≤ 5000 animais.
   (Limites técnicos — mudar aqui se o produto pedir.)
 - Datas de calendário entram como `AAAA-MM-DD` e são gravadas como meia-noite UTC
-  (`toDbDate`). "Hoje/futuro/vencido" usam o fuso `America/Sao_Paulo` (D-16) até a fazenda
-  ter cadastro próprio (G1/G2).
+  (`toDbDate`). "Hoje/futuro/vencido" usam o **fuso da fazenda** (`Farm.timezone`, padrão
+  `America/Sao_Paulo` — D-16), escolhido nas Configurações entre os fusos do Brasil (D-31).
 - Regras que podem falhar lançam `AppError` (`notFound`, `conflict`, `unprocessable`,
   `badRequest`); a rota não monta resposta de erro na mão.
 - Operações que precisam andar juntas usam `prisma.$transaction` (venda + status).
@@ -122,3 +123,22 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
   aceita corpo JSON (formulário de outro site não consegue enviar).
 - **Fora desta etapa (D-25):** recuperação de senha (precisa de serviço de e-mail), troca de
   senha, vários usuários por fazenda.
+
+## Configurações da fazenda (G2 — D-21, D-30, D-31)
+
+- Colunas em `Farm`, todas com padrão (conta nova funciona sem configurar nada):
+  `currency` (BRL, fixa na 1.0), `weightUnit` (kg, fixa na 1.0), `arrobaLiveFactorKg` (30),
+  `preferredPriceUnit` (`PER_KG`), `reapplyAlertDays` (7, de 0 a 60), `defaultCastrated` (não).
+- `src/lib/farm.ts` é a fonte única: `FARM_SELECT` (o que a sessão, `/auth/*` e `/farm` leem),
+  `toFarmView` (formato da resposta), `FARM_DEFAULTS` (iguais aos `@default` do banco — um teste
+  confere) e `BRAZIL_TIME_ZONES` (os únicos fusos aceitos).
+- `request.auth.farm` já traz as configurações (`settings`): as rotas usam o fuso e a
+  antecedência da fazenda sem consulta extra. Mudar uma configuração vale na próxima requisição
+  (nada é recalculado nem regravado).
+- `GET /farm` e `PATCH /farm` **não têm id na rota**: a fazenda é sempre a da sessão. O schema
+  `.strict()` recusa `id`, `country`, `currency` e `weightUnit`.
+- `GET /alerts` usa `reapplyAlertDays` e o fuso da fazenda (`classifyReapplication`).
+- Ainda sem efeito (esperando a parte que usa): `arrobaLiveFactorKg` e `preferredPriceUnit`
+  (G5), `defaultCastrated` (G4/Animais). Ficam guardados e editáveis pela API; os cartões da
+  tela entram junto com essas partes. Nomes das categorias (`categoryLabels`) entram na G4,
+  com as 7 categorias novas.

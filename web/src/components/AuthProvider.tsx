@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { SESSION_LOST_EVENT } from "../services/api.js";
 import * as authApi from "../services/auth.js";
 import type { Account, RegisterInput } from "../services/auth.js";
+import type { Farm } from "../services/farm.js";
 
 // Estado do login, compartilhado por todo o app.
 //  - "loading": ainda perguntando ao servidor se há sessão (ao abrir o app)
@@ -15,6 +16,8 @@ type AuthState = {
   login: (email: string, password: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  // Atualiza a fazenda depois de salvar as configurações (nome no menu, fuso...)
+  setFarm: (farm: Farm) => void;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -70,9 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setFarm = useCallback((farm: Farm) => {
+    setAccount((current) => (current ? { ...current, farm } : current));
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ loading, account, sessionExpired, login, register, logout }}
+      value={{ loading, account, sessionExpired, login, register, logout, setFarm }}
     >
       {children}
     </AuthContext.Provider>

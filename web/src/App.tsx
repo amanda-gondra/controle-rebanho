@@ -9,6 +9,7 @@ import { ApplicationDetail } from "./pages/ApplicationDetail.js";
 import { Sanitary } from "./pages/Sanitary.js";
 import { Login } from "./pages/Login.js";
 import { Register } from "./pages/Register.js";
+import { Settings } from "./pages/Settings.js";
 import { ToastProvider } from "./components/ToastProvider.js";
 import { AuthProvider } from "./components/AuthProvider.js";
 import { RedirectIfLoggedIn, RequireAuth } from "./components/RequireAuth.js";
@@ -35,6 +36,7 @@ function App() {
               <Route path="/produtos" element={<Products />} />
               <Route path="/aplicacoes/nova" element={<ApplicationCreate />} />
               <Route path="/aplicacoes/:id" element={<ApplicationDetail />} />
+              <Route path="/configuracoes" element={<Settings />} />
             </Route>
           </Routes>
         </BrowserRouter>

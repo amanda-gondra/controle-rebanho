@@ -34,6 +34,16 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
+## Configurações da fazenda (G2)
+
+- `farm.test.ts`: conta nova com todos os padrões (e os padrões do código iguais aos do banco),
+  alterar só o que foi enviado, limites de cada campo (fator da arroba, antecedência, fuso fora
+  do Brasil, nome vazio), campos fixos na 1.0 recusados, `id` de outra fazenda recusado,
+  cada fazenda vê só as próprias configurações, e o efeito na hora: aumentar a antecedência
+  faz a reaplicação aparecer em `GET /alerts`.
+- `src/lib/farm.test.ts`: todos os fusos da lista existem; `sanitary.service.test.ts`:
+  antecedência configurável (inclusive 0 = só no dia).
+
 ## Login e isolamento entre fazendas (G1)
 
 - Cada teste começa com um usuário **já logado** numa fazenda nova (`t.client`,
