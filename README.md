@@ -26,7 +26,8 @@ O sistema também prioriza a experiência do usuário final, com linguagem clara
 
 ## ✨ Funcionalidades
 
-* **Cadastro de animais** com identificação por brinco único, sexo, categoria, raça e observações.
+* **Cadastro de animais** com identificação por brinco único, sexo, categoria, castrado, raça e observações.
+* **Categorias** bezerro/bezerra, garrote, boi, touro, novilha e vaca, sempre combinando com o sexo; cada fazenda pode renomear as categorias.
 * **Data de nascimento com precisão variável**, permitindo registrar a informação conforme o nível de precisão disponível: dia/mês/ano, mês/ano ou desconhecida.
 * **Registro de pesagens** por animal, mantendo um histórico completo ao longo do tempo.
 * **Cálculo automático de ganho de peso e GMD** (ganho médio diário).

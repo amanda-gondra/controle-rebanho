@@ -32,6 +32,7 @@ export type CreateAnimalInput = {
   tag: string;
   sex: Sex;
   category: Category;
+  castrated?: boolean; // só machos; sem valor → padrão da fazenda
   breed?: string;
   birthDate?: string;
   birthPrecision: BirthPrecision;
@@ -78,6 +79,7 @@ export function deleteAnimal(id: string): Promise<void> {
 export type UpdateAnimalInput = {
   sex?: Sex;
   category?: Category;
+  castrated?: boolean; // só machos
   breed?: string;
   birthDate?: string;
   birthPrecision?: BirthPrecision;

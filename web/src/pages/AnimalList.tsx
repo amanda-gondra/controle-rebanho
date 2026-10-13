@@ -15,7 +15,6 @@ import { listAnimals } from "../services/animals.js";
 import type { Animal, Status, Category } from "../types/animal.js";
 import {
   sexLabel,
-  categoryLabel,
   statusLabel,
   statusStyle,
   statusDotStyle,
@@ -26,6 +25,8 @@ import { Sidebar } from "../components/Sidebar.js";
 import { AnimalActionsMenu } from "../components/AnimalActionsMenu.js";
 import { DeleteModal } from "../components/DeleteModal.js";
 import { useToast } from "../components/ToastProvider.js";
+import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
+import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 
 type StatusFilter = Status | "ALL";
 type CategoryFilter = Category | "ALL";
@@ -46,6 +47,7 @@ export function AnimalList() {
 
   // A lista completa é buscada uma vez; filtro, busca, ordenação e paginação
   // acontecem no frontend (rebanho é pequeno → instantâneo e sem recarregar).
+  const { labelOf, filterLabelOf } = useCategoryLabels();
   const [allAnimals, setAllAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,7 +99,7 @@ export function AnimalList() {
       list = list.filter(
         (a) =>
           a.tag.toLowerCase().includes(q) ||
-          categoryLabel[a.category].toLowerCase().includes(q) ||
+          labelOf(a.category, a.sex).toLowerCase().includes(q) ||
           (a.breed ?? "").toLowerCase().includes(q),
       );
     }
@@ -110,7 +112,7 @@ export function AnimalList() {
     });
 
     return list;
-  }, [allAnimals, status, category, search, sort]);
+  }, [allAnimals, status, category, search, sort, labelOf]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -220,10 +222,11 @@ export function AnimalList() {
                   className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
                 >
                   <option value="ALL">Todas</option>
-                  <option value="CALF">Bezerro</option>
-                  <option value="YEARLING">Novilho</option>
-                  <option value="STEER">Boi</option>
-                  <option value="COW">Vaca</option>
+                  {CATEGORY_FILTER_ORDER.map((value) => (
+                    <option key={value} value={value}>
+                      {filterLabelOf(value)}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -307,7 +310,7 @@ export function AnimalList() {
                       {/* Animal: categoria + faixa de idade */}
                       <td className="px-5 py-4">
                         <p className="font-medium text-texto">
-                          {categoryLabel[animal.category]}
+                          {labelOf(animal.category, animal.sex)}
                         </p>
                         <p className="text-xs text-texto-leve">
                           {formatAge(animal.birthDate, animal.birthPrecision)}

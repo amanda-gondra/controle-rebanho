@@ -1,6 +1,6 @@
 # Banco de dados, migrations e ambientes
 
-> Estado em 2026-10-13.
+> Estado em 2026-10-13 (G4).
 
 ## Banco (atual)
 
@@ -22,6 +22,8 @@ Integridade garantida hoje:
 | Animal com compra/venda não é excluído (D-10) | rota, numa instrução só (`deleteMany` com filtro) |
 | Venda não anterior à compra (D-06) | rota (compra e venda, POST e PUT) |
 | Venda + status `SOLD` juntos | transação |
+| Categoria combina com o sexo (G4 — D-02) | API (`resolveAnimalProfile`) + banco (`CHECK Animal_category_sex_check`) |
+| Castrado só em machos (G4) | API + banco (`CHECK Animal_castrated_male_only_check`) |
 | Configurações da fazenda dentro dos limites (G2) | API (Zod) + banco (`CHECK`: fator da arroba > 0, antecedência 0–60, moeda com 3 letras, unidade kg/lb) |
 
 ⚠️ No banco, `AnimalPurchase` e `AnimalSale` ainda têm `onDelete: Cascade` (F-05). A
@@ -30,7 +32,7 @@ nasce com `Restrict`.
 
 ## Migrations
 
-Oito migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+Nove migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
 como está: **não reescrever migrations já aplicadas**.
 
 **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
@@ -44,6 +46,13 @@ antigos e banco vazio). Para entrar na fazenda inicial: `npm run dev:claim-initi
 (todas com padrão; nenhuma fazenda existente muda) e o tipo `PriceUnit`. As restrições `CHECK`
 foram escritas à mão no fim do arquivo: o Prisma não as representa no schema e também não as
 apaga.
+
+**G4 (`20261013120000_g4_categories`)** — numa transação só: (1) **para sem mudar nada** se
+existir animal com categoria antiga que não combina com o sexo ("vaca" macho ou "boi" fêmea) e
+diz quantos são; (2) converte as categorias — `YEARLING` macho → `YEARLING` (garrote), `YEARLING`
+fêmea → `HEIFER`, `STEER` → `ADULT_MALE`, `CALF`/`COW` iguais; (3) cria `castrated` (machos que já
+existem → `false`, o padrão D-21; fêmeas → vazio); (4) cria `Farm.categoryLabels`; (5) `CHECK`s.
+Testada com dados antigos (conversão) e com um "vaca macho" (para sem alterar nada).
 
 Procedimento:
 

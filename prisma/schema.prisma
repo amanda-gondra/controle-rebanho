@@ -12,11 +12,16 @@ enum Sex {
   FEMALE
 }
 
+// Categorias (G4 — D-02). Regra de sexo em src/lib/categories.ts e num CHECK
+// no banco: CALF serve aos dois sexos; HEIFER e COW só fêmea; YEARLING,
+// ADULT_MALE e BULL só macho.
 enum Category {
-  CALF     // bezerro
-  YEARLING // novilho
-  STEER    // boi
-  COW      // vaca
+  CALF       // bezerro / bezerra
+  HEIFER     // novilha
+  COW        // vaca
+  YEARLING   // garrote
+  ADULT_MALE // boi
+  BULL       // touro
 }
 
 enum Status {
@@ -64,6 +69,7 @@ model Farm {
   preferredPriceUnit PriceUnit @default(PER_KG) // o que vem marcado ao registrar compra/venda
   reapplyAlertDays   Int       @default(7) // antecedência do lembrete de reaplicação (0–60)
   defaultCastrated   Boolean   @default(false) // padrão do campo "castrado" no cadastro de machos
+  categoryLabels     Json      @default("{}") // G4: só os nomes de categoria que a fazenda MUDOU
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -116,6 +122,7 @@ model Animal {
   sex                 Sex
   breed               String?
   category            Category
+  castrated           Boolean? // G4: só machos (fêmea = vazio — CHECK no banco)
   status              Status              @default(ACTIVE)
   birthDate           DateTime?           @db.Date
   birthPrecision      BirthDatePrecision  @default(UNKNOWN)

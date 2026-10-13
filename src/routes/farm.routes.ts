@@ -3,6 +3,8 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
 import { FARM_DEFAULTS, FARM_SELECT, toFarmView } from "../lib/farm.js";
 import { updateFarmSchema } from "../schemas/farm.schema.js";
+import { duplicatedLabelKeys, mergeCategoryLabels } from "../lib/categories.js";
+import { ErrorCode, ruleError } from "../lib/errors.js";
 
 // Configurações da fazenda (G2).
 //
@@ -31,9 +33,31 @@ export async function farmRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      const { categoryLabels: labelChanges, ...rest } = request.body;
+
+      // Nomes das categorias (G4): junta com os atuais, guarda só o que difere
+      // do padrão e recusa nomes repetidos (confundiriam lista e filtro).
+      let categoryLabels: Record<string, string> | undefined;
+      if (labelChanges) {
+        const { labels, overrides } = mergeCategoryLabels(
+          request.auth.farm.settings.categoryLabels,
+          labelChanges,
+        );
+        const duplicated = duplicatedLabelKeys(labels);
+        if (duplicated.length > 0) {
+          const message = "Cada categoria precisa de um nome diferente.";
+          throw ruleError(
+            ErrorCode.DUPLICATE_CATEGORY_LABEL,
+            message,
+            duplicated.map((key) => ({ field: `categoryLabels.${key}`, error: message })),
+          );
+        }
+        categoryLabels = overrides;
+      }
+
       const farm = await prisma.farm.update({
         where: { id: request.auth.farm.id },
-        data: request.body,
+        data: { ...rest, ...(categoryLabels ? { categoryLabels } : {}) },
         select: FARM_SELECT,
       });
 

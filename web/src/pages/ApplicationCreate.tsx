@@ -11,7 +11,9 @@ import type {
   Status,
   Category,
 } from "../types/animal.js";
-import { categoryLabel, sexLabel } from "../types/labels.js";
+import { sexLabel } from "../types/labels.js";
+import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
+import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 import { useToast } from "../components/ToastProvider.js";
 
 type StatusFilter = Status | "ALL";
@@ -20,6 +22,7 @@ type CategoryFilter = Category | "ALL";
 export function ApplicationCreate() {
   const navigate = useNavigate();
   const showToast = useToast();
+  const { labelOf, filterLabelOf } = useCategoryLabels();
 
   // dados da aplicação
   const [type, setType] = useState<ProductType>("VACCINE");
@@ -318,10 +321,11 @@ export function ApplicationCreate() {
                 className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
               >
                 <option value="ALL">Todas as categorias</option>
-                <option value="CALF">Bezerro</option>
-                <option value="YEARLING">Novilho</option>
-                <option value="STEER">Boi</option>
-                <option value="COW">Vaca</option>
+                {CATEGORY_FILTER_ORDER.map((value) => (
+                  <option key={value} value={value}>
+                    {filterLabelOf(value)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -358,7 +362,7 @@ export function ApplicationCreate() {
                         {a.tag}
                       </span>
                       <span className="text-sm text-texto-suave">
-                        {categoryLabel[a.category]} · {sexLabel[a.sex]}
+                        {labelOf(a.category, a.sex)} · {sexLabel[a.sex]}
                       </span>
                     </button>
                   );

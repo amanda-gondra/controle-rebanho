@@ -36,7 +36,6 @@ import type {
 } from "../types/animal.js";
 import {
   sexLabel,
-  categoryLabel,
   statusLabel,
   statusStyle,
 } from "../types/labels.js";
@@ -48,11 +47,13 @@ import { DeleteModal } from "../components/DeleteModal.js";
 import { TradeModal } from "../components/TradeModal.js";
 import { EstimatedPriceModal } from "../components/EstimatedPriceModal.js";
 import { useToast } from "../components/ToastProvider.js";
+import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 
 export function AnimalDetail() {
   const { id } = useParams(); // pega o :id do endereço
   const navigate = useNavigate();
   const showToast = useToast();
+  const { labelOf } = useCategoryLabels();
 
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [weighings, setWeighings] = useState<Weighing[]>([]);
@@ -234,7 +235,8 @@ export function AnimalDetail() {
               </span>
             </div>
             <p className="text-texto-suave">
-              {categoryLabel[animal.category]} · {sexLabel[animal.sex]} ·{" "}
+              {labelOf(animal.category, animal.sex)} · {sexLabel[animal.sex]}
+              {animal.castrated ? " castrado" : ""} ·{" "}
               {animal.breed ?? "—"}
             </p>
             <p className="text-sm text-texto-leve">{birthText}</p>

@@ -45,13 +45,14 @@ async function main() {
   });
   const farmId = farm.id;
 
-  // Animal 1 — um novilho com histórico de pesagens (pra ter GMD)
+  // Animal 1 — um garrote com histórico de pesagens (pra ter GMD)
   const boi = await prisma.animal.create({
     data: {
       farmId,
       tag: "BR-001",
       sex: "MALE",
       category: "YEARLING",
+      castrated: false,
       breed: "Nelore",
       birthDate: new Date("2023-03-15"),
       birthPrecision: "DAY_MONTH_YEAR",
@@ -86,6 +87,7 @@ async function main() {
       tag: "BR-003",
       sex: "MALE",
       category: "CALF",
+      castrated: false,
       breed: "Nelore",
       birthDate: new Date("2024-11-01"),
       birthPrecision: "MONTH_YEAR",

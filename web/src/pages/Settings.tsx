@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { Bell, Home, RotateCcw } from "lucide-react";
+import { Bell, Home, Mars, PawPrint, RotateCcw, Venus } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { useAuth } from "../components/AuthProvider.js";
 import { useToast } from "../components/ToastProvider.js";
@@ -8,14 +8,17 @@ import { getFarm, updateFarm } from "../services/farm.js";
 import type { FarmWithDefaults, UpdateFarmInput } from "../services/farm.js";
 import type { ApiError } from "../services/api.js";
 import { BRAZIL_TIME_ZONE_LABELS, utcOffsetLabel } from "../types/timezones.js";
+import { CATEGORY_LABEL_KEYS, SEX_OF_LABEL_KEY } from "../types/categories.js";
+import type { CategoryLabelKey, CategoryLabels } from "../types/categories.js";
+import { sexIconStyle } from "../types/labels.js";
 
 // Configurações da fazenda (G2 — "Espec — Configurações da fazenda").
 //
 // Um cartão por assunto, cada um com o próprio "Salvar": se um der erro, o
-// que foi digitado nos outros não se perde. Nesta versão aparecem só os
-// cartões que já têm efeito no sistema (Fazenda e Manejo sanitário). Os de
-// Negociações e Animais entram junto com a compra e venda (G5) e as novas
-// categorias (G4) — nada de botão que não muda nada.
+// que foi digitado nos outros não se perde. Aparecem só os cartões que já têm
+// efeito no sistema: Fazenda, Manejo sanitário e Animais (G4). O de
+// Negociações entra junto com a compra e venda (G5) — nada de botão que não
+// muda nada.
 
 type FieldErrors = Record<string, string>;
 
@@ -71,6 +74,7 @@ export function Settings() {
           <div className="flex flex-col gap-6 max-w-2xl">
             <FarmCard farm={farm} onSaved={setFarm} />
             <SanitaryCard farm={farm} onSaved={setFarm} />
+            <AnimalsCard farm={farm} onSaved={setFarm} />
           </div>
         )}
       </main>
@@ -246,6 +250,147 @@ function SanitaryCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: 
         </p>
       )}
     </Card>
+  );
+}
+
+// ── Cartão: Animais (G4) ─────────────────────────────────────────────────────
+
+function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: FarmWithDefaults) => void }) {
+  const saved = farm.settings;
+  const standard = farm.defaults;
+  const [castrated, setCastrated] = useState(saved.defaultCastrated);
+  const [labels, setLabels] = useState<CategoryLabels>(saved.categoryLabels);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const { save, saving, errors, failed } = useSaveFarm(onSaved);
+  const castratedId = useId();
+
+  const changedKeys = CATEGORY_LABEL_KEYS.filter((key) => labels[key].trim() !== saved.categoryLabels[key]);
+  const changed = castrated !== saved.defaultCastrated || changedKeys.length > 0;
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+
+    // Confere antes de enviar (o servidor confere de novo)
+    const problems: Record<string, string> = {};
+    const normalized = (key: CategoryLabelKey) => labels[key].trim().toLocaleLowerCase("pt-BR");
+    for (const key of CATEGORY_LABEL_KEYS) {
+      const field = `categoryLabels.${key}`;
+      if (!normalized(key)) problems[field] = "O nome não pode ficar em branco.";
+      // marca TODAS as que repetem, para a pessoa ver as duas
+      else if (CATEGORY_LABEL_KEYS.some((other) => other !== key && normalized(other) === normalized(key))) {
+        problems[field] = "Cada categoria precisa de um nome diferente.";
+      }
+    }
+    setLocalErrors(problems);
+    if (Object.keys(problems).length > 0) return;
+
+    const input: UpdateFarmInput = {};
+    if (castrated !== saved.defaultCastrated) input.defaultCastrated = castrated;
+    if (changedKeys.length > 0) {
+      input.categoryLabels = Object.fromEntries(
+        changedKeys.map((key) => {
+          const name = labels[key].trim();
+          // igual ao padrão = voltar ao padrão (o servidor não guarda)
+          return [key, name === standard.categoryLabels[key] ? null : name];
+        }),
+      );
+    }
+    save(input);
+  }
+
+  const groups: { sex: "MALE" | "FEMALE"; title: string; Icon: typeof Mars }[] = [
+    { sex: "MALE", title: "Machos", Icon: Mars },
+    { sex: "FEMALE", title: "Fêmeas", Icon: Venus },
+  ];
+
+  return (
+    <Card icon={<PawPrint size={18} />} title="Animais" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
+      {/* Castrado como padrão */}
+      <div className="mb-6">
+        <label htmlFor={castratedId} className="flex items-center justify-between gap-4 cursor-pointer">
+          <span>
+            <span className="block font-medium text-texto">Machos novos já vêm marcados como castrados?</span>
+            <span className="block text-sm text-texto-leve">
+              Só preenche o cadastro; dá para mudar em cada animal.
+            </span>
+          </span>
+          <input
+            id={castratedId}
+            type="checkbox"
+            role="switch"
+            checked={castrated}
+            onChange={(e) => setCastrated(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span
+            aria-hidden="true"
+            className="relative inline-block w-11 h-6 shrink-0 rounded-full bg-borda-chip transition-colors peer-checked:bg-verde peer-focus-visible:ring-2 peer-focus-visible:ring-verde peer-focus-visible:ring-offset-2 after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5"
+          />
+        </label>
+      </div>
+
+      {/* Nomes das categorias */}
+      <p className="font-medium text-texto mb-1">Nomes das categorias</p>
+      <p className="text-sm text-texto-leve mb-4">
+        Muda só o nome mostrado nas telas. Nenhum animal muda de categoria.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 mb-2">
+        {groups.map(({ sex, title, Icon }) => (
+          <fieldset key={sex} className="mb-4">
+            <legend className="flex items-center gap-1.5 text-sm font-medium text-texto-suave mb-2">
+              <Icon size={15} className={sexIconStyle[sex]} aria-hidden="true" /> {title}
+            </legend>
+            {CATEGORY_LABEL_KEYS.filter((key) => SEX_OF_LABEL_KEY[key] === sex).map((key) => (
+              <CategoryNameInput
+                key={key}
+                value={labels[key]}
+                standard={standard.categoryLabels[key]}
+                error={localErrors[`categoryLabels.${key}`] ?? errors[`categoryLabels.${key}`]}
+                onChange={(value) => setLabels((current) => ({ ...current, [key]: value }))}
+              />
+            ))}
+          </fieldset>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function CategoryNameInput(props: { value: string; standard: string; error?: string; onChange: (value: string) => void }) {
+  const id = useId();
+  const isStandard = props.value.trim() === props.standard;
+  return (
+    <div className="mb-3">
+      <label htmlFor={id} className="sr-only">
+        Nome para “{props.standard}”
+      </label>
+      <input
+        id={id}
+        value={props.value}
+        maxLength={30}
+        onChange={(e) => props.onChange(e.target.value)}
+        aria-invalid={!!props.error}
+        aria-describedby={props.error ? `${id}-error` : undefined}
+        className={inputClass(!!props.error)}
+      />
+      {props.error && (
+        <p id={`${id}-error`} role="alert" className="text-sm text-alerta mt-1">
+          {props.error}
+        </p>
+      )}
+      {!isStandard && (
+        <p className="flex flex-wrap items-center gap-x-2 text-xs text-texto-leve mt-1">
+          padrão: {props.standard}
+          <button
+            type="button"
+            onClick={() => props.onChange(props.standard)}
+            className="inline-flex items-center gap-1 text-verde font-medium cursor-pointer hover:underline"
+          >
+            <RotateCcw size={12} aria-hidden="true" /> Voltar ao padrão
+          </button>
+        </p>
+      )}
+    </div>
   );
 }
 

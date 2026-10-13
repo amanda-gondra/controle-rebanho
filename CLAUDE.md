@@ -78,12 +78,14 @@ Backend (raiz):
   src/config/env.ts             variáveis de ambiente validadas
   src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
                                 password.ts, errors.ts, error-handler.ts, dates.ts,
-                                farm.ts (configurações: campos, padrões, fusos do Brasil)
+                                farm.ts (configurações: campos, padrões, fusos do Brasil),
+                                categories.ts (categorias: regra de sexo e nomes — G4)
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
   src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance, farm, auth
   src/routes/                   auth.routes.ts (público) + animals, sanitary, finance, farm (protegidas)
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
-                                finance.service.ts (resultado por animal)
+                                finance.service.ts (resultado por animal),
+                                animal.service.ts (categoria × sexo e castrado — G4)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
 
 Frontend (web/):
@@ -93,11 +95,13 @@ Frontend (web/):
   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
-                                EditApplication, Trade, EstimatedPrice), ToastProvider
+                                EditApplication, Trade, EstimatedPrice), ToastProvider,
+                                CategoryPicker (categoria pelo sexo + castrado)
+  src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
   src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts, farm.ts,
                                 api.ts (request<T>: manda o cookie; 401 → volta para o login)
   src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
-                                timezones.ts (nomes dos fusos do Brasil)
+                                timezones.ts (nomes dos fusos do Brasil), categories.ts
   src/index.css                 tema "campo moderno" (paleta em @theme)
 ```
 
@@ -135,7 +139,8 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
 - Conta: `Farm` (nome, país, fuso + configurações da G2: moeda, unidade, fator da arroba,
   unidade de preço, antecedência do lembrete, castrado padrão) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
   `Session` (hash do token, validade).
-- Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda) · `Weighing` ·
+- Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda; categoria G4 combinando
+  com o sexo; `castrated` só machos) · `Weighing` ·
   `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
 - Datas de calendário são `@db.Date`. Dinheiro e peso são `Decimal`.
 
@@ -195,3 +200,9 @@ nome, fuso (só Brasil — D-31), antecedência do lembrete (vale na hora em `/a
 unidade fixas na 1.0 (D-30). Fator da arroba, unidade de preço e castrado padrão já ficam
 guardados, mas os cartões só aparecem com a G5/G4; nomes das categorias entram na G4.
 `request.auth.farm.settings` traz as configurações em toda rota protegida.
+
+**G4 (2026-10-13):** categorias `CALF HEIFER COW YEARLING ADULT_MALE BULL` (D-02) com regra de
+sexo na API e no banco; campo `castrated` (só machos; padrão da fazenda); nomes das categorias
+personalizáveis (Configurações → Animais; `useCategoryLabels` no frontend). Nunca escrever o
+nome da categoria fixo numa tela: usar `labelOf(category, sex)`. Migração converte os dados
+antigos e para se houver "vaca macho"/"boi fêmea".

@@ -1,4 +1,4 @@
-import type { Sex, Category, Status } from "./animal.js";
+import type { Sex, Status } from "./animal.js";
 
 // Traduz os códigos da API (inglês) para o que aparece na tela (português).
 export const sexLabel: Record<Sex, string> = {
@@ -6,12 +6,8 @@ export const sexLabel: Record<Sex, string> = {
   FEMALE: "Fêmea",
 };
 
-export const categoryLabel: Record<Category, string> = {
-  CALF: "Bezerro",
-  YEARLING: "Novilho",
-  STEER: "Boi",
-  COW: "Vaca",
-};
+// Nomes das categorias: vêm da fazenda (podem ser personalizados) — use o
+// hook useCategoryLabels (web/src/hooks/useCategoryLabels.ts).
 
 export const statusLabel: Record<Status, string> = {
   ACTIVE: "Ativo",

@@ -2,7 +2,8 @@
 // Eles espelham exatamente o schema do backend (em inglês, como combinamos).
 
 export type Sex = "MALE" | "FEMALE";
-export type Category = "CALF" | "YEARLING" | "STEER" | "COW";
+// Categorias da G4 (D-02): ver types/categories.ts (regra de sexo e nomes)
+export type Category = "CALF" | "HEIFER" | "COW" | "YEARLING" | "ADULT_MALE" | "BULL";
 export type Status = "ACTIVE" | "SOLD" | "DEAD";
 export type BirthPrecision = "DAY_MONTH_YEAR" | "MONTH_YEAR" | "UNKNOWN";
 
@@ -12,6 +13,7 @@ export type Animal = {
   sex: Sex;
   breed: string | null;
   category: Category;
+  castrated: boolean | null; // só machos (fêmea = null)
   status: Status;
   birthDate: string | null;
   birthPrecision: BirthPrecision;

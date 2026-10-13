@@ -34,6 +34,16 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
+## Categorias (G4)
+
+- `categories.test.ts` (integração): as 7 combinações válidas aceitas e as 5 inválidas recusadas
+  (nada gravado), categoria antiga recusada, o banco também recusa, castrado (padrão da fazenda,
+  informado, fêmea), edição olhando a combinação final, nomes da fazenda (renomear, não apagar
+  os outros, `null` volta ao padrão, repetido, limites).
+- `src/lib/categories.test.ts` e `src/services/animal.service.test.ts`: regras puras.
+- **Prova de que os testes protegem:** com a regra de sexo desligada de propósito, 17 testes
+  falham (feito em 2026-10-13).
+
 ## Configurações da fazenda (G2)
 
 - `farm.test.ts`: conta nova com todos os padrões (e os padrões do código iguais aos do banco),

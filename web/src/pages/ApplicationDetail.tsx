@@ -5,7 +5,8 @@ import { Sidebar } from "../components/Sidebar.js";
 import { getApplication, deleteApplication } from "../services/sanitary.js";
 import { EditApplicationModal } from "../components/EditApplicationModal.js";
 import type { Application } from "../types/animal.js";
-import { categoryLabel, sexLabel } from "../types/labels.js";
+import { sexLabel } from "../types/labels.js";
+import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { formatDate } from "../types/format.js";
 import { useToast } from "../components/ToastProvider.js";
 
@@ -13,6 +14,7 @@ export function ApplicationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const showToast = useToast();
+  const { labelOf } = useCategoryLabels();
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -171,7 +173,7 @@ export function ApplicationDetail() {
                 </span>
                 {link.animal && (
                   <span className="text-sm text-texto-suave">
-                    {categoryLabel[link.animal.category]} ·{" "}
+                    {labelOf(link.animal.category, link.animal.sex)} ·{" "}
                     {sexLabel[link.animal.sex]}
                   </span>
                 )}

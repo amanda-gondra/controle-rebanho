@@ -33,6 +33,11 @@ export const ErrorCode = {
   INSUFFICIENT_WEIGHINGS: "INSUFFICIENT_WEIGHINGS",
   SAME_DAY_WEIGHINGS: "SAME_DAY_WEIGHINGS",
 
+  // categorias (G4)
+  CATEGORY_INCOMPATIBLE_WITH_SEX: "CATEGORY_INCOMPATIBLE_WITH_SEX",
+  CASTRATED_ONLY_FOR_MALES: "CASTRATED_ONLY_FOR_MALES",
+  DUPLICATE_CATEGORY_LABEL: "DUPLICATE_CATEGORY_LABEL",
+
   // sanitário
   PRODUCT_NOT_FOUND: "PRODUCT_NOT_FOUND",
   APPLICATION_NOT_FOUND: "APPLICATION_NOT_FOUND",
@@ -83,3 +88,8 @@ export const unauthorized = (code: ErrorCode, message: string) =>
 // (usado quando a regra depende da fazenda, ex.: data futura no fuso dela).
 export const fieldError = (field: string, error: string) =>
   new AppError(400, ErrorCode.VALIDATION_ERROR, "Dados inválidos.", [{ field, error }]);
+
+// Erro de regra de negócio ligado a campos, com código PRÓPRIO (ex.: categoria
+// que não combina com o sexo) — o frontend decide pelo código e mostra no campo.
+export const ruleError = (code: ErrorCode, message: string, errors: FieldError[]) =>
+  new AppError(400, code, message, errors);

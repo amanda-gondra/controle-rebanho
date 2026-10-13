@@ -1,7 +1,7 @@
 # Arquitetura do backend
 
 > Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
-> por fazenda) + G2 (configurações da fazenda).
+> por fazenda) + G2 (configurações da fazenda) + G4 (categorias).
 
 ## Visão geral (atual)
 
@@ -138,7 +138,21 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
 - `GET /farm` e `PATCH /farm` **não têm id na rota**: a fazenda é sempre a da sessão. O schema
   `.strict()` recusa `id`, `country`, `currency` e `weightUnit`.
 - `GET /alerts` usa `reapplyAlertDays` e o fuso da fazenda (`classifyReapplication`).
-- Ainda sem efeito (esperando a parte que usa): `arrobaLiveFactorKg` e `preferredPriceUnit`
-  (G5), `defaultCastrated` (G4/Animais). Ficam guardados e editáveis pela API; os cartões da
-  tela entram junto com essas partes. Nomes das categorias (`categoryLabels`) entram na G4,
-  com as 7 categorias novas.
+- Ainda sem efeito (esperando a G5): `arrobaLiveFactorKg` e `preferredPriceUnit`. Ficam
+  guardados e editáveis pela API; o cartão "Negociações" entra com a G5.
+
+## Categorias (G4 — D-02)
+
+- `Category`: `CALF` (bezerro/bezerra), `HEIFER` (novilha), `COW` (vaca), `YEARLING` (garrote),
+  `ADULT_MALE` (boi), `BULL` (touro). `src/lib/categories.ts` é a fonte única da regra de sexo
+  (`CALF` serve aos dois; `HEIFER`/`COW` só fêmea; `YEARLING`/`ADULT_MALE`/`BULL` só macho).
+- `resolveAnimalProfile` (`src/services/animal.service.ts`) decide categoria e castrado no
+  cadastro e na edição, olhando a combinação FINAL (o que o animal já tem + o que mudou).
+  Erros: `CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES` (400, com o campo).
+- Castrado: só machos; sem valor no cadastro → `Farm.defaultCastrated`; fêmea → `null`.
+- A mesma regra está no banco (`CHECK`), como defesa extra.
+- Nomes exibidos: 7 chaves (`CALF_MALE`, `CALF_FEMALE`, `YEARLING`, `ADULT_MALE`, `BULL`,
+  `HEIFER`, `COW`). `Farm.categoryLabels` guarda só os que a fazenda mudou; a API devolve os 7
+  já resolvidos em `settings.categoryLabels`. `PATCH /farm { categoryLabels: { CHAVE: "nome" | null } }`
+  muda só as chaves enviadas (`null` = padrão); nomes repetidos → `DUPLICATE_CATEGORY_LABEL`.
+  O código da categoria nunca muda. No frontend, o hook `useCategoryLabels` dá o nome certo.

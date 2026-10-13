@@ -20,6 +20,7 @@ import {
   weighingParamsSchema,
 } from "../schemas/weighing.schema.js";
 import { calculateWeightGain } from "../services/weighing.service.js";
+import { resolveAnimalProfile } from "../services/animal.service.js";
 
 const animalNotFound = () =>
   notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
@@ -51,11 +52,18 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { birthDate, ...rest } = request.body;
+      const { birthDate, sex, category, castrated, ...rest } = request.body;
       assertNotInFuture(birthDate, request.auth.farm.timezone, "birthDate", FUTURE_BIRTH);
+      // Categoria × sexo e castrado (G4); castrado padrão vem da fazenda
+      const profile = resolveAnimalProfile(
+        null,
+        { sex, category, castrated },
+        request.auth.farm.settings.defaultCastrated,
+      );
       const animal = await request.db.animal.create({
         data: {
           ...rest,
+          ...profile,
           farmId: request.auth.farm.id,
           ...(birthDate ? { birthDate: toDbDate(birthDate) } : {}),
         },
@@ -117,14 +125,22 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      await findAnimalOrFail(request.db, request.params.id);
+      const current = await findAnimalOrFail(request.db, request.params.id);
 
-      const { birthDate, birthPrecision, ...rest } = request.body;
+      const { birthDate, birthPrecision, sex, category, castrated, ...rest } = request.body;
       assertNotInFuture(birthDate, request.auth.farm.timezone, "birthDate", FUTURE_BIRTH);
+      // Confere a combinação FINAL (o que já tinha + o que mudou): corrigir o
+      // sexo de um garrote para fêmea sem trocar a categoria é recusado.
+      const profile = resolveAnimalProfile(
+        current,
+        { sex, category, castrated },
+        request.auth.farm.settings.defaultCastrated,
+      );
       return request.db.animal.update({
         where: { id: request.params.id },
         data: {
           ...rest,
+          ...profile,
           ...(birthDate !== undefined
             ? { birthDate: birthDate === null ? null : toDbDate(birthDate) }
             : {}),

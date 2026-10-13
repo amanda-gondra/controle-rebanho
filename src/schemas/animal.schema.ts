@@ -6,10 +6,14 @@ import {
   calendarDate,
   requiredText,
 } from "./common.schema.js";
+import { CATEGORIES } from "../lib/categories.js";
 
 const sex = z.enum(["MALE", "FEMALE"]);
-// As categorias mudam na parte G4 (D-02); aqui ficam as atuais do banco.
-const category = z.enum(["CALF", "YEARLING", "STEER", "COW"]);
+// Categorias da G4 (D-02). A combinação com o sexo é conferida na rota
+// (resolveAnimalProfile), porque na edição depende do que o animal já tem.
+const category = z.enum(CATEGORIES, "Categoria inválida.");
+// Só para machos; na fêmea, mandar qualquer valor é recusado (RN-ANIMAL-006)
+const castrated = z.boolean({ error: "Informe sim ou não." });
 const status = z.enum(["ACTIVE", "SOLD", "DEAD"]);
 const birthPrecision = z.enum(["DAY_MONTH_YEAR", "MONTH_YEAR", "UNKNOWN"]);
 
@@ -23,6 +27,7 @@ export const createAnimalSchema = z
     tag: requiredText(MAX_TAG_LENGTH, "O brinco é obrigatório."),
     sex,
     category,
+    castrated: castrated.optional(), // macho sem valor → padrão da fazenda
     breed: breed.optional(),
     birthDate: birthDate.optional(),
     birthPrecision: birthPrecision.default("UNKNOWN"),
@@ -61,6 +66,7 @@ export const updateAnimalSchema = z
   .object({
     sex,
     category,
+    castrated,
     breed: breed.nullable(),
     birthDate: birthDate.nullable(),
     birthPrecision,

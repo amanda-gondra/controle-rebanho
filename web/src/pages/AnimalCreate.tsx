@@ -5,19 +5,15 @@ import { Sidebar } from "../components/Sidebar.js";
 import { createAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
 import { useToast } from "../components/ToastProvider.js";
+import { useAuth } from "../components/AuthProvider.js";
+import { CategoryPicker } from "../components/CategoryPicker.js";
+import { isCategoryCompatible } from "../types/categories.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
 const sexOptions: { value: Sex; label: string }[] = [
   { value: "MALE", label: "Macho" },
   { value: "FEMALE", label: "Fêmea" },
-];
-
-const categoryOptions: { value: Category; label: string }[] = [
-  { value: "CALF", label: "Bezerro" },
-  { value: "YEARLING", label: "Novilho" },
-  { value: "STEER", label: "Boi" },
-  { value: "COW", label: "Vaca" },
 ];
 
 const months = [
@@ -28,10 +24,13 @@ const months = [
 export function AnimalCreate() {
   const navigate = useNavigate();
   const showToast = useToast();
+  const { account } = useAuth();
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<Sex | "">("");
   const [category, setCategory] = useState<Category | "">("");
+  // Castrado começa com o padrão da fazenda (Configurações → Animais)
+  const [castrated, setCastrated] = useState(account?.farm.settings.defaultCastrated ?? false);
   const [breed, setBreed] = useState("");
   const [birthKnowledge, setBirthKnowledge] = useState<BirthKnowledge>("");
   const [birthDate, setBirthDate] = useState("");
@@ -41,6 +40,13 @@ export function AnimalCreate() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  // Trocar o sexo apaga a categoria escolhida se ela deixar de combinar
+  // (ex.: "garrote" e depois "fêmea")
+  function handleSexChange(newSex: Sex) {
+    setSex(newSex);
+    if (category && !isCategoryCompatible(category, newSex)) setCategory("");
+  }
 
   async function handleSubmit() {
     setErrors({});
@@ -72,6 +78,7 @@ export function AnimalCreate() {
         tag: tag.trim(),
         sex: sex as Sex,
         category: category as Category,
+        ...(sex === "MALE" ? { castrated } : {}),
         breed: breed.trim() || undefined,
         birthPrecision,
         birthDate: finalBirthDate,
@@ -144,7 +151,7 @@ export function AnimalCreate() {
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setSex(opt.value)}
+                  onClick={() => handleSexChange(opt.value)}
                   className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
                     sex === opt.value
                       ? "bg-verde border-verde text-white"
@@ -158,31 +165,15 @@ export function AnimalCreate() {
             {errors.sex && <p className="text-sm text-alerta mt-1">{errors.sex}</p>}
           </div>
 
-          {/* Categoria */}
-          <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
-              Categoria <span className="text-alerta">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {categoryOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setCategory(opt.value)}
-                  className={`py-2.5 rounded-lg border font-medium cursor-pointer ${
-                    category === opt.value
-                      ? "bg-verde border-verde text-white"
-                      : "bg-card border-borda-chip text-texto-suave"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {errors.category && (
-              <p className="text-sm text-alerta mt-1">{errors.category}</p>
-            )}
-          </div>
+          {/* Categoria (só as que combinam com o sexo) + castrado (só machos) — G4 */}
+          <CategoryPicker
+            sex={sex}
+            category={category}
+            onCategoryChange={setCategory}
+            castrated={castrated}
+            onCastratedChange={setCastrated}
+            error={errors.category ?? errors.castrated}
+          />
 
           {/* Raça */}
           <div className="mb-5">
