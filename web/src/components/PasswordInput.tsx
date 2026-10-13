@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { inputClass } from "./AuthLayout.js";
+import { t } from "../i18n/index.js";
 
 // Campo de senha com o olho para mostrar/ocultar (Briefs 6 e 7)
 export function PasswordInput({
@@ -33,7 +34,7 @@ export function PasswordInput({
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
+        aria-label={visible ? t("auth.hidePassword") : t("auth.showPassword")}
         className="absolute inset-y-0 right-0 px-3 text-texto-suave hover:text-texto cursor-pointer"
       >
         {visible ? <EyeOff size={18} /> : <Eye size={18} />}

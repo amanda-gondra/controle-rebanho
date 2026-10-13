@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { hasZodFastifySchemaValidationErrors } from "fastify-type-provider-zod";
 import { AppError, ErrorCode, type FieldError } from "./errors.js";
+import { issueToFieldErrors, type IssueLike } from "./validation-errors.js";
 
 type ErrorBody = { code: ErrorCode; message: string; errors?: FieldError[] };
 
@@ -125,10 +126,20 @@ export function errorHandler(
     return reply.status(400).send({
       code: ErrorCode.VALIDATION_ERROR,
       message: "Dados inválidos.",
-      errors: error.validation.map((issue) => ({
-        field: issue.instancePath ? issue.instancePath.replace(/^\//, "") : "",
-        error: issue.message ?? "Valor inválido.",
-      })),
+      // Cada problema vira { field, code, params?, error } — G3
+      errors: error.validation.flatMap((issue) => {
+        const path = issue.instancePath.replace(/^\//, "").split("/").filter(Boolean);
+        const input =
+          error.validationContext === "querystring"
+            ? request.query
+            : error.validationContext === "params"
+              ? request.params
+              : request.body;
+        return issueToFieldErrors(
+          { ...(issue.params as object), code: issue.keyword, path, message: issue.message } as IssueLike,
+          input,
+        );
+      }),
     } satisfies ErrorBody);
   }
 
@@ -137,10 +148,9 @@ export function errorHandler(
     return reply.status(400).send({
       code: ErrorCode.VALIDATION_ERROR,
       message: "Dados inválidos.",
-      errors: error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        error: issue.message ?? "Valor inválido.",
-      })),
+      errors: error.issues.flatMap((issue) =>
+        issueToFieldErrors(issue as unknown as IssueLike, request.body),
+      ),
     } satisfies ErrorBody);
   }
 

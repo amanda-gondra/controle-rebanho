@@ -67,23 +67,30 @@ export function categoryLabelKey(category: Category, sex: Sex): CategoryLabelKey
 export const normalizeLabel = (label: string) => label.trim().toLocaleLowerCase("pt-BR");
 
 // O banco guarda só os nomes que a fazenda MUDOU (objeto vazio = todos no
-// padrão). Aqui junta com os padrões e ignora qualquer coisa inválida que
-// esteja no banco (nunca quebra a leitura).
-export function resolveCategoryLabels(stored: unknown): CategoryLabels {
-  const labels = { ...DEFAULT_CATEGORY_LABELS };
+// padrão). Lê esse objeto ignorando qualquer coisa inválida (nunca quebra a
+// leitura). É isso que a API devolve: os nomes PADRÃO ficam na tradução da
+// tela (G3), no idioma de quem usa.
+export function customCategoryLabels(stored: unknown): Partial<CategoryLabels> {
+  const custom: Partial<CategoryLabels> = {};
   if (stored && typeof stored === "object" && !Array.isArray(stored)) {
     for (const key of CATEGORY_LABEL_KEYS) {
       const value = (stored as Record<string, unknown>)[key];
-      if (typeof value === "string" && value.trim() !== "") labels[key] = value.trim();
+      if (typeof value === "string" && value.trim() !== "") custom[key] = value.trim();
     }
   }
-  return labels;
+  return custom;
+}
+
+// Os 7 nomes resolvidos (personalizados + padrões em português) — usado para
+// conferir nomes repetidos.
+export function resolveCategoryLabels(stored: unknown): CategoryLabels {
+  return { ...DEFAULT_CATEGORY_LABELS, ...customCategoryLabels(stored) };
 }
 
 // Junta os nomes atuais com os enviados e devolve só o que difere do padrão
 // (o que vai para o banco). `null` ou o próprio nome padrão = voltar ao padrão.
 export function mergeCategoryLabels(
-  current: CategoryLabels,
+  current: CategoryLabels, // os 7 nomes resolvidos de agora
   changes: Partial<Record<CategoryLabelKey, string | null>>,
 ): { labels: CategoryLabels; overrides: Partial<CategoryLabels> } {
   const labels = { ...current };

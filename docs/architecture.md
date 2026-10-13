@@ -1,7 +1,7 @@
 # Arquitetura do backend
 
 > Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
-> por fazenda) + G2 (configurações da fazenda) + G4 (categorias).
+> por fazenda) + G2 (configurações da fazenda) + G4 (categorias) + G3 (textos fora do código).
 
 ## Visão geral (atual)
 
@@ -58,11 +58,23 @@ requisição
 
 ```json
 { "code": "DUPLICATE_TAG", "message": "Já existe um animal cadastrado com este brinco." }
-{ "code": "VALIDATION_ERROR", "message": "Dados inválidos.", "errors": [{ "field": "weightKg", "error": "..." }] }
+{ "code": "VALIDATION_ERROR", "message": "Dados inválidos.",
+  "errors": [{ "field": "tag", "code": "TOO_LONG", "params": { "max": 50 }, "error": "Use no máximo 50 caracteres." }] }
 ```
 
-O **`code` é o contrato** (regra transversal 7). O `message` existe enquanto os textos do
-frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
+O **`code` é o contrato** (regra transversal 7). Desde a G3 a tela **nunca** mostra o
+`message` nem o `error` (são textos em português para quem lê a API): ela traduz o `code`.
+Cada erro de campo traz o próprio `code` e, quando a frase precisa de número, `params`
+(`src/lib/validation-errors.ts` converte os problemas do Zod; regras próprias informam o
+código em `refine(..., { params: { code } })`; `fieldError(campo, código, texto)` e
+`ruleError(...)` para regras na rota). Lista completa em `src/lib/errors.ts`.
+
+Códigos de campo: `REQUIRED`, `INVALID_TYPE`, `TOO_SHORT {min}`, `TOO_LONG {max}`,
+`TOO_SMALL {min, inclusive}`, `TOO_BIG {max, inclusive}`, `TOO_FEW {min}`, `TOO_MANY {max}`,
+`NOT_INTEGER`, `MAX_2_DECIMALS`, `INVALID_FORMAT {format}`, `INVALID_OPTION`, `UNKNOWN_FIELD`,
+`DUPLICATE_ITEMS`, `FUTURE_DATE`, `REAPPLY_BEFORE_DATE`, `EMPTY_UPDATE`, `INVALID` — e os de
+regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
+`DUPLICATE_CATEGORY_LABEL`).
 
 | Situação | Status | Código |
 |---|---|---|
@@ -156,3 +168,24 @@ frontend não saem do código (G3). Lista completa em `src/lib/errors.ts`.
   já resolvidos em `settings.categoryLabels`. `PATCH /farm { categoryLabels: { CHAVE: "nome" | null } }`
   muda só as chaves enviadas (`null` = padrão); nomes repetidos → `DUPLICATE_CATEGORY_LABEL`.
   O código da categoria nunca muda. No frontend, o hook `useCategoryLabels` dá o nome certo.
+
+## Textos da tela (G3 — D-01)
+
+- Todo texto da interface fica em `web/src/i18n/pt-BR.ts` (único idioma publicado na 1.0),
+  organizado por tela; a tela usa `t("chave", { valores })`. Chave errada não compila.
+  Plural: `{ one, other }` escolhido pelo `Intl.PluralRules` (zero usa "other").
+- Sem biblioteca externa: `web/src/i18n/index.ts` é uma função pequena e tipada.
+- Erros da API: `web/src/i18n/errors.ts` (`errorMessage`, `fieldErrorsOf`,
+  `singleErrorMessage`) traduz pelo `code`; nunca pelo `message`.
+- Datas, números e dinheiro: `web/src/types/format.ts`, sempre por `Intl` no idioma da tela;
+  moeda vem da fazenda (`setDisplayCurrency`). Meses e nomes de país/moeda também vêm do `Intl`.
+- Nomes de categoria: os padrões vêm da tradução (`categories.*`); a API devolve só os
+  **personalizados** pela fazenda (`settings.categoryLabels`).
+- **Idioma de teste** (só em desenvolvimento): abrir o app com `?lang=test` mostra a chave no
+  lugar de cada texto (`⟦nav.herd⟧`) e formata datas/números em inglês. Qualquer frase em
+  português que aparecer ficou fixa no código. `?lang=pt-BR` volta.
+- **Conferência automática:** `npm run lint` (em `web/`) roda `scripts/check-i18n.mjs`, que
+  acusa texto fixo no JSX e textos entre aspas com cara de frase. Caso legítimo:
+  `// i18n-ignore` na linha.
+- Mensagens da API (`message`/`error`) continuam em português, só para desenvolvedor.
+

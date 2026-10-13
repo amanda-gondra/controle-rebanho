@@ -38,7 +38,7 @@ export async function request<T>(
     const error: ApiError = {
       status: response.status,
       code: body?.code,
-      message: body?.message ?? "Algo deu errado.",
+      message: body?.message ?? "", // só para desenvolvedor; a tela usa o code (G3)
       errors: body?.errors,
     };
 

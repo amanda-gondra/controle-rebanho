@@ -11,7 +11,8 @@ export type FarmSettings = {
   preferredPriceUnit: PriceUnit;
   reapplyAlertDays: number;
   defaultCastrated: boolean;
-  categoryLabels: CategoryLabels; // os 7 nomes já resolvidos (G4)
+  // Só os nomes PERSONALIZADOS pela fazenda; os padrões vêm da tradução (G3)
+  categoryLabels: Partial<CategoryLabels>;
 };
 
 export type Farm = {

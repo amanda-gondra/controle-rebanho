@@ -5,6 +5,7 @@ import { Sidebar } from "../components/Sidebar.js";
 import { listApplications, listAlerts } from "../services/sanitary.js";
 import type { Application, ProductType } from "../types/animal.js";
 import { formatDate } from "../types/format.js";
+import { t } from "../i18n/index.js";
 
 type TypeFilter = ProductType | "ALL";
 
@@ -37,25 +38,21 @@ export function Sanitary() {
         {/* Cabeçalho */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-medium text-texto">
-              Manejo sanitário
-            </h1>
-            <p className="text-texto-suave">
-              Histórico de vacinas e vermífugos aplicados
-            </p>
+            <h1 className="text-2xl font-medium text-texto">{t("sanitary.title")}</h1>
+            <p className="text-texto-suave">{t("sanitary.subtitle")}</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => navigate("/produtos")}
               className="flex items-center gap-2 bg-card border border-borda-chip text-texto-suave font-medium px-4 py-2.5 rounded-xl cursor-pointer hover:bg-bege"
             >
-              <Package size={18} /> Produtos
+              <Package size={18} /> {t("sanitary.products")}
             </button>
             <button
               onClick={() => navigate("/aplicacoes/nova")}
               className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
             >
-              <Plus size={18} /> Registrar aplicação
+              <Plus size={18} /> {t("sanitary.newApplication")}
             </button>
           </div>
         </div>
@@ -65,7 +62,7 @@ export function Sanitary() {
           <div className="bg-card border border-borda rounded-xl p-5 mb-6 max-w-2xl">
             <div className="flex items-center gap-2 mb-3">
               <Bell size={18} className="text-verde" />
-              <p className="font-medium text-texto">Reaplicações</p>
+              <p className="font-medium text-texto">{t("sanitary.reapplications")}</p>
             </div>
             <div className="flex flex-col gap-2">
               {alerts.map((app) => (
@@ -88,10 +85,10 @@ export function Sanitary() {
                         {app.product.name}
                       </p>
                       <p className="text-xs text-texto-suave">
-                        {app._count?.animals ?? 0}{" "}
-                        {app._count?.animals === 1 ? "animal" : "animais"} ·{" "}
-                        {app.overdue ? "venceu em" : "reaplicar em"}{" "}
-                        {app.reapplyDate ? formatDate(app.reapplyDate) : ""}
+                        {t(app.overdue ? "sanitary.overdueOn" : "sanitary.reapplyOn", {
+                          animals: t("common.animalsCount", { count: app._count?.animals ?? 0 }),
+                          date: app.reapplyDate ? formatDate(app.reapplyDate) : "",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -102,7 +99,7 @@ export function Sanitary() {
                         : "bg-verde-claro text-verde-escuro"
                     }`}
                   >
-                    {app.overdue ? "Vencida" : "Em breve"}
+                    {app.overdue ? t("sanitary.overdue") : t("sanitary.soon")}
                   </span>
                 </div>
               ))}
@@ -112,13 +109,7 @@ export function Sanitary() {
 
         {/* Filtro por tipo */}
         <div className="flex gap-2 mb-6">
-          {(
-            [
-              ["ALL", "Todos"],
-              ["VACCINE", "Vacinas"],
-              ["DEWORMER", "Vermífugos"],
-            ] as const
-          ).map(([value, label]) => (
+          {(["ALL", "VACCINE", "DEWORMER"] as const).map((value) => (
             <button
               key={value}
               onClick={() => setTypeFilter(value)}
@@ -128,27 +119,23 @@ export function Sanitary() {
                   : "bg-card border-borda-chip text-texto-suave"
               }`}
             >
-              {label}
+              {t(`sanitary.filter${value}`)}
             </button>
           ))}
         </div>
 
         {/* Lista de aplicações (histórico por evento) */}
         {loading ? (
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         ) : applications.length === 0 ? (
           <div className="bg-card border border-borda rounded-xl p-10 text-center max-w-xl">
-            <p className="text-texto font-medium mb-1">
-              Nenhuma aplicação registrada
-            </p>
-            <p className="text-texto-suave text-sm mb-4">
-              Registre a primeira vacina ou vermífugo do seu rebanho.
-            </p>
+            <p className="text-texto font-medium mb-1">{t("sanitary.empty")}</p>
+            <p className="text-texto-suave text-sm mb-4">{t("sanitary.emptyHelp")}</p>
             <button
               onClick={() => navigate("/aplicacoes/nova")}
               className="inline-flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
             >
-              <Plus size={18} /> Registrar aplicação
+              <Plus size={18} /> {t("sanitary.newApplication")}
             </button>
           </div>
         ) : (
@@ -182,8 +169,7 @@ export function Sanitary() {
                   </div>
                 </div>
                 <span className="text-sm text-texto-suave">
-                  {app._count?.animals ?? 0}{" "}
-                  {app._count?.animals === 1 ? "animal" : "animais"}
+                  {t("common.animalsCount", { count: app._count?.animals ?? 0 })}
                 </span>
               </div>
             ))}

@@ -4,6 +4,7 @@ import { SESSION_LOST_EVENT } from "../services/api.js";
 import * as authApi from "../services/auth.js";
 import type { Account, RegisterInput } from "../services/auth.js";
 import type { Farm } from "../services/farm.js";
+import { setDisplayCurrency } from "../types/format.js";
 
 // Estado do login, compartilhado por todo o app.
 //  - "loading": ainda perguntando ao servidor se há sessão (ao abrir o app)
@@ -41,6 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => setAccount(null))
       .finally(() => setLoading(false));
   }, []);
+
+  // Valores em dinheiro aparecem na moeda da fazenda (D-30: real na 1.0)
+  useEffect(() => {
+    if (account) setDisplayCurrency(account.farm.currency);
+  }, [account]);
 
   // Se alguma tela recebe 401, a sessão acabou: volta para a tela de entrar.
   useEffect(() => {

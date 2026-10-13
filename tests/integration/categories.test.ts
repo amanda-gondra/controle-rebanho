@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { useTestApp } from "../helpers/suite.js";
 import { createAnimal } from "../helpers/factories.js";
 import { prisma } from "../../src/lib/prisma.js";
-import { DEFAULT_CATEGORY_LABELS } from "../../src/lib/categories.js";
 
 // CATEGORIAS (G4 — D-02, RN-ANIMAL-004/006/007). Critérios do Escopo §7 e da
 // "Espec — Animais" (números entre parênteses).
@@ -132,10 +131,11 @@ describe("edição (Espec critério 15)", () => {
 });
 
 describe("nomes das categorias da fazenda (RN-ANIMAL-007 · Espec Configurações, critérios 3 e 7)", () => {
-  it("conta nova vem com os 7 nomes padrão", async () => {
+  it("conta nova não tem nome personalizado", async () => {
     const farm = (await t.client.inject({ url: "/farm" })).json();
-    expect(farm.settings.categoryLabels).toEqual(DEFAULT_CATEGORY_LABELS);
-    expect(farm.defaults.categoryLabels).toEqual(DEFAULT_CATEGORY_LABELS);
+    // Nenhum nome personalizado: a tela usa os padrões da tradução (G3)
+    expect(farm.settings.categoryLabels).toEqual({});
+    expect(farm.defaults.categoryLabels).toEqual({});
   });
 
   it("renomear garrote para novilho muda só o nome; nenhum animal muda", async () => {
@@ -143,7 +143,7 @@ describe("nomes das categorias da fazenda (RN-ANIMAL-007 · Espec Configuraçõe
 
     const response = await patchFarm({ categoryLabels: { YEARLING: "  Novilho " } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().settings.categoryLabels).toEqual({ ...DEFAULT_CATEGORY_LABELS, YEARLING: "Novilho" });
+    expect(response.json().settings.categoryLabels).toEqual({ YEARLING: "Novilho" });
 
     const me = (await t.client.inject({ url: "/auth/me" })).json();
     expect(me.farm.settings.categoryLabels.YEARLING).toBe("Novilho");
@@ -166,7 +166,7 @@ describe("nomes das categorias da fazenda (RN-ANIMAL-007 · Espec Configuraçõe
   it("null volta ao padrão", async () => {
     await patchFarm({ categoryLabels: { YEARLING: "Novilho" } });
     const response = await patchFarm({ categoryLabels: { YEARLING: null } });
-    expect(response.json().settings.categoryLabels.YEARLING).toBe("Garrote");
+    expect(response.json().settings.categoryLabels).toEqual({});
   });
 
   it("dois nomes iguais → 400 DUPLICATE_CATEGORY_LABEL e nada muda", async () => {
@@ -176,7 +176,7 @@ describe("nomes das categorias da fazenda (RN-ANIMAL-007 · Espec Configuraçõe
     expect(response.json().errors).toEqual([expect.objectContaining({ field: "categoryLabels.BULL" })]);
 
     const farm = (await t.client.inject({ url: "/farm" })).json();
-    expect(farm.settings.categoryLabels.BULL).toBe("Touro");
+    expect(farm.settings.categoryLabels).toEqual({});
   });
 
   it.each([

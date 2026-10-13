@@ -1,6 +1,7 @@
 import type { Category, Sex } from "../types/animal.js";
 import { CATEGORIES_BY_SEX } from "../types/categories.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
+import { t } from "../i18n/index.js";
 
 // Categoria + castrado no cadastro e na edição do animal (G4).
 // - Mostra só as categorias que combinam com o sexo escolhido (D-02).
@@ -24,11 +25,11 @@ export function CategoryPicker({ sex, category, onCategoryChange, castrated, onC
     <>
       <div className="mb-5">
         <p id="category-label" className="block font-medium text-texto mb-1">
-          Categoria <span className="text-alerta">*</span>
+          {t("animal.form.category")} <span className="text-alerta">*</span>
         </p>
         {!sex ? (
           <p className="text-sm text-texto-leve border border-dashed border-borda-chip rounded-lg px-3 py-3">
-            Escolha o sexo primeiro — as categorias aparecem conforme o sexo.
+            {t("animal.form.chooseSexFirst")}
           </p>
         ) : (
           <div role="radiogroup" aria-labelledby="category-label" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -57,8 +58,8 @@ export function CategoryPicker({ sex, category, onCategoryChange, castrated, onC
         <div className="mb-5">
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <span>
-              <span className="block font-medium text-texto">Castrado</span>
-              <span className="block text-sm text-texto-leve">O padrão pode ser mudado em Configurações.</span>
+              <span className="block font-medium text-texto">{t("animal.form.castrated")}</span>
+              <span className="block text-sm text-texto-leve">{t("animal.form.castratedHelp")}</span>
             </span>
             <input
               type="checkbox"

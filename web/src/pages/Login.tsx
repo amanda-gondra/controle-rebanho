@@ -5,6 +5,8 @@ import { AuthField, AuthLayout, inputClass } from "../components/AuthLayout.js";
 import { PasswordInput } from "../components/PasswordInput.js";
 import { useAuth } from "../components/AuthProvider.js";
 import type { ApiError } from "../services/api.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
 
 // Tela de entrar (Brief 6). Sem "Esqueci minha senha" por enquanto (D-25).
 export function Login() {
@@ -22,8 +24,8 @@ export function Login() {
     event.preventDefault();
 
     const found: Record<string, string> = {};
-    if (!email.trim()) found.email = "Informe o seu e-mail.";
-    if (!password) found.password = "Informe a sua senha.";
+    if (!email.trim()) found.email = t("auth.login.emailRequired");
+    if (!password) found.password = t("auth.login.passwordRequired");
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
@@ -32,39 +34,31 @@ export function Login() {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      const error = err as ApiError;
-      if (error.code === "INVALID_CREDENTIALS") {
-        setErrors({ geral: "E-mail ou senha incorretos. Confira e tente de novo." });
-      } else if (error.code === "RATE_LIMITED") {
-        setErrors({ geral: "Muitas tentativas. Espere um minuto e tente de novo." });
-      } else if (error.status === undefined || error.status >= 500) {
-        setErrors({ geral: "Não foi possível conectar. Verifique a internet e tente de novo." });
-      } else {
-        setErrors({ geral: error.message ?? "Algo deu errado. Tente de novo." });
-      }
+      // Pelo código do erro (senha errada, muitas tentativas, sem conexão...)
+      setErrors({ geral: errorMessage(err as ApiError) });
       setSubmitting(false);
     }
   }
 
   return (
     <AuthLayout>
-      <h1 className="text-2xl font-medium text-texto mb-1">Entrar</h1>
-      <p className="text-texto-suave mb-6">Acesse o controle do seu rebanho.</p>
+      <h1 className="text-2xl font-medium text-texto mb-1">{t("auth.login.title")}</h1>
+      <p className="text-texto-suave mb-6">{t("auth.login.subtitle")}</p>
 
       {sessionExpired && (
         <p role="status" className="mb-4 rounded-lg bg-verde-claro text-verde-escuro px-3 py-2 text-sm">
-          Sua sessão expirou. Entre de novo para continuar.
+          {t("auth.login.sessionExpired")}
         </p>
       )}
 
       <form onSubmit={handleSubmit} noValidate>
-        <AuthField id="email" label="E-mail" error={errors.email}>
+        <AuthField id="email" label={t("auth.email")} error={errors.email}>
           <input
             id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="seu@email.com"
+            placeholder={t("auth.emailPlaceholder")}
             autoComplete="email"
             aria-invalid={!!errors.email}
             aria-describedby={errors.email ? "email-error" : undefined}
@@ -72,7 +66,7 @@ export function Login() {
           />
         </AuthField>
 
-        <AuthField id="password" label="Senha" error={errors.password}>
+        <AuthField id="password" label={t("auth.password")} error={errors.password}>
           <PasswordInput
             id="password"
             value={password}
@@ -93,14 +87,14 @@ export function Login() {
           disabled={submitting}
           className="w-full bg-verde text-white font-medium py-2.5 rounded-lg cursor-pointer disabled:opacity-60"
         >
-          {submitting ? "Entrando..." : "Entrar"}
+          {submitting ? t("auth.login.submitting") : t("auth.login.submit")}
         </button>
       </form>
 
       <p className="text-sm text-texto-suave mt-6 text-center">
-        Não tem conta?{" "}
+        {t("auth.login.noAccount")}{" "}
         <Link to="/register" className="text-verde font-medium hover:underline">
-          Criar conta
+          {t("auth.login.createAccount")}
         </Link>
       </p>
     </AuthLayout>

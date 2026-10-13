@@ -1,4 +1,5 @@
 import type { Category, Sex } from "./animal.js";
+import { t } from "../i18n/index.js";
 
 // Regras de categoria na tela (G4 — D-02). A regra que VALE é a do servidor
 // (src/lib/categories.ts); aqui ela só serve para mostrar as opções certas.
@@ -40,6 +41,16 @@ export const SEX_OF_LABEL_KEY: Record<CategoryLabelKey, Sex> = {
 export function categoryLabelKey(category: Category, sex: Sex): CategoryLabelKey {
   if (category === "CALF") return sex === "FEMALE" ? "CALF_FEMALE" : "CALF_MALE";
   return category;
+}
+
+// Nome PADRÃO de cada uma (vem da tradução — G3)
+export const defaultCategoryLabel = (key: CategoryLabelKey) => t(`categories.${key}`);
+
+// Os 7 nomes da fazenda: os personalizados (vindos da API) + os padrões
+export function resolveCategoryLabels(custom: Partial<CategoryLabels> | undefined): CategoryLabels {
+  return Object.fromEntries(
+    CATEGORY_LABEL_KEYS.map((key) => [key, custom?.[key] ?? defaultCategoryLabel(key)]),
+  ) as CategoryLabels;
 }
 
 // Ordem dos filtros de categoria (lista do rebanho, aplicação sanitária)

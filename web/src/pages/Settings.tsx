@@ -7,8 +7,15 @@ import { useToast } from "../components/ToastProvider.js";
 import { getFarm, updateFarm } from "../services/farm.js";
 import type { FarmWithDefaults, UpdateFarmInput } from "../services/farm.js";
 import type { ApiError } from "../services/api.js";
-import { BRAZIL_TIME_ZONE_LABELS, utcOffsetLabel } from "../types/timezones.js";
-import { CATEGORY_LABEL_KEYS, SEX_OF_LABEL_KEY } from "../types/categories.js";
+import { BRAZIL_TIME_ZONES, timeZoneLabel, utcOffsetLabel } from "../types/timezones.js";
+import {
+  CATEGORY_LABEL_KEYS,
+  SEX_OF_LABEL_KEY,
+  defaultCategoryLabel,
+  resolveCategoryLabels,
+} from "../types/categories.js";
+import { intlLocale, t, tOptional } from "../i18n/index.js";
+import { fieldErrorsOf } from "../i18n/errors.js";
 import type { CategoryLabelKey, CategoryLabels } from "../types/categories.js";
 import { sexIconStyle } from "../types/labels.js";
 
@@ -23,11 +30,25 @@ import { sexIconStyle } from "../types/labels.js";
 type FieldErrors = Record<string, string>;
 
 // Opções de fuso: Brasília primeiro (o padrão), depois o resto em ordem alfabética
-const TIME_ZONE_OPTIONS = Object.entries(BRAZIL_TIME_ZONE_LABELS)
-  .map(([value, label]) => ({ value, label: `${label} (${utcOffsetLabel(value)})` }))
-  .sort((a, b) =>
-    a.value === "America/Sao_Paulo" ? -1 : b.value === "America/Sao_Paulo" ? 1 : a.label.localeCompare(b.label, "pt-BR"),
-  );
+const TIME_ZONE_OPTIONS = BRAZIL_TIME_ZONES.map((value) => ({
+  value,
+  label: t("settings.farm.timezoneOption", { label: timeZoneLabel(value), offset: utcOffsetLabel(value) }),
+})).sort((a, b) =>
+  a.value === "America/Sao_Paulo"
+    ? -1
+    : b.value === "America/Sao_Paulo"
+      ? 1
+      : a.label.localeCompare(b.label, intlLocale()),
+);
+
+// País e moeda pelo nome no idioma da tela (Intl), sem lista fixa no código
+const displayName = (type: "region" | "currency", code: string) => {
+  try {
+    return new Intl.DisplayNames(intlLocale(), { type }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
 
 export function Settings() {
   const [farm, setFarm] = useState<FarmWithDefaults | null>(null);
@@ -51,21 +72,21 @@ export function Settings() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-medium text-texto">Configurações</h1>
+          <h1 className="text-2xl font-medium text-texto">{t("settings.title")}</h1>
           <p className="text-texto-suave">
-            Ajuste o Rebanho ao jeito da sua fazenda. Tudo já vem com um padrão que funciona.
+            {t("settings.subtitle")}
           </p>
         </div>
 
         {loadFailed ? (
           <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
-            <p className="text-texto mb-4">Não foi possível carregar as configurações.</p>
+            <p className="text-texto mb-4">{t("settings.loadFailed")}</p>
             <button
               type="button"
               onClick={retry}
               className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
             >
-              Tentar de novo
+              {t("common.retry")}
             </button>
           </div>
         ) : !farm ? (
@@ -101,13 +122,12 @@ function useSaveFarm(onSaved: (farm: FarmWithDefaults) => void) {
       // Atualiza o resto do app (nome no menu, fuso, antecedência...)
       const { defaults: _defaults, ...farmOnly } = updated;
       setAccountFarm(farmOnly);
-      showToast("Configurações salvas.");
+      showToast(t("settings.saved"));
     } catch (err) {
       const apiError = err as Partial<ApiError>;
-      if (apiError.status === 400 && Array.isArray(apiError.errors)) {
-        const mapped: FieldErrors = {};
-        for (const { field, error } of apiError.errors) mapped[field] = error;
-        setErrors(mapped);
+      const fields = apiError.status === 400 ? fieldErrorsOf(apiError) : null;
+      if (fields) {
+        setErrors(fields);
       } else if (apiError.status !== 401) {
         // Sem conexão ou erro no servidor: o que foi digitado continua na tela
         setFailed(true);
@@ -140,8 +160,8 @@ function FarmCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: Farm
   }
 
   return (
-    <Card icon={<Home size={18} />} title="Fazenda" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
-      <Field id={nameId} label="Nome da fazenda" error={errors.name}>
+    <Card icon={<Home size={18} />} title={t("settings.farm.title")} onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
+      <Field id={nameId} label={t("settings.farm.name")} error={errors.name}>
         <input
           id={nameId}
           value={name}
@@ -155,9 +175,9 @@ function FarmCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: Farm
 
       <Field
         id={tzId}
-        label="Fuso horário"
+        label={t("settings.farm.timezone")}
         error={errors.timezone}
-        help="Define o que é “hoje” para datas e lembretes. Datas já registradas não mudam."
+        help={t("settings.farm.timezoneHelp")}
       >
         <select
           id={tzId}
@@ -177,12 +197,15 @@ function FarmCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: Farm
 
       {/* Fixos na 1.0 (D-30): mostrados, mas sem edição */}
       <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2 text-sm">
-        <ReadOnly label="País" value="Brasil" />
-        <ReadOnly label="Moeda" value="Real (R$)" />
-        <ReadOnly label="Peso" value="Quilos (kg)" />
+        <ReadOnly label={t("settings.farm.country")} value={displayName("region", farm.country)} />
+        <ReadOnly label={t("settings.farm.currency")} value={displayName("currency", farm.currency)} />
+        <ReadOnly
+          label={t("settings.farm.weightUnit")}
+          value={tOptional(`units.${farm.weightUnit}`) ?? farm.weightUnit}
+        />
       </dl>
       <p className="text-xs text-texto-leve mb-5">
-        País, moeda e unidade de peso poderão ser alterados quando o Rebanho atender outros países.
+        {t("settings.farm.fixedNote")}
       </p>
     </Card>
   );
@@ -206,18 +229,18 @@ function SanitaryCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: 
     setLocalError("");
     const value = Number(days);
     if (days.trim() === "" || !Number.isInteger(value)) {
-      return setLocalError("Informe um número inteiro de dias.");
+      return setLocalError(t("settings.sanitary.integerRequired"));
     }
     save({ reapplyAlertDays: value });
   }
 
   return (
-    <Card icon={<Bell size={18} />} title="Manejo sanitário" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
+    <Card icon={<Bell size={18} />} title={t("settings.sanitary.title")} onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
       <Field
         id={id}
-        label="Avisar reaplicação com quantos dias de antecedência?"
+        label={t("settings.sanitary.alertDays")}
         error={error}
-        help="A reaplicação aparece nos lembretes esse número de dias antes da data. Use 0 para avisar só no dia."
+        help={t("settings.sanitary.alertDaysHelp")}
       >
         <div className="flex items-center gap-2">
           <input
@@ -233,19 +256,19 @@ function SanitaryCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: 
             aria-describedby={`${id}-help${error ? ` ${id}-error` : ""}`}
             className={inputClass(!!error, "w-24")}
           />
-          <span className="text-texto-suave">dias</span>
+          <span className="text-texto-suave">{t("settings.sanitary.days")}</span>
         </div>
       </Field>
 
       {days.trim() !== String(standard) && (
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-leve -mt-3 mb-5">
-          padrão: {standard} dias
+          {t("settings.sanitary.standardDays", { count: standard })}
           <button
             type="button"
             onClick={() => setDays(String(standard))}
             className="inline-flex items-center gap-1 text-verde font-medium cursor-pointer hover:underline"
           >
-            <RotateCcw size={14} aria-hidden="true" /> Voltar ao padrão
+            <RotateCcw size={14} aria-hidden="true" /> {t("settings.resetToStandard")}
           </button>
         </p>
       )}
@@ -257,14 +280,15 @@ function SanitaryCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: 
 
 function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: FarmWithDefaults) => void }) {
   const saved = farm.settings;
-  const standard = farm.defaults;
+  // Os 7 nomes atuais (personalizados + padrões da tradução)
+  const savedLabels = resolveCategoryLabels(saved.categoryLabels);
   const [castrated, setCastrated] = useState(saved.defaultCastrated);
-  const [labels, setLabels] = useState<CategoryLabels>(saved.categoryLabels);
+  const [labels, setLabels] = useState<CategoryLabels>(savedLabels);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const { save, saving, errors, failed } = useSaveFarm(onSaved);
   const castratedId = useId();
 
-  const changedKeys = CATEGORY_LABEL_KEYS.filter((key) => labels[key].trim() !== saved.categoryLabels[key]);
+  const changedKeys = CATEGORY_LABEL_KEYS.filter((key) => labels[key].trim() !== savedLabels[key]);
   const changed = castrated !== saved.defaultCastrated || changedKeys.length > 0;
 
   function handleSubmit(e: FormEvent) {
@@ -272,13 +296,13 @@ function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: F
 
     // Confere antes de enviar (o servidor confere de novo)
     const problems: Record<string, string> = {};
-    const normalized = (key: CategoryLabelKey) => labels[key].trim().toLocaleLowerCase("pt-BR");
+    const normalized = (key: CategoryLabelKey) => labels[key].trim().toLocaleLowerCase(intlLocale());
     for (const key of CATEGORY_LABEL_KEYS) {
       const field = `categoryLabels.${key}`;
-      if (!normalized(key)) problems[field] = "O nome não pode ficar em branco.";
+      if (!normalized(key)) problems[field] = t("settings.animals.nameRequired");
       // marca TODAS as que repetem, para a pessoa ver as duas
       else if (CATEGORY_LABEL_KEYS.some((other) => other !== key && normalized(other) === normalized(key))) {
-        problems[field] = "Cada categoria precisa de um nome diferente.";
+        problems[field] = t("settings.animals.nameDuplicated");
       }
     }
     setLocalErrors(problems);
@@ -291,7 +315,7 @@ function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: F
         changedKeys.map((key) => {
           const name = labels[key].trim();
           // igual ao padrão = voltar ao padrão (o servidor não guarda)
-          return [key, name === standard.categoryLabels[key] ? null : name];
+          return [key, name === defaultCategoryLabel(key) ? null : name];
         }),
       );
     }
@@ -299,19 +323,19 @@ function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: F
   }
 
   const groups: { sex: "MALE" | "FEMALE"; title: string; Icon: typeof Mars }[] = [
-    { sex: "MALE", title: "Machos", Icon: Mars },
-    { sex: "FEMALE", title: "Fêmeas", Icon: Venus },
+    { sex: "MALE", title: t("settings.animals.males"), Icon: Mars },
+    { sex: "FEMALE", title: t("settings.animals.females"), Icon: Venus },
   ];
 
   return (
-    <Card icon={<PawPrint size={18} />} title="Animais" onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
+    <Card icon={<PawPrint size={18} />} title={t("settings.animals.title")} onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
       {/* Castrado como padrão */}
       <div className="mb-6">
         <label htmlFor={castratedId} className="flex items-center justify-between gap-4 cursor-pointer">
           <span>
-            <span className="block font-medium text-texto">Machos novos já vêm marcados como castrados?</span>
+            <span className="block font-medium text-texto">{t("settings.animals.castratedQuestion")}</span>
             <span className="block text-sm text-texto-leve">
-              Só preenche o cadastro; dá para mudar em cada animal.
+              {t("settings.animals.castratedHelp")}
             </span>
           </span>
           <input
@@ -330,9 +354,9 @@ function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: F
       </div>
 
       {/* Nomes das categorias */}
-      <p className="font-medium text-texto mb-1">Nomes das categorias</p>
+      <p className="font-medium text-texto mb-1">{t("settings.animals.labelsTitle")}</p>
       <p className="text-sm text-texto-leve mb-4">
-        Muda só o nome mostrado nas telas. Nenhum animal muda de categoria.
+        {t("settings.animals.labelsHelp")}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 mb-2">
         {groups.map(({ sex, title, Icon }) => (
@@ -344,7 +368,7 @@ function AnimalsCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: F
               <CategoryNameInput
                 key={key}
                 value={labels[key]}
-                standard={standard.categoryLabels[key]}
+                standard={defaultCategoryLabel(key)}
                 error={localErrors[`categoryLabels.${key}`] ?? errors[`categoryLabels.${key}`]}
                 onChange={(value) => setLabels((current) => ({ ...current, [key]: value }))}
               />
@@ -362,7 +386,7 @@ function CategoryNameInput(props: { value: string; standard: string; error?: str
   return (
     <div className="mb-3">
       <label htmlFor={id} className="sr-only">
-        Nome para “{props.standard}”
+        {t("settings.animals.nameFor", { name: props.standard })}
       </label>
       <input
         id={id}
@@ -380,13 +404,13 @@ function CategoryNameInput(props: { value: string; standard: string; error?: str
       )}
       {!isStandard && (
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-texto-leve mt-1">
-          padrão: {props.standard}
+          {t("settings.standard", { value: props.standard })}
           <button
             type="button"
             onClick={() => props.onChange(props.standard)}
             className="inline-flex items-center gap-1 text-verde font-medium cursor-pointer hover:underline"
           >
-            <RotateCcw size={12} aria-hidden="true" /> Voltar ao padrão
+            <RotateCcw size={12} aria-hidden="true" /> {t("settings.resetToStandard")}
           </button>
         </p>
       )}
@@ -419,7 +443,7 @@ function Card(props: {
         {props.children}
         {props.failed && (
           <p role="alert" className="text-sm text-alerta mb-3">
-            Não foi possível salvar. O que você digitou não foi perdido.
+            {t("settings.saveFailed")}
           </p>
         )}
         <button
@@ -427,7 +451,7 @@ function Card(props: {
           disabled={props.saving || (!props.changed && !props.failed)}
           className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {props.saving ? "Salvando..." : props.failed ? "Tentar de novo" : "Salvar"}
+          {props.saving ? t("common.saving") : props.failed ? t("common.retry") : t("common.save")}
         </button>
       </form>
     </section>
@@ -466,7 +490,7 @@ function ReadOnly({ label, value }: { label: string; value: string }) {
 
 function SkeletonCards() {
   return (
-    <div className="flex flex-col gap-6 max-w-2xl" aria-busy="true" aria-label="Carregando configurações">
+    <div className="flex flex-col gap-6 max-w-2xl" aria-busy="true" aria-label={t("settings.loadingLabel")}>
       {[0, 1].map((i) => (
         <div key={i} className="bg-card border border-borda rounded-xl p-6 animate-pulse">
           <div className="h-5 w-40 bg-bege rounded mb-5" />

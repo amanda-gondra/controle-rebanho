@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+import { RichText } from "../i18n/RichText.js";
 import {
   createPurchase,
   updatePurchase,
@@ -8,6 +9,8 @@ import {
 } from "../services/finance.js";
 import type { Purchase, Sale } from "../types/animal.js";
 import { formatMoney } from "../types/format.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 type Props = {
   animalId: string;
@@ -30,7 +33,10 @@ export function TradeModal({
 }: Props) {
   const isEdit = !!existing;
   const isSale = kind === "sale";
-  const noun = isSale ? "venda" : "compra";
+  // Frases inteiras por caso (montar "Registrar" + "venda" não traduz bem)
+  const title = isSale
+    ? t(isEdit ? "trade.editSale" : "trade.newSale")
+    : t(isEdit ? "trade.editPurchase" : "trade.newPurchase");
 
   // começa vazio no cadastro, preenchido na edição
   const [date, setDate] = useState(existing ? existing.date.slice(0, 10) : "");
@@ -55,11 +61,11 @@ export function TradeModal({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!date) return setError(`Informe a data da ${noun}.`);
+    if (!date) return setError(t(isSale ? "trade.saleDateRequired" : "trade.purchaseDateRequired"));
     if (!weight || weightNumber <= 0)
-      return setError("Informe um peso maior que zero.");
+      return setError(t("weighing.weightRequired"));
     if (!price || priceNumber <= 0)
-      return setError("Informe um preço por kg maior que zero.");
+      return setError(t("estimatedPrice.priceRequired"));
 
     const data = {
       date,
@@ -71,17 +77,16 @@ export function TradeModal({
     setSaving(true);
     try {
       if (isSale) {
-        isEdit
-          ? await updateSale(animalId, data)
-          : await createSale(animalId, data);
+        if (isEdit) await updateSale(animalId, data);
+        else await createSale(animalId, data);
+      } else if (isEdit) {
+        await updatePurchase(animalId, data);
       } else {
-        isEdit
-          ? await updatePurchase(animalId, data)
-          : await createPurchase(animalId, data);
+        await createPurchase(animalId, data);
       }
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -97,23 +102,24 @@ export function TradeModal({
       >
         <div className="flex items-start justify-between mb-1">
           <h2 className="text-lg font-medium text-texto">
-            {isEdit ? "Editar" : "Registrar"} {noun}
+            {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
-        <p className="text-sm text-texto-suave mb-4">Animal {animalTag}</p>
+        <p className="text-sm text-texto-suave mb-4">{t("weighing.animal", { tag: animalTag })}</p>
 
         <form onSubmit={handleSave}>
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Data <span className="text-alerta">*</span>
+              {t("weighing.date")} <span className="text-alerta">*</span>
             </label>
             <input
               type="date"
@@ -126,24 +132,24 @@ export function TradeModal({
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block font-medium text-texto mb-1">
-                Peso (kg) <span className="text-alerta">*</span>
+                {t("weighing.weight")} <span className="text-alerta">*</span>
               </label>
               <input
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
-                placeholder="Ex.: 320"
+                placeholder={t("weighing.weightPlaceholder")}
                 autoFocus
                 className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
               />
             </div>
             <div>
               <label className="block font-medium text-texto mb-1">
-                Preço por kg <span className="text-alerta">*</span>
+                {t("estimatedPrice.pricePerKg")} <span className="text-alerta">*</span>
               </label>
               <input
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                placeholder="Ex.: 11,50"
+                placeholder={t("estimatedPrice.pricePlaceholder")}
                 className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
               />
             </div>
@@ -151,7 +157,7 @@ export function TradeModal({
 
           {total !== null && (
             <p className="text-sm text-texto-suave mb-4">
-              Valor total:{" "}
+              {t("trade.total")}{" "}
               <span className="font-medium text-texto">
                 {formatMoney(total)}
               </span>
@@ -160,19 +166,19 @@ export function TradeModal({
 
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Observação
+              {t("trade.notes")}
             </label>
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Opcional"
+              placeholder={t("trade.notesPlaceholder")}
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
           </div>
 
           {isSale && !isEdit && (
             <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-4">
-              Ao registrar a venda, o animal passa a <strong>Vendido</strong>.
+              <RichText text={t("trade.saleMarksSold")} />
             </p>
           )}
 
@@ -184,14 +190,14 @@ export function TradeModal({
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : `Salvar ${noun}`}
+              {saving ? t("common.saving") : t(isSale ? "trade.saveSale" : "trade.savePurchase")}
             </button>
           </div>
         </form>

@@ -34,6 +34,19 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
+## Textos da tela (G3)
+
+- `tests/integration/validation-codes.test.ts`: todo erro de campo traz `code` (e `params`
+  quando precisa), para cada tipo de problema (vazio, longo, formato, data futura, casas
+  decimais, lista vazia/repetida, filtro na URL, regra de negócio).
+- `web/src/i18n/i18n.test.ts` (projeto **web-unit** do Vitest): plural, troca de valores,
+  **todo código de erro da API tem tradução**, erro de campo usa os números da regra, erro sem
+  resposta = sem conexão, e a tela decide pelo `code`, nunca pelo `message`.
+- `npm run lint` em `web/` inclui `scripts/check-i18n.mjs` (texto fixo no código das telas).
+- Verificação manual com o idioma de teste (`?lang=test`): percorrer as telas e janelas e
+  conferir que só aparecem chaves `⟦...⟧`, dados digitados, números e datas (feito em
+  2026-10-13 em todas as telas, janelas e num erro vindo da API).
+
 ## Categorias (G4)
 
 - `categories.test.ts` (integração): as 7 combinações válidas aceitas e as 5 inválidas recusadas

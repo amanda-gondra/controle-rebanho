@@ -56,6 +56,13 @@ npm run dev:claim-initial-farm  # cria login para a "Fazenda inicial" (dados ant
   `farmId: request.auth.farm.id` (inclusive em criação aninhada). `farmId` NUNCA vem do
   navegador. Toda rota nova entra no teste de acesso cruzado (`tests/integration/tenancy.test.ts`).
 - **"Data no futuro"** é conferida na rota com `assertNotInFuture(data, request.auth.farm.timezone, ...)`.
+- **Textos da tela (G3):** nunca escrever texto em português direto no JSX: usar
+  `t("chave")` de `web/src/i18n/index.ts` e acrescentar a frase em `web/src/i18n/pt-BR.ts`.
+  Erro da API: `errorMessage(err)` / `fieldErrorsOf(err)` (`web/src/i18n/errors.ts`) — **nunca**
+  mostrar `err.message`. Datas/números/dinheiro só por `types/format.ts` (Intl). `npm run lint`
+  em `web/` acusa texto fixo. Para conferir: abrir o app com `?lang=test`.
+- **Erro de campo na API** sempre com `code` (+ `params`): `fieldError(campo, código, texto)`;
+  em `refine`, `{ message, params: { code } }`.
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
@@ -98,6 +105,8 @@ Frontend (web/):
                                 EditApplication, Trade, EstimatedPrice), ToastProvider,
                                 CategoryPicker (categoria pelo sexo + castrado)
   src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
+  src/i18n/                     index.ts (t()), pt-BR.ts (TODOS os textos), errors.ts (erro da
+                                API → frase), RichText (frase com <b>), i18n.test.ts
   src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts, farm.ts,
                                 api.ts (request<T>: manda o cookie; 401 → volta para o login)
   src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
@@ -206,3 +215,8 @@ sexo na API e no banco; campo `castrated` (só machos; padrão da fazenda); nome
 personalizáveis (Configurações → Animais; `useCategoryLabels` no frontend). Nunca escrever o
 nome da categoria fixo numa tela: usar `labelOf(category, sex)`. Migração converte os dados
 antigos e para se houver "vaca macho"/"boi fêmea".
+
+**G3 (2026-10-13):** textos da tela em `web/src/i18n/pt-BR.ts` (só pt-BR publicado; idioma de
+teste `?lang=test` em desenvolvimento), erros traduzidos pelo `code` (inclusive por campo, com
+`params`), datas/números/dinheiro por `Intl`, nomes padrão de categoria e fusos na tradução,
+conferência automática de texto fixo no `npm run lint` do web.

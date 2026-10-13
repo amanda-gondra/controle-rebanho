@@ -26,7 +26,13 @@ export function resolveAnimalProfile(
     throw ruleError(
       ErrorCode.CATEGORY_INCOMPATIBLE_WITH_SEX,
       "Essa categoria não combina com o sexo escolhido.",
-      [{ field: "category", error: "Essa categoria não combina com o sexo escolhido." }],
+      [
+        {
+          field: "category",
+          code: ErrorCode.CATEGORY_INCOMPATIBLE_WITH_SEX,
+          error: "Essa categoria não combina com o sexo escolhido.",
+        },
+      ],
     );
   }
 
@@ -34,7 +40,7 @@ export function resolveAnimalProfile(
   if (sex === "FEMALE") {
     if (changes.castrated !== undefined) {
       throw ruleError(ErrorCode.CASTRATED_ONLY_FOR_MALES, "Castrado só vale para machos.", [
-        { field: "castrated", error: "Castrado só vale para machos." },
+        { field: "castrated", code: ErrorCode.CASTRATED_ONLY_FOR_MALES, error: "Castrado só vale para machos." },
       ]);
     }
     return { sex, category, castrated: null };

@@ -8,18 +8,14 @@ import { useToast } from "../components/ToastProvider.js";
 import { useAuth } from "../components/AuthProvider.js";
 import { CategoryPicker } from "../components/CategoryPicker.js";
 import { isCategoryCompatible } from "../types/categories.js";
+import { t } from "../i18n/index.js";
+import { errorMessage, fieldErrorsOf } from "../i18n/errors.js";
+import { monthNames } from "../types/format.js";
+import { sexLabel } from "../types/labels.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
-const sexOptions: { value: Sex; label: string }[] = [
-  { value: "MALE", label: "Macho" },
-  { value: "FEMALE", label: "Fêmea" },
-];
-
-const months = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
+const sexOptions: Sex[] = ["MALE", "FEMALE"];
 
 export function AnimalEdit() {
   const { id } = useParams();
@@ -81,8 +77,8 @@ export function AnimalEdit() {
     setErrors({});
 
     const newErrors: Record<string, string> = {};
-    if (!sex) newErrors.sex = "Escolha o sexo.";
-    if (!category) newErrors.category = "Escolha a categoria.";
+    if (!sex) newErrors.sex = t("animal.form.sexRequired");
+    if (!category) newErrors.category = t("animal.form.categoryRequired");
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -109,16 +105,10 @@ export function AnimalEdit() {
         birthDate: finalBirthDate,
         notes: notes.trim() || undefined,
       });
-      showToast("Alterações salvas.");
+      showToast(t("animal.form.saved"));
       navigate(`/animais/${id}`);
-    } catch (err: any) {
-      if (Array.isArray(err?.errors)) {
-        const mapped: Record<string, string> = {};
-        for (const e of err.errors) mapped[e.field] = e.error;
-        setErrors(mapped);
-      } else {
-        setErrors({ geral: err?.message ?? "Algo deu errado. Tente de novo." });
-      }
+    } catch (err) {
+      setErrors(fieldErrorsOf(err) ?? { geral: errorMessage(err) });
       setSaving(false);
     }
   }
@@ -128,7 +118,7 @@ export function AnimalEdit() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         </main>
       </div>
     );
@@ -141,49 +131,50 @@ export function AnimalEdit() {
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => navigate(`/animais/${id}`)}
-            title="Voltar para a ficha"
+            title={t("animal.form.backToAnimal")}
+            aria-label={t("animal.form.backToAnimal")}
             className="text-texto-suave hover:text-texto cursor-pointer"
           >
             <ArrowLeft size={22} />
           </button>
           <div>
-            <h1 className="text-2xl font-medium text-texto">Editar animal</h1>
-            <p className="text-texto-suave">Atualize os dados do animal</p>
+            <h1 className="text-2xl font-medium text-texto">{t("animal.form.editTitle")}</h1>
+            <p className="text-texto-suave">{t("animal.form.editSubtitle")}</p>
           </div>
         </div>
 
         <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
           {/* Brinco (somente leitura) */}
           <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">Brinco</label>
+            <label className="block font-medium text-texto mb-1">{t("animal.form.tag")}</label>
             <input
               value={tag}
               disabled
               className="w-full border border-borda rounded-lg px-3 py-2 bg-bege text-texto-suave cursor-not-allowed"
             />
             <p className="text-sm text-texto-leve mt-1">
-              O brinco não pode ser alterado.
+              {t("animal.form.tagReadOnly")}
             </p>
           </div>
 
           {/* Sexo */}
           <div className="mb-5">
             <label className="block font-medium text-texto mb-1">
-              Sexo <span className="text-alerta">*</span>
+              {t("animal.form.sex")} <span className="text-alerta">*</span>
             </label>
             <div className="flex gap-3">
-              {sexOptions.map((opt) => (
+              {sexOptions.map((value) => (
                 <button
-                  key={opt.value}
+                  key={value}
                   type="button"
-                  onClick={() => handleSexChange(opt.value)}
+                  onClick={() => handleSexChange(value)}
                   className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
-                    sex === opt.value
+                    sex === value
                       ? "bg-verde border-verde text-white"
                       : "bg-card border-borda-chip text-texto-suave"
                   }`}
                 >
-                  {opt.label}
+                  {sexLabel[value]}
                 </button>
               ))}
             </div>
@@ -203,12 +194,13 @@ export function AnimalEdit() {
           {/* Raça */}
           <div className="mb-5">
             <label className="block font-medium text-texto mb-1">
-              Raça <span className="text-texto-leve font-normal">(opcional)</span>
+              {t("animal.form.breed")}{" "}
+              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
             <input
               value={breed}
               onChange={(e) => setBreed(e.target.value)}
-              placeholder="Ex.: Nelore"
+              placeholder={t("animal.form.breedPlaceholder")}
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
           </div>
@@ -216,18 +208,18 @@ export function AnimalEdit() {
           {/* Data de nascimento */}
           <div className="mb-5">
             <label className="block font-medium text-texto mb-1">
-              Data de nascimento{" "}
-              <span className="text-texto-leve font-normal">(opcional)</span>
+              {t("animal.form.birthDate")}{" "}
+              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
             <p className="text-sm text-texto-suave mb-2">
-              Você sabe a data de nascimento?
+              {t("animal.form.birthQuestion")}
             </p>
             <div className="flex flex-wrap gap-2 mb-2">
               {(
                 [
-                  ["DAY", "Sei o dia certo"],
-                  ["MONTH", "Só o mês e o ano"],
-                  ["UNKNOWN", "Não sei ao certo"],
+                  ["DAY", t("animal.form.birthExact")],
+                  ["MONTH", t("animal.form.birthMonthYear")],
+                  ["UNKNOWN", t("animal.form.birthUnknown")],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -261,8 +253,8 @@ export function AnimalEdit() {
                   onChange={(e) => setBirthMonth(e.target.value)}
                   className="border border-borda rounded-lg px-3 py-2 text-texto cursor-pointer"
                 >
-                  <option value="">Mês</option>
-                  {months.map((name, i) => (
+                  <option value="">{t("animal.form.month")}</option>
+                  {monthNames().map((name, i) => (
                     <option key={name} value={String(i + 1).padStart(2, "0")}>
                       {name}
                     </option>
@@ -272,7 +264,7 @@ export function AnimalEdit() {
                   type="number"
                   value={birthYear}
                   onChange={(e) => setBirthYear(e.target.value)}
-                  placeholder="Ano"
+                  placeholder={t("animal.form.year")}
                   className="w-28 border border-borda rounded-lg px-3 py-2 text-texto"
                 />
               </div>
@@ -282,13 +274,13 @@ export function AnimalEdit() {
           {/* Observações */}
           <div className="mb-6">
             <label className="block font-medium text-texto mb-1">
-              Observações{" "}
-              <span className="text-texto-leve font-normal">(opcional)</span>
+              {t("animal.form.notes")}{" "}
+              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Anotações sobre o animal (opcional)"
+              placeholder={t("animal.form.notesPlaceholder")}
               rows={3}
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
@@ -302,7 +294,7 @@ export function AnimalEdit() {
               onClick={() => navigate(`/animais/${id}`)}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -310,7 +302,7 @@ export function AnimalEdit() {
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar alterações"}
+              {saving ? t("common.saving") : t("animal.form.saveChanges")}
             </button>
           </div>
         </div>

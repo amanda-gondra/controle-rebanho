@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { createWeighing } from "../services/animals.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 type Props = {
   animalId: string;
@@ -18,17 +20,17 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); // impede o navegador de recarregar a página
     setError("");
-    if (!date) return setError("Informe a data da pesagem.");
+    if (!date) return setError(t("weighing.dateRequired"));
     const weightNumber = Number(weight.replace(",", "."));
     if (!weight || weightNumber <= 0)
-      return setError("Informe um peso maior que zero.");
+      return setError(t("weighing.weightRequired"));
 
     setSaving(true);
     try {
       await createWeighing(animalId, { date, weightKg: weightNumber });
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -45,23 +47,24 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">Registrar pesagem</h2>
+          <h2 className="text-lg font-medium text-texto">{t("weighing.newTitle")}</h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
-        <p className="text-sm text-texto-suave mb-4">Animal {animalTag}</p>
+        <p className="text-sm text-texto-suave mb-4">{t("weighing.animal", { tag: animalTag })}</p>
 
         {/* form: Enter dentro dele dispara o onSubmit (salvar) */}
         <form onSubmit={handleSave}>
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Data <span className="text-alerta">*</span>
+              {t("weighing.date")} <span className="text-alerta">*</span>
             </label>
             <input
               type="date"
@@ -73,12 +76,12 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
 
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Peso (kg) <span className="text-alerta">*</span>
+              {t("weighing.weight")} <span className="text-alerta">*</span>
             </label>
             <input
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
-              placeholder="Ex.: 320"
+              placeholder={t("weighing.weightPlaceholder")}
               autoFocus
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
@@ -92,14 +95,14 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar pesagem"}
+              {saving ? t("common.saving") : t("weighing.save")}
             </button>
           </div>
         </form>

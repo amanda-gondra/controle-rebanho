@@ -1,6 +1,7 @@
 import { List, PlusCircle, Syringe, LogOut, Settings } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider.js";
+import { t, type MessageKey } from "../i18n/index.js";
 
 // Iniciais do nome para o "avatar" (ex.: "Maria Silva" → "MS")
 function initialsOf(name: string) {
@@ -11,14 +12,20 @@ function initialsOf(name: string) {
 }
 
 const NAV_ITEMS = [
-  { to: "/", end: true, label: "Rebanho", Icon: List },
-  { to: "/animais/novo", end: false, label: "Cadastrar animal", Icon: PlusCircle },
-  { to: "/manejo", end: false, label: "Manejo sanitário", Icon: Syringe },
-];
+  { to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List },
+  { to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle },
+  { to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe },
+] satisfies { to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown }[];
 
 // Configurações (G2): fica separada, logo acima do usuário (desktop); no
 // celular entra como mais um botão da barra inferior.
-const SETTINGS_ITEM = { to: "/configuracoes", end: false, label: "Configurações", Icon: Settings };
+const SETTINGS_ITEM = {
+  to: "/configuracoes",
+  end: false,
+  label: "nav.settings",
+  short: "nav.settingsShort",
+  Icon: Settings,
+} satisfies { label: MessageKey; short: MessageKey } & Record<string, unknown>;
 
 export function Sidebar() {
   const { account, logout } = useAuth();
@@ -42,10 +49,10 @@ export function Sidebar() {
           <div className="flex items-center gap-2.5 px-2 py-3 mb-6">
             <img
               src="/logo.png"
-              alt="Rebanho"
+              alt={t("common.appName")}
               className="w-8 h-8 [filter:brightness(0)_invert(1)]"
             />
-            <span className="text-xl font-semibold">Rebanho</span>
+            <span className="text-xl font-semibold">{t("common.appName")}</span>
           </div>
 
           {/* Navegação */}
@@ -64,7 +71,7 @@ export function Sidebar() {
                 }
               >
                 <Icon size={18} />
-                {label}
+                {t(label)}
               </NavLink>
             ))}
           </nav>
@@ -83,7 +90,7 @@ export function Sidebar() {
             }
           >
             <SETTINGS_ITEM.Icon size={18} />
-            {SETTINGS_ITEM.label}
+            {t(SETTINGS_ITEM.label)}
           </NavLink>
 
           {/* Usuário logado + sair (F-24) */}
@@ -101,8 +108,8 @@ export function Sidebar() {
             <button
               type="button"
               onClick={handleLogout}
-              title="Sair"
-              aria-label="Sair da conta"
+              title={t("nav.logout")}
+              aria-label={t("nav.logoutLabel")}
               className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 cursor-pointer shrink-0"
             >
               <LogOut size={18} />
@@ -134,7 +141,7 @@ export function Sidebar() {
 
       {/* BARRA INFERIOR — só no mobile (some no md pra cima) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar flex justify-around items-center h-16 z-40">
-        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ to, end, label, Icon }) => (
+        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ to, end, short, Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -146,11 +153,7 @@ export function Sidebar() {
             }
           >
             <Icon size={20} />
-            {label === "Cadastrar animal"
-              ? "Cadastrar"
-              : label === "Configurações"
-                ? "Ajustes"
-                : label.split(" ")[0]}
+            {t(short)}
           </NavLink>
         ))}
         <button
@@ -159,7 +162,7 @@ export function Sidebar() {
           className="flex flex-col items-center gap-1 text-xs text-white/60 cursor-pointer"
         >
           <LogOut size={20} />
-          Sair
+          {t("nav.logout")}
         </button>
       </nav>
     </>

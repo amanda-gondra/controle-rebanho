@@ -63,6 +63,6 @@ export function assertNotInFuture(
   now: Date = new Date(),
 ) {
   if (calendarDate && !isNotInFuture(calendarDate, timeZone, now)) {
-    throw fieldError(field, message);
+    throw fieldError(field, "FUTURE_DATE", message);
   }
 }

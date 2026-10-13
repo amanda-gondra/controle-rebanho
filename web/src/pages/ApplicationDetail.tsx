@@ -8,6 +8,9 @@ import type { Application } from "../types/animal.js";
 import { sexLabel } from "../types/labels.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { formatDate } from "../types/format.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+import { RichText } from "../i18n/RichText.js";
 import { useToast } from "../components/ToastProvider.js";
 
 export function ApplicationDetail() {
@@ -43,10 +46,11 @@ export function ApplicationDetail() {
     setDeleting(true);
     try {
       await deleteApplication(id);
-      showToast("Aplicação excluída.");
+      showToast(t("applicationDetail.deleted"));
       navigate("/manejo");
     } catch (err) {
-      console.error(err);
+      // antes o erro só ia para o console: agora a pessoa fica sabendo
+      showToast(errorMessage(err, "applicationDetail.deleteFailed"));
       setDeleting(false);
     }
   }
@@ -56,7 +60,7 @@ export function ApplicationDetail() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         </main>
       </div>
     );
@@ -69,13 +73,13 @@ export function ApplicationDetail() {
         <main className="flex-1 p-4 pb-24 md:p-8 flex items-center justify-center">
           <div className="text-center">
             <h2 className="text-xl font-medium text-texto mb-2">
-              Não encontramos esta aplicação
+              {t("applicationDetail.notFound")}
             </h2>
             <button
               onClick={() => navigate("/manejo")}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
             >
-              Voltar para o manejo
+              {t("applicationDetail.backToSanitary")}
             </button>
           </div>
         </main>
@@ -94,7 +98,8 @@ export function ApplicationDetail() {
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => navigate("/manejo")}
-            title="Voltar para o manejo"
+            title={t("applicationDetail.backToSanitary")}
+            aria-label={t("applicationDetail.backToSanitary")}
             className="text-texto-suave hover:text-texto cursor-pointer"
           >
             <ArrowLeft size={22} />
@@ -112,7 +117,7 @@ export function ApplicationDetail() {
                 {application.product.name}
               </h1>
               <p className="text-texto-suave">
-                {isVaccine ? "Vacina" : "Vermífugo"} ·{" "}
+                {t(`product.type.${application.product.type}`)} ·{" "}
                 {formatDate(application.date)}
                 {application.notes ? ` · ${application.notes}` : ""}
               </p>
@@ -123,17 +128,17 @@ export function ApplicationDetail() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowEdit(true)}
-              title="Editar aplicação"
+              title={t("applicationDetail.editLabel")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
             >
-              <Pencil size={16} /> Editar
+              <Pencil size={16} /> {t("common.edit")}
             </button>
             <button
               onClick={() => setShowDelete(true)}
-              title="Excluir aplicação"
+              title={t("applicationDetail.deleteLabel")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-bege cursor-pointer"
             >
-              <Trash2 size={16} /> Excluir
+              <Trash2 size={16} /> {t("common.delete")}
             </button>
           </div>
         </div>
@@ -143,10 +148,9 @@ export function ApplicationDetail() {
           <div className="bg-verde-claro border border-verde-nevoa rounded-xl px-5 py-3 mb-6 max-w-2xl flex items-center gap-2">
             <Bell size={18} className="text-verde" />
             <p className="text-sm text-texto">
-              Reaplicação marcada para{" "}
-              <span className="font-medium">
-                {formatDate(application.reapplyDate)}
-              </span>
+              <RichText
+                text={t("applicationDetail.reapplyScheduled", { date: formatDate(application.reapplyDate) })}
+              />
             </p>
           </div>
         )}
@@ -154,7 +158,7 @@ export function ApplicationDetail() {
         {/* Lista dos animais do lote */}
         <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
           <p className="font-medium text-texto mb-4">
-            Animais aplicados{" "}
+            {t("applicationDetail.animalsApplied")}{" "}
             <span className="text-texto-suave font-normal">
               ({animals.length})
             </span>
@@ -190,7 +194,7 @@ export function ApplicationDetail() {
             onSaved={() => {
               setShowEdit(false);
               loadData();
-              showToast("Aplicação atualizada.");
+              showToast(t("applicationDetail.updated"));
             }}
           />
         )}
@@ -206,27 +210,27 @@ export function ApplicationDetail() {
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-lg font-medium text-texto mb-1">
-                Excluir aplicação?
+                {t("applicationDetail.deleteTitle")}
               </h2>
               <p className="text-sm text-texto-suave mb-5">
-                Isso apaga o registro desta aplicação de{" "}
-                {application.product.name} ({animals.length}{" "}
-                {animals.length === 1 ? "animal" : "animais"}) e não dá para
-                desfazer. O histórico sanitário desses animais será atualizado.
+                {t("applicationDetail.deleteBody", {
+                  product: application.product.name,
+                  animals: t("common.animalsCount", { count: animals.length }),
+                })}
               </p>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setShowDelete(false)}
                   className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
                   className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
                 >
-                  {deleting ? "Excluindo..." : "Excluir"}
+                  {deleting ? t("common.deleting") : t("common.delete")}
                 </button>
               </div>
             </div>

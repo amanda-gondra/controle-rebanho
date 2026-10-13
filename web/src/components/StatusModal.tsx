@@ -2,6 +2,9 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { updateStatus } from "../services/animals.js";
 import type { Status } from "../types/animal.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+import { statusLabel } from "../types/labels.js";
 
 type Props = {
   animalId: string;
@@ -11,11 +14,7 @@ type Props = {
   onSaved: () => void;
 };
 
-const options: { value: Status; label: string }[] = [
-  { value: "ACTIVE", label: "Ativo" },
-  { value: "SOLD", label: "Vendido" },
-  { value: "DEAD", label: "Morto" },
-];
+const options: Status[] = ["ACTIVE", "SOLD", "DEAD"];
 
 export function StatusModal({
   animalId,
@@ -35,8 +34,8 @@ export function StatusModal({
     try {
       await updateStatus(animalId, status);
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Não foi possível mudar o status. Tente de novo.");
+    } catch (err) {
+      setError(errorMessage(err, "animal.statusModal.failed"));
       setSaving(false);
     }
   }
@@ -52,35 +51,36 @@ export function StatusModal({
       >
         <div className="flex items-start justify-between mb-1">
           <h2 className="text-lg font-medium text-texto">
-            Mudar status do animal
+            {t("animal.statusModal.title")}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
         <p className="text-sm text-texto-suave mb-4">
-          O que aconteceu com o {animalTag}?
+          {t("animal.statusModal.question", { tag: animalTag })}
         </p>
 
         <form onSubmit={handleSave}>
           <div className="flex flex-col gap-2 mb-5">
-            {options.map((opt) => (
+            {options.map((value) => (
               <button
-                key={opt.value}
+                key={value}
                 type="button"
-                onClick={() => setStatus(opt.value)}
+                onClick={() => setStatus(value)}
                 className={`py-2.5 rounded-lg border font-medium cursor-pointer ${
-                  status === opt.value
+                  status === value
                     ? "bg-verde-claro border-verde text-verde-escuro"
                     : "bg-card border-borda-chip text-texto-suave"
                 }`}
               >
-                {opt.label}
+                {statusLabel[value]}
               </button>
             ))}
           </div>
@@ -93,14 +93,14 @@ export function StatusModal({
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Confirmar"}
+              {saving ? t("common.saving") : t("common.confirm")}
             </button>
           </div>
         </form>

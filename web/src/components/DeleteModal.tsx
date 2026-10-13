@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { deleteAnimal } from "../services/animals.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
 
 type Props = {
   animalId: string;
@@ -20,8 +22,8 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
     try {
       await deleteAnimal(animalId);
       onDeleted();
-    } catch (err: any) {
-      setError(err?.message ?? "Não foi possível excluir. Tente de novo.");
+    } catch (err) {
+      setError(errorMessage(err, "animal.delete.failed"));
       setDeleting(false);
     }
   }
@@ -36,19 +38,19 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">Excluir animal?</h2>
+          <h2 className="text-lg font-medium text-texto">{t("animal.delete.title")}</h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
         <p className="text-sm text-texto-suave mb-5">
-          Tem certeza que quer excluir o {animalTag}? Isso apaga o animal e todas
-          as pesagens dele, e não dá para desfazer.
+          {t("animal.delete.body", { tag: animalTag })}
         </p>
 
         <form onSubmit={handleDelete}>
@@ -60,14 +62,14 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={deleting}
               className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {deleting ? "Excluindo..." : "Excluir"}
+              {deleting ? t("common.deleting") : t("common.delete")}
             </button>
           </div>
         </form>

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { updateWeighing } from "../services/animals.js";
 import type { Weighing } from "../types/animal.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 type Props = {
   animalId: string;
@@ -25,10 +27,10 @@ export function EditWeighingModal({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!date) return setError("Informe a data da pesagem.");
+    if (!date) return setError(t("weighing.dateRequired"));
     const weightNumber = Number(weight.replace(",", "."));
     if (!weight || weightNumber <= 0)
-      return setError("Informe um peso maior que zero.");
+      return setError(t("weighing.weightRequired"));
 
     setSaving(true);
     try {
@@ -37,8 +39,8 @@ export function EditWeighingModal({
         weightKg: weightNumber,
       });
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -53,11 +55,12 @@ export function EditWeighingModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-medium text-texto">Editar pesagem</h2>
+          <h2 className="text-lg font-medium text-texto">{t("weighing.editTitle")}</h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
@@ -67,7 +70,7 @@ export function EditWeighingModal({
         <form onSubmit={handleSave}>
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Data <span className="text-alerta">*</span>
+              {t("weighing.date")} <span className="text-alerta">*</span>
             </label>
             <input
               type="date"
@@ -79,12 +82,12 @@ export function EditWeighingModal({
 
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Peso (kg) <span className="text-alerta">*</span>
+              {t("weighing.weight")} <span className="text-alerta">*</span>
             </label>
             <input
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
-              placeholder="Ex.: 320"
+              placeholder={t("weighing.weightPlaceholder")}
               autoFocus
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
@@ -98,14 +101,14 @@ export function EditWeighingModal({
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar alterações"}
+              {saving ? t("common.saving") : t("weighing.saveChanges")}
             </button>
           </div>
         </form>

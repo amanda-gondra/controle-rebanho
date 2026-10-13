@@ -46,6 +46,7 @@ const reapplyAfterDate = (data: { date: string; reapplyDate?: string }) =>
 const reapplyAfterDateIssue = {
   message: "A data de reaplicação deve ser depois da data da aplicação.",
   path: ["reapplyDate"],
+  params: { code: "REAPPLY_BEFORE_DATE" },
 };
 
 // Registro de uma aplicação: produto, data, observação e os animais selecionados
@@ -61,7 +62,7 @@ export const createApplicationSchema = z
       )
       .refine(
         (ids) => new Set(ids).size === ids.length,
-        "O mesmo animal foi selecionado mais de uma vez.",
+        { message: "O mesmo animal foi selecionado mais de uma vez.", params: { code: "DUPLICATE_ITEMS" } },
       ),
   })
   .strict()

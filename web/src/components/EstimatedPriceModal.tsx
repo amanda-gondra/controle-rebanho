@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { setEstimatedPrice } from "../services/finance.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 type Props = {
   animalId: string;
@@ -33,15 +35,15 @@ export function EstimatedPriceModal({
     // vazio → limpa a estimativa (manda null)
     const value = trimmed === "" ? null : Number(trimmed.replace(",", "."));
     if (value !== null && (!Number.isFinite(value) || value <= 0)) {
-      return setError("Informe um preço por kg maior que zero.");
+      return setError(t("estimatedPrice.priceRequired"));
     }
 
     setSaving(true);
     try {
       await setEstimatedPrice(animalId, value);
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -56,35 +58,35 @@ export function EstimatedPriceModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">Preço estimado</h2>
+          <h2 className="text-lg font-medium text-texto">{t("estimatedPrice.title")}</h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
         <p className="text-sm text-texto-suave mb-4">
-          Animal {animalTag} · preço por kg que você pagaria hoje pelo animal
-          vivo. Serve para estimar o resultado enquanto ele não é vendido.
+          {t("estimatedPrice.intro", { tag: animalTag })}
         </p>
 
         <form onSubmit={handleSave}>
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Preço por kg
+              {t("estimatedPrice.pricePerKg")}
             </label>
             <input
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="Ex.: 11,50"
+              placeholder={t("estimatedPrice.pricePlaceholder")}
               autoFocus
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
             <p className="text-xs text-texto-leve mt-1">
-              Deixe em branco para remover a estimativa.
+              {t("estimatedPrice.clearHint")}
             </p>
           </div>
 
@@ -96,14 +98,14 @@ export function EstimatedPriceModal({
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar"}
+              {saving ? t("common.saving") : t("common.save")}
             </button>
           </div>
         </form>

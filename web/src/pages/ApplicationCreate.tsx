@@ -14,6 +14,8 @@ import type {
 import { sexLabel } from "../types/labels.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 import { useToast } from "../components/ToastProvider.js";
 
 type StatusFilter = Status | "ALL";
@@ -100,12 +102,12 @@ export function ApplicationCreate() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!productId) return setError("Escolha o produto.");
-    if (!date) return setError("Informe a data da aplicação.");
+    if (!productId) return setError(t("application.productRequired"));
+    if (!date) return setError(t("application.dateRequired"));
     if (needsReapply && !reapplyDate)
-      return setError("Informe a data da reaplicação.");
+      return setError(t("application.reapplyDateRequired"));
     if (selected.size === 0)
-      return setError("Selecione pelo menos um animal.");
+      return setError(t("application.animalsRequired"));
 
     setSaving(true);
     try {
@@ -116,10 +118,10 @@ export function ApplicationCreate() {
         notes: notes.trim() || undefined,
         animalIds: Array.from(selected),
       });
-      showToast("Aplicação registrada.");
+      showToast(t("application.created"));
       navigate("/manejo");
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -137,18 +139,15 @@ export function ApplicationCreate() {
           <button
             type="button"
             onClick={() => navigate("/manejo")}
-            title="Voltar"
+            title={t("application.back")}
+            aria-label={t("application.back")}
             className="text-texto-suave hover:text-texto cursor-pointer"
           >
             <ArrowLeft size={22} />
           </button>
           <div>
-            <h1 className="text-2xl font-medium text-texto">
-              Registrar aplicação
-            </h1>
-            <p className="text-texto-suave">
-              Vacina ou vermífugo, em um ou vários animais
-            </p>
+            <h1 className="text-2xl font-medium text-texto">{t("application.newTitle")}</h1>
+            <p className="text-texto-suave">{t("application.newSubtitle")}</p>
           </div>
         </div>
 
@@ -157,14 +156,9 @@ export function ApplicationCreate() {
           <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl mb-6">
             {/* Tipo */}
             <div className="mb-4">
-              <label className="block font-medium text-texto mb-1">Tipo</label>
+              <label className="block font-medium text-texto mb-1">{t("application.type")}</label>
               <div className="flex gap-3">
-                {(
-                  [
-                    ["VACCINE", "Vacina"],
-                    ["DEWORMER", "Vermífugo"],
-                  ] as const
-                ).map(([value, label]) => (
+                {(["VACCINE", "DEWORMER"] as const).map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -175,7 +169,7 @@ export function ApplicationCreate() {
                         : "bg-card border-borda-chip text-texto-suave"
                     }`}
                   >
-                    {label}
+                    {t(`product.type.${value}`)}
                   </button>
                 ))}
               </div>
@@ -184,17 +178,17 @@ export function ApplicationCreate() {
             {/* Produto */}
             <div className="mb-4">
               <label className="block font-medium text-texto mb-1">
-                Produto <span className="text-alerta">*</span>
+                {t("application.product")} <span className="text-alerta">*</span>
               </label>
               {products.length === 0 ? (
                 <p className="text-sm text-texto-suave">
-                  Nenhum produto cadastrado.{" "}
+                  {t("application.noProducts")}{" "}
                   <button
                     type="button"
                     onClick={() => navigate("/produtos")}
                     className="text-verde underline cursor-pointer"
                   >
-                    Cadastrar agora
+                    {t("application.createProductNow")}
                   </button>
                 </p>
               ) : (
@@ -203,7 +197,7 @@ export function ApplicationCreate() {
                   onChange={(e) => setProductId(e.target.value)}
                   className="w-full border border-borda rounded-lg px-3 py-2 text-texto cursor-pointer"
                 >
-                  <option value="">Escolha o produto</option>
+                  <option value="">{t("application.chooseProduct")}</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -216,7 +210,7 @@ export function ApplicationCreate() {
             {/* Data */}
             <div className="mb-4">
               <label className="block font-medium text-texto mb-1">
-                Data <span className="text-alerta">*</span>
+                {t("application.date")} <span className="text-alerta">*</span>
               </label>
               <input
                 type="date"
@@ -235,14 +229,12 @@ export function ApplicationCreate() {
                   onChange={(e) => setNeedsReapply(e.target.checked)}
                   className="w-4 h-4 cursor-pointer accent-[#3B6D11]"
                 />
-                <span className="font-medium text-texto">
-                  Precisa reaplicar
-                </span>
+                <span className="font-medium text-texto">{t("application.needsReapply")}</span>
               </label>
               {needsReapply && (
                 <div className="mt-2">
                   <label className="block text-sm text-texto-suave mb-1">
-                    Data da reaplicação
+                    {t("application.reapplyDate")}
                   </label>
                   <input
                     type="date"
@@ -251,7 +243,7 @@ export function ApplicationCreate() {
                     className="border border-borda rounded-lg px-3 py-2 text-texto"
                   />
                   <p className="text-xs text-texto-leve mt-1">
-                    Você será avisado quando a data estiver chegando.
+                    {t("application.reapplyHint")}
                   </p>
                 </div>
               )}
@@ -260,13 +252,13 @@ export function ApplicationCreate() {
             {/* Observação */}
             <div>
               <label className="block font-medium text-texto mb-1">
-                Observação{" "}
-                <span className="text-texto-leve font-normal">(opcional)</span>
+                {t("application.notes")}{" "}
+                <span className="text-texto-leve font-normal">{t("common.optional")}</span>
               </label>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Ex.: 1ª dose"
+                placeholder={t("application.notesPlaceholder")}
                 className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
               />
             </div>
@@ -276,15 +268,15 @@ export function ApplicationCreate() {
           <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl mb-6">
             <div className="flex items-center justify-between mb-3">
               <p className="font-medium text-texto">
-                Em quais animais?{" "}
-                <span className="text-verde">{selected.size} selecionados</span>
+                {t("application.whichAnimals")}{" "}
+                <span className="text-verde">{t("application.selectedCount", { count: selected.size })}</span>
               </p>
               <button
                 type="button"
                 onClick={toggleAllVisible}
                 className="text-sm text-verde font-medium cursor-pointer"
               >
-                {allVisibleSelected ? "Limpar seleção" : "Selecionar todos"}
+                {allVisibleSelected ? t("application.clearSelection") : t("application.selectAll")}
               </button>
             </div>
 
@@ -297,7 +289,7 @@ export function ApplicationCreate() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por brinco"
+                placeholder={t("application.searchTag")}
                 className="w-full bg-bege border border-borda rounded-lg pl-9 pr-3 py-2 text-sm text-texto"
               />
             </div>
@@ -309,9 +301,9 @@ export function ApplicationCreate() {
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
               >
-                <option value="ACTIVE">Ativos</option>
-                <option value="ALL">Todos os status</option>
-                <option value="SOLD">Vendidos</option>
+                <option value="ACTIVE">{t("application.filterActive")}</option>
+                <option value="ALL">{t("application.filterAllStatus")}</option>
+                <option value="SOLD">{t("application.filterSold")}</option>
               </select>
               <select
                 value={categoryFilter}
@@ -320,7 +312,7 @@ export function ApplicationCreate() {
                 }
                 className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
               >
-                <option value="ALL">Todas as categorias</option>
+                <option value="ALL">{t("application.allCategories")}</option>
                 {CATEGORY_FILTER_ORDER.map((value) => (
                   <option key={value} value={value}>
                     {filterLabelOf(value)}
@@ -332,7 +324,7 @@ export function ApplicationCreate() {
             {/* Lista de animais com checkbox */}
             {visibleAnimals.length === 0 ? (
               <p className="text-sm text-texto-suave">
-                Nenhum animal encontrado.
+                {t("application.noAnimals")}
               </p>
             ) : (
               <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
@@ -382,14 +374,14 @@ export function ApplicationCreate() {
               onClick={() => navigate("/manejo")}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Registrando..." : "Registrar aplicação"}
+              {saving ? t("application.creating") : t("application.create")}
             </button>
           </div>
         </form>

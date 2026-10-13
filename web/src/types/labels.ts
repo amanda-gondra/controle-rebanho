@@ -1,18 +1,19 @@
 import type { Sex, Status } from "./animal.js";
+import { t } from "../i18n/index.js";
 
-// Traduz os códigos da API (inglês) para o que aparece na tela (português).
+// Traduz os códigos da API (inglês) para o texto da tela (arquivo de tradução — G3).
 export const sexLabel: Record<Sex, string> = {
-  MALE: "Macho",
-  FEMALE: "Fêmea",
+  MALE: t("animal.sex.MALE"),
+  FEMALE: t("animal.sex.FEMALE"),
 };
 
 // Nomes das categorias: vêm da fazenda (podem ser personalizados) — use o
 // hook useCategoryLabels (web/src/hooks/useCategoryLabels.ts).
 
 export const statusLabel: Record<Status, string> = {
-  ACTIVE: "Ativo",
-  SOLD: "Vendido",
-  DEAD: "Morto",
+  ACTIVE: t("animal.status.ACTIVE"),
+  SOLD: t("animal.status.SOLD"),
+  DEAD: t("animal.status.DEAD"),
 };
 
 // As cores da etiqueta de cada status (fundo + texto).

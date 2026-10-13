@@ -1,7 +1,6 @@
 import type { PriceUnit, Prisma } from "@prisma/client";
 import {
-  DEFAULT_CATEGORY_LABELS,
-  resolveCategoryLabels,
+  customCategoryLabels,
   type CategoryLabels,
 } from "./categories.js";
 
@@ -24,7 +23,7 @@ export const FARM_DEFAULTS = {
     preferredPriceUnit: "PER_KG" as PriceUnit,
     reapplyAlertDays: 7,
     defaultCastrated: false,
-    categoryLabels: DEFAULT_CATEGORY_LABELS, // G4
+    categoryLabels: {} as Partial<CategoryLabels>, // G4: nenhum nome personalizado
   },
 } as const;
 
@@ -74,8 +73,9 @@ export type FarmSettings = {
   preferredPriceUnit: PriceUnit;
   reapplyAlertDays: number;
   defaultCastrated: boolean;
-  // Os 7 nomes JÁ resolvidos (personalizados + padrões) — a tela usa direto
-  categoryLabels: CategoryLabels;
+  // Só os nomes de categoria que a fazenda personalizou (G4). Os padrões vêm
+  // da tradução da tela, no idioma de quem usa (G3).
+  categoryLabels: Partial<CategoryLabels>;
 };
 
 export type FarmView = {
@@ -102,7 +102,7 @@ export function toFarmView(row: FarmRow): FarmView {
       preferredPriceUnit: row.preferredPriceUnit,
       reapplyAlertDays: row.reapplyAlertDays,
       defaultCastrated: row.defaultCastrated,
-      categoryLabels: resolveCategoryLabels(row.categoryLabels),
+      categoryLabels: customCategoryLabels(row.categoryLabels),
     },
   };
 }

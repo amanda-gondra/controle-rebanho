@@ -3,7 +3,11 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
 import { FARM_DEFAULTS, FARM_SELECT, toFarmView } from "../lib/farm.js";
 import { updateFarmSchema } from "../schemas/farm.schema.js";
-import { duplicatedLabelKeys, mergeCategoryLabels } from "../lib/categories.js";
+import {
+  duplicatedLabelKeys,
+  mergeCategoryLabels,
+  resolveCategoryLabels,
+} from "../lib/categories.js";
 import { ErrorCode, ruleError } from "../lib/errors.js";
 
 // Configurações da fazenda (G2).
@@ -40,7 +44,7 @@ export async function farmRoutes(app: FastifyInstance) {
       let categoryLabels: Record<string, string> | undefined;
       if (labelChanges) {
         const { labels, overrides } = mergeCategoryLabels(
-          request.auth.farm.settings.categoryLabels,
+          resolveCategoryLabels(request.auth.farm.settings.categoryLabels),
           labelChanges,
         );
         const duplicated = duplicatedLabelKeys(labels);
@@ -49,7 +53,11 @@ export async function farmRoutes(app: FastifyInstance) {
           throw ruleError(
             ErrorCode.DUPLICATE_CATEGORY_LABEL,
             message,
-            duplicated.map((key) => ({ field: `categoryLabels.${key}`, error: message })),
+            duplicated.map((key) => ({
+              field: `categoryLabels.${key}`,
+              code: ErrorCode.DUPLICATE_CATEGORY_LABEL,
+              error: message,
+            })),
           );
         }
         categoryLabels = overrides;

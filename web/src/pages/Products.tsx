@@ -4,6 +4,8 @@ import { Sidebar } from "../components/Sidebar.js";
 import { listProducts, createProduct } from "../services/sanitary.js";
 import type { Product, ProductType } from "../types/animal.js";
 import { useToast } from "../components/ToastProvider.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 export function Products() {
   const showToast = useToast();
@@ -31,16 +33,16 @@ export function Products() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!name.trim()) return setError("Informe o nome do produto.");
+    if (!name.trim()) return setError(t("products.nameRequired"));
 
     setSaving(true);
     try {
       await createProduct({ name: name.trim(), type });
       setName("");
       loadProducts();
-      showToast("Produto cadastrado.");
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+      showToast(t("products.created"));
+    } catch (err) {
+      setError(singleErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -54,9 +56,9 @@ export function Products() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-medium text-texto">Produtos</h1>
+          <h1 className="text-2xl font-medium text-texto">{t("products.title")}</h1>
           <p className="text-texto-suave">
-            Cadastre as vacinas e vermífugos que você usa
+            {t("products.subtitle")}
           </p>
         </div>
 
@@ -65,26 +67,21 @@ export function Products() {
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
               <label className="block font-medium text-texto mb-1">
-                Nome do produto <span className="text-alerta">*</span>
+                {t("products.name")} <span className="text-alerta">*</span>
               </label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex.: Vacina Aftosa"
+                placeholder={t("products.namePlaceholder")}
                 autoFocus
                 className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
               />
             </div>
 
             <div className="mb-5">
-              <label className="block font-medium text-texto mb-1">Tipo</label>
+              <label className="block font-medium text-texto mb-1">{t("products.type")}</label>
               <div className="flex gap-3">
-                {(
-                  [
-                    ["VACCINE", "Vacina"],
-                    ["DEWORMER", "Vermífugo"],
-                  ] as const
-                ).map(([value, label]) => (
+                {(["VACCINE", "DEWORMER"] as const).map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -95,7 +92,7 @@ export function Products() {
                         : "bg-card border-borda-chip text-texto-suave"
                     }`}
                   >
-                    {label}
+                    {t(`product.type.${value}`)}
                   </button>
                 ))}
               </div>
@@ -108,25 +105,25 @@ export function Products() {
               disabled={saving}
               className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-60"
             >
-              <Plus size={18} /> {saving ? "Cadastrando..." : "Cadastrar produto"}
+              <Plus size={18} /> {saving ? t("products.creating") : t("products.create")}
             </button>
           </form>
         </div>
 
         {/* Listas de produtos */}
         {loading ? (
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
             {/* Vacinas */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Syringe size={18} className="text-verde" />
-                <h2 className="font-medium text-texto">Vacinas</h2>
+                <h2 className="font-medium text-texto">{t("products.vaccines")}</h2>
               </div>
               {vaccines.length === 0 ? (
                 <p className="text-texto-leve text-sm">
-                  Nenhuma vacina cadastrada.
+                  {t("products.noVaccines")}
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -146,11 +143,11 @@ export function Products() {
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Pill size={18} className="text-verde" />
-                <h2 className="font-medium text-texto">Vermífugos</h2>
+                <h2 className="font-medium text-texto">{t("products.dewormers")}</h2>
               </div>
               {dewormers.length === 0 ? (
                 <p className="text-texto-leve text-sm">
-                  Nenhum vermífugo cadastrado.
+                  {t("products.noDewormers")}
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">

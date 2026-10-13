@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { t } from "../i18n/index.js";
 
 type Props = {
   onEdit: () => void;
@@ -61,7 +62,8 @@ export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
           e.stopPropagation(); // não abre a ficha do animal
           setOpen((v) => !v);
         }}
-        title="Ações"
+        title={t("common.actions")}
+        aria-label={t("common.actions")}
         aria-haspopup="menu"
         aria-expanded={open}
         className="p-1.5 rounded-lg text-texto-leve hover:bg-bege hover:text-texto cursor-pointer"
@@ -87,7 +89,7 @@ export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
               }}
               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-texto hover:bg-bege cursor-pointer"
             >
-              <Pencil size={15} /> Editar
+              <Pencil size={15} /> {t("common.edit")}
             </button>
             <button
               role="menuitem"
@@ -98,7 +100,7 @@ export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
               }}
               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-alerta hover:bg-bege cursor-pointer"
             >
-              <Trash2 size={15} /> Excluir
+              <Trash2 size={15} /> {t("common.delete")}
             </button>
           </div>,
           document.body,

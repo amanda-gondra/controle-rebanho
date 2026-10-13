@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { Check, X } from "lucide-react";
+import { t } from "../i18n/index.js";
 
 type Toast = { id: number; message: string };
 
@@ -45,7 +46,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <p className="flex-1 text-sm text-texto">{toast.message}</p>
             <button
               onClick={() => removeToast(toast.id)}
-              title="Fechar"
+              title={t("common.close")}
+              aria-label={t("common.close")}
               className="text-texto-leve hover:text-texto cursor-pointer"
             >
               <X size={16} />

@@ -45,7 +45,10 @@ export const updateFarmSchema = z
         MAX_ARROBA_LIVE_FACTOR_KG,
         `O fator da arroba pode ser no máximo ${MAX_ARROBA_LIVE_FACTOR_KG} kg.`,
       )
-      .refine(hasAtMostTwoDecimals, "O fator da arroba aceita no máximo 2 casas decimais."),
+      .refine(hasAtMostTwoDecimals, {
+        message: "O fator da arroba aceita no máximo 2 casas decimais.",
+        params: { code: "MAX_2_DECIMALS" },
+      }),
     preferredPriceUnit: z.enum(
       ["PER_KG", "PER_ARROBA", "PER_HEAD"],
       "Escolha por kg, por arroba ou por cabeça.",
@@ -60,6 +63,9 @@ export const updateFarmSchema = z
   })
   .partial()
   .strict()
-  .refine((data) => Object.keys(data).length > 0, "Envie pelo menos uma configuração para alterar.");
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "Envie pelo menos uma configuração para alterar.",
+    params: { code: "EMPTY_UPDATE" },
+  });
 
 export type UpdateFarmInput = z.infer<typeof updateFarmSchema>;

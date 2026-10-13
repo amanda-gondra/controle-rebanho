@@ -54,7 +54,14 @@ export const ErrorCode = {
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
-export type FieldError = { field: string; error: string };
+// Erro de um campo. `code` é o contrato (o frontend traduz); `params` traz os
+// números da regra; `error` é o texto em português para quem lê a API.
+export type FieldError = {
+  field: string;
+  code: string;
+  params?: Record<string, string | number | boolean>;
+  error: string;
+};
 
 export class AppError extends Error {
   constructor(
@@ -86,8 +93,8 @@ export const unauthorized = (code: ErrorCode, message: string) =>
 
 // Erro de validação de UM campo, no mesmo formato da validação do Zod
 // (usado quando a regra depende da fazenda, ex.: data futura no fuso dela).
-export const fieldError = (field: string, error: string) =>
-  new AppError(400, ErrorCode.VALIDATION_ERROR, "Dados inválidos.", [{ field, error }]);
+export const fieldError = (field: string, code: string, error: string) =>
+  new AppError(400, ErrorCode.VALIDATION_ERROR, "Dados inválidos.", [{ field, code, error }]);
 
 // Erro de regra de negócio ligado a campos, com código PRÓPRIO (ex.: categoria
 // que não combina com o sexo) — o frontend decide pelo código e mostra no campo.

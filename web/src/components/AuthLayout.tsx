@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { t } from "../i18n/index.js";
 
 // Moldura das telas de entrar e criar conta (Briefs 6 e 7): painel verde
 // sólido com a marca + formulário num card branco sobre o fundo bege.
@@ -13,10 +14,10 @@ export function AuthLayout({ children }: { children: ReactNode }) {
             alt=""
             className="w-10 h-10 md:w-12 md:h-12 [filter:brightness(0)_invert(1)]"
           />
-          <span className="text-2xl md:text-3xl font-semibold">Rebanho</span>
+          <span className="text-2xl md:text-3xl font-semibold">{t("common.appName")}</span>
         </div>
         <p className="mt-3 md:mt-6 text-verde-nevoa md:text-lg max-w-sm">
-          Leve o controle do seu rebanho com você.
+          {t("auth.tagline")}
         </p>
       </aside>
 

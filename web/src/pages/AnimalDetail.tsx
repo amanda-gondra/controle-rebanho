@@ -39,7 +39,7 @@ import {
   statusLabel,
   statusStyle,
 } from "../types/labels.js";
-import { formatDate, formatNumber, formatMoney } from "../types/format.js";
+import { formatDate, formatMonthYear, formatNumber, formatMoney } from "../types/format.js";
 import { WeighingModal } from "../components/WeighingModal.js";
 import { EditWeighingModal } from "../components/EditWeighingModal.js";
 import { StatusModal } from "../components/StatusModal.js";
@@ -47,6 +47,8 @@ import { DeleteModal } from "../components/DeleteModal.js";
 import { TradeModal } from "../components/TradeModal.js";
 import { EstimatedPriceModal } from "../components/EstimatedPriceModal.js";
 import { useToast } from "../components/ToastProvider.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 
 export function AnimalDetail() {
@@ -133,9 +135,9 @@ export function AnimalDetail() {
       await deleteWeighing(id, deletingWeighing.id);
       setDeletingWeighing(null);
       loadData();
-      showToast("Pesagem excluída.");
+      showToast(t("animalDetail.weighingDeleted"));
     } catch (err) {
-      console.error(err);
+      showToast(errorMessage(err, "animalDetail.weighingDeleteFailed"));
     } finally {
       setDeletingWeighingLoading(false);
     }
@@ -148,15 +150,15 @@ export function AnimalDetail() {
     try {
       if (deletingTrade === "purchase") {
         await deletePurchase(id);
-        showToast("Compra removida.");
+        showToast(t("animalDetail.purchaseRemoved"));
       } else {
         await deleteSale(id);
-        showToast("Venda desfeita. O animal voltou a ativo.");
+        showToast(t("animalDetail.saleUndone"));
       }
       setDeletingTrade(null);
       loadData();
     } catch (err) {
-      console.error(err);
+      showToast(errorMessage(err, "animalDetail.tradeFailed"));
     } finally {
       setDeletingTradeLoading(false);
     }
@@ -168,7 +170,7 @@ export function AnimalDetail() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         </main>
       </div>
     );
@@ -182,16 +184,16 @@ export function AnimalDetail() {
         <main className="flex-1 p-4 pb-24 md:p-8 flex items-center justify-center">
           <div className="text-center">
             <h2 className="text-xl font-medium text-texto mb-2">
-              Não encontramos este animal
+              {t("animalDetail.notFoundTitle")}
             </h2>
             <p className="text-texto-suave mb-4">
-              Ele pode ter sido removido, ou o código do brinco está diferente.
+              {t("animalDetail.notFoundHelp")}
             </p>
             <button
               onClick={() => navigate("/")}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
             >
-              Voltar para o rebanho
+              {t("animalDetail.backToHerd")}
             </button>
           </div>
         </main>
@@ -200,16 +202,11 @@ export function AnimalDetail() {
   }
 
   // Monta o texto da data de nascimento conforme a precisão
-  let birthText = "Idade não informada";
+  let birthText = t("animalDetail.birthUnknown");
   if (animal.birthDate && animal.birthPrecision === "DAY_MONTH_YEAR") {
-    birthText = `Nascido em ${formatDate(animal.birthDate)}`;
+    birthText = t("animalDetail.bornOn", { date: formatDate(animal.birthDate) });
   } else if (animal.birthDate && animal.birthPrecision === "MONTH_YEAR") {
-    const d = new Date(animal.birthDate);
-    birthText = `Nascido em ${d.toLocaleDateString("pt-BR", {
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    })}`;
+    birthText = t("animalDetail.bornOn", { date: formatMonthYear(animal.birthDate) });
   }
 
   return (
@@ -220,7 +217,8 @@ export function AnimalDetail() {
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => navigate("/")}
-            title="Voltar para o rebanho"
+            title={t("animalDetail.backToHerd")}
+            aria-label={t("animalDetail.backToHerd")}
             className="text-texto-suave hover:text-texto cursor-pointer"
           >
             <ArrowLeft size={22} />
@@ -235,9 +233,13 @@ export function AnimalDetail() {
               </span>
             </div>
             <p className="text-texto-suave">
-              {labelOf(animal.category, animal.sex)} · {sexLabel[animal.sex]}
-              {animal.castrated ? " castrado" : ""} ·{" "}
-              {animal.breed ?? "—"}
+              {t("animalDetail.summary", {
+                category: labelOf(animal.category, animal.sex),
+                sex: animal.castrated
+                  ? `${sexLabel[animal.sex]} ${t("animalDetail.castratedSuffix")}`
+                  : sexLabel[animal.sex],
+                breed: animal.breed ?? t("animalDetail.noBreed"),
+              })}
             </p>
             <p className="text-sm text-texto-leve">{birthText}</p>
           </div>
@@ -246,24 +248,24 @@ export function AnimalDetail() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => navigate(`/animais/${animal.id}/editar`)}
-              title="Editar animal"
+              title={t("animalDetail.editLabel")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
             >
-              <Pencil size={16} /> Editar
+              <Pencil size={16} /> {t("common.edit")}
             </button>
             <button
               onClick={() => setShowStatusModal(true)}
-              title="Mudar o status do animal"
+              title={t("animalDetail.statusLabel")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
             >
-              <RefreshCw size={16} /> Mudar status
+              <RefreshCw size={16} /> {t("animalDetail.changeStatus")}
             </button>
             <button
               onClick={() => setShowDeleteModal(true)}
-              title="Excluir animal"
+              title={t("animalDetail.deleteLabel")}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-bege cursor-pointer"
             >
-              <Trash2 size={16} /> Excluir
+              <Trash2 size={16} /> {t("common.delete")}
             </button>
           </div>
         </div>
@@ -274,44 +276,44 @@ export function AnimalDetail() {
             {/* Cartões de resumo */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">Peso atual</p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.currentWeight")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.lastWeightKg)} kg
+                  {t("units.kgValue", { value: formatNumber(gain.lastWeightKg) })}
                 </p>
               </div>
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">
-                  Ganho médio diário (GMD)
-                </p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.adg")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.averageDailyGainKg)} kg/dia
+                  {t("units.kgPerDay", { value: formatNumber(gain.averageDailyGainKg) })}
                 </p>
               </div>
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">Ganho total</p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.totalGain")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.totalGainKg)} kg
+                  {t("units.kgValue", { value: formatNumber(gain.totalGainKg) })}
                 </p>
               </div>
             </div>
 
             {/* Gráfico da evolução do peso */}
             <div className="bg-card border border-borda rounded-xl p-6 mb-6">
-              <p className="font-medium text-texto mb-4">Evolução do peso</p>
+              <p className="font-medium text-texto mb-4">{t("animalDetail.weightChart")}</p>
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart
                   data={[...weighings].reverse().map((w) => ({
-                    data: formatDate(w.date),
-                    peso: Number(w.weightKg),
+                    date: formatDate(w.date),
+                    weight: Number(w.weightKg),
                   }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#E7E0D2" />
-                  <XAxis dataKey="data" stroke="#6B6459" fontSize={12} />
-                  <YAxis stroke="#6B6459" fontSize={12} unit=" kg" />
+                  <XAxis dataKey="date" stroke="#6B6459" fontSize={12} />
+                  <YAxis stroke="#6B6459" fontSize={12} unit={t("units.kgSuffix")} />
                   <Tooltip />
                   <Line
                     type="monotone"
-                    dataKey="peso"
+                    dataKey="weight"
+                    name={t("animalDetail.weightSeries")}
+                    unit={t("units.kgSuffix")}
                     stroke="#3B6D11"
                     strokeWidth={2}
                     dot={{ fill: "#3B6D11" }}
@@ -323,18 +325,18 @@ export function AnimalDetail() {
         ) : (
           <div className="bg-card border border-borda rounded-xl p-10 mb-6 text-center">
             <p className="text-texto font-medium mb-1">
-              Ainda não dá para calcular o ganho de peso
+              {t("animalDetail.noGainTitle")}
             </p>
             <p className="text-texto-suave text-sm mb-4">
               {gainUnavailableCode === "SAME_DAY_WEIGHINGS"
-                ? "A primeira e a última pesagem são do mesmo dia. Registre uma pesagem em outra data."
-                : "Registre pelo menos duas pesagens e o gráfico aparece aqui."}
+                ? t("animalDetail.noGainSameDay")
+                : t("animalDetail.noGainHelp")}
             </p>
             <button
               onClick={() => setShowWeighingModal(true)}
               className="inline-flex items-center gap-2 bg-verde text-white text-sm font-medium px-4 py-2.5 rounded-lg cursor-pointer"
             >
-              <Plus size={16} /> Registrar pesagem
+              <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
           </div>
         )}
@@ -342,18 +344,18 @@ export function AnimalDetail() {
         {/* Histórico de pesagens */}
         <div className="bg-card border border-borda rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="font-medium text-texto">Pesagens</p>
+            <p className="font-medium text-texto">{t("animalDetail.weighings")}</p>
             <button
               onClick={() => setShowWeighingModal(true)}
               className="flex items-center gap-2 bg-verde text-white text-sm font-medium px-3 py-2 rounded-lg cursor-pointer"
             >
-              <Plus size={16} /> Registrar pesagem
+              <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
           </div>
 
           {weighings.length === 0 ? (
             <p className="text-texto-suave text-sm">
-              Nenhuma pesagem registrada ainda.
+              {t("animalDetail.noWeighings")}
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-borda">
@@ -367,18 +369,20 @@ export function AnimalDetail() {
                   </span>
                   <div className="flex items-center gap-4">
                     <span className="font-medium text-texto">
-                      {String(w.weightKg).replace(".", ",")} kg
+                      {t("units.kgValue", { value: formatNumber(Number(w.weightKg)) })}
                     </span>
                     <button
                       onClick={() => setEditingWeighing(w)}
-                      title="Editar pesagem"
+                      title={t("animalDetail.editWeighing")}
+                      aria-label={t("animalDetail.editWeighing")}
                       className="text-texto-leve hover:text-verde cursor-pointer"
                     >
                       <Pencil size={15} />
                     </button>
                     <button
                       onClick={() => setDeletingWeighing(w)}
-                      title="Excluir pesagem"
+                      title={t("animalDetail.deleteWeighing")}
+                      aria-label={t("animalDetail.deleteWeighing")}
                       className="text-texto-leve hover:text-alerta cursor-pointer"
                     >
                       <Trash2 size={15} />
@@ -392,10 +396,10 @@ export function AnimalDetail() {
 
         {/* Manejo sanitário (vacinas e vermífugos deste animal) */}
         <div className="bg-card border border-borda rounded-xl p-6">
-          <p className="font-medium text-texto mb-4">Manejo sanitário</p>
+          <p className="font-medium text-texto mb-4">{t("animalDetail.sanitary")}</p>
           {applications.length === 0 ? (
             <p className="text-texto-suave text-sm">
-              Nenhuma vacina ou vermífugo registrado para este animal.
+              {t("animalDetail.noApplications")}
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-borda">
@@ -421,8 +425,10 @@ export function AnimalDetail() {
                         {app.product.name}
                       </p>
                       <p className="text-xs text-texto-suave">
-                        {isVaccine ? "Vacina" : "Vermífugo"} ·{" "}
-                        {formatDate(app.date)}
+                        {t("animalDetail.applicationLine", {
+                          type: t(`product.type.${app.product.type}`),
+                          date: formatDate(app.date),
+                        })}
                         {app.notes ? ` · ${app.notes}` : ""}
                       </p>
                     </div>
@@ -435,24 +441,24 @@ export function AnimalDetail() {
 
         {/* Financeiro (v3.0) — compra, venda e resultado do animal */}
         <div className="bg-card border border-borda rounded-xl p-6 mt-6">
-          <p className="font-medium text-texto mb-4">Financeiro</p>
+          <p className="font-medium text-texto mb-4">{t("animalDetail.finance")}</p>
 
           {/* Resultado apurado (real se vendido, estimado se vivo) */}
           {result && result.resultType ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">Custo de compra</p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.purchaseCost")}</p>
                 <p className="text-xl font-medium text-texto">
                   {result.purchaseCost !== null
                     ? formatMoney(result.purchaseCost)
-                    : "Não informado"}
+                    : t("animalDetail.notInformed")}
                 </p>
               </div>
               <div className="rounded-xl bg-bege p-4">
                 <p className="text-sm text-texto-suave mb-1">
                   {result.resultType === "REALIZED"
-                    ? "Receita da venda"
-                    : "Valor estimado"}
+                    ? t("animalDetail.saleRevenue")
+                    : t("animalDetail.estimatedValue")}
                 </p>
                 <p className="text-xl font-medium text-texto">
                   {formatMoney(
@@ -464,8 +470,9 @@ export function AnimalDetail() {
               </div>
               <div className="rounded-xl bg-bege p-4">
                 <p className="text-sm text-texto-suave mb-1">
-                  Resultado
-                  {result.resultType === "ESTIMATED" ? " (estimado)" : ""}
+                  {result.resultType === "ESTIMATED"
+                    ? t("animalDetail.resultEstimated")
+                    : t("animalDetail.result")}
                 </p>
                 <p
                   className={`text-xl font-medium ${
@@ -478,8 +485,7 @@ export function AnimalDetail() {
             </div>
           ) : (
             <p className="text-texto-suave text-sm mb-6">
-              Registre a compra e informe o preço estimado (com ao menos uma
-              pesagem) para ver o resultado enquanto o animal não é vendido.
+              {t("animalDetail.resultHelp")}
             </p>
           )}
 
@@ -488,13 +494,15 @@ export function AnimalDetail() {
             {/* Compra */}
             <div className="flex items-center justify-between gap-3 py-3">
               <div>
-                <p className="text-sm font-medium text-texto">Compra</p>
+                <p className="text-sm font-medium text-texto">{t("animalDetail.purchase")}</p>
                 <p className="text-xs text-texto-suave">
                   {purchase
-                    ? `${formatDate(purchase.date)} · ${formatNumber(
-                        Number(purchase.weightKg),
-                      )} kg × ${formatMoney(Number(purchase.pricePerKg))}/kg`
-                    : "Não registrada"}
+                    ? t("animalDetail.tradeLine", {
+                        date: formatDate(purchase.date),
+                        weight: t("units.kgValue", { value: formatNumber(Number(purchase.weightKg)) }),
+                        price: t("units.perKg", { value: formatMoney(Number(purchase.pricePerKg)) }),
+                      })
+                    : t("animalDetail.notRegistered")}
                 </p>
               </div>
               {purchase ? (
@@ -508,14 +516,16 @@ export function AnimalDetail() {
                     onClick={() =>
                       setTradeModal({ kind: "purchase", existing: purchase })
                     }
-                    title="Editar compra"
+                    title={t("animalDetail.editPurchase")}
+                    aria-label={t("animalDetail.editPurchase")}
                     className="text-texto-leve hover:text-verde cursor-pointer"
                   >
                     <Pencil size={15} />
                   </button>
                   <button
                     onClick={() => setDeletingTrade("purchase")}
-                    title="Remover compra"
+                    title={t("animalDetail.removePurchase")}
+                    aria-label={t("animalDetail.removePurchase")}
                     className="text-texto-leve hover:text-alerta cursor-pointer"
                   >
                     <Trash2 size={15} />
@@ -528,7 +538,7 @@ export function AnimalDetail() {
                   }
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
                 >
-                  <Plus size={15} /> Registrar
+                  <Plus size={15} /> {t("animalDetail.register")}
                 </button>
               )}
             </div>
@@ -536,15 +546,17 @@ export function AnimalDetail() {
             {/* Venda */}
             <div className="flex items-center justify-between gap-3 py-3">
               <div>
-                <p className="text-sm font-medium text-texto">Venda</p>
+                <p className="text-sm font-medium text-texto">{t("animalDetail.sale")}</p>
                 <p className="text-xs text-texto-suave">
                   {sale
-                    ? `${formatDate(sale.date)} · ${formatNumber(
-                        Number(sale.weightKg),
-                      )} kg × ${formatMoney(Number(sale.pricePerKg))}/kg`
+                    ? t("animalDetail.tradeLine", {
+                        date: formatDate(sale.date),
+                        weight: t("units.kgValue", { value: formatNumber(Number(sale.weightKg)) }),
+                        price: t("units.perKg", { value: formatMoney(Number(sale.pricePerKg)) }),
+                      })
                     : animal.status === "DEAD"
-                      ? "Animal morto"
-                      : "Não registrada"}
+                      ? t("animalDetail.deadAnimal")
+                      : t("animalDetail.notRegistered")}
                 </p>
               </div>
               {sale ? (
@@ -558,14 +570,16 @@ export function AnimalDetail() {
                     onClick={() =>
                       setTradeModal({ kind: "sale", existing: sale })
                     }
-                    title="Editar venda"
+                    title={t("animalDetail.editSale")}
+                    aria-label={t("animalDetail.editSale")}
                     className="text-texto-leve hover:text-verde cursor-pointer"
                   >
                     <Pencil size={15} />
                   </button>
                   <button
                     onClick={() => setDeletingTrade("sale")}
-                    title="Desfazer venda"
+                    title={t("animalDetail.undoSale")}
+                    aria-label={t("animalDetail.undoSale")}
                     className="text-texto-leve hover:text-alerta cursor-pointer"
                   >
                     <Trash2 size={15} />
@@ -577,7 +591,7 @@ export function AnimalDetail() {
                   disabled={animal.status === "DEAD"}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus size={15} /> Registrar
+                  <Plus size={15} /> {t("animalDetail.register")}
                 </button>
               )}
             </div>
@@ -587,12 +601,12 @@ export function AnimalDetail() {
               <div className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <p className="text-sm font-medium text-texto">
-                    Preço estimado (kg)
+                    {t("animalDetail.estimatedPrice")}
                   </p>
                   <p className="text-xs text-texto-suave">
                     {animal.estimatedPricePerKg
-                      ? `${formatMoney(Number(animal.estimatedPricePerKg))}/kg`
-                      : "Não informado"}
+                      ? t("units.perKg", { value: formatMoney(Number(animal.estimatedPricePerKg)) })
+                      : t("animalDetail.notInformed")}
                   </p>
                 </div>
                 <button
@@ -601,11 +615,11 @@ export function AnimalDetail() {
                 >
                   {animal.estimatedPricePerKg ? (
                     <>
-                      <Pencil size={15} /> Alterar
+                      <Pencil size={15} /> {t("animalDetail.change")}
                     </>
                   ) : (
                     <>
-                      <Plus size={15} /> Informar
+                      <Plus size={15} /> {t("animalDetail.inform")}
                     </>
                   )}
                 </button>
@@ -623,7 +637,7 @@ export function AnimalDetail() {
             onSaved={() => {
               setShowWeighingModal(false);
               loadData();
-              showToast("Pesagem registrada.");
+              showToast(t("animalDetail.weighingCreated"));
             }}
           />
         )}
@@ -637,7 +651,7 @@ export function AnimalDetail() {
             onSaved={() => {
               setEditingWeighing(null);
               loadData();
-              showToast("Pesagem atualizada.");
+              showToast(t("animalDetail.weighingUpdated"));
             }}
           />
         )}
@@ -653,27 +667,27 @@ export function AnimalDetail() {
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-lg font-medium text-texto mb-1">
-                Excluir pesagem?
+                {t("animalDetail.deleteWeighingTitle")}
               </h2>
               <p className="text-sm text-texto-suave mb-5">
-                Tem certeza que quer excluir a pesagem de{" "}
-                {formatDate(deletingWeighing.date)} (
-                {String(deletingWeighing.weightKg).replace(".", ",")} kg)? Isso
-                pode alterar o cálculo do ganho de peso.
+                {t("animalDetail.deleteWeighingBody", {
+                  date: formatDate(deletingWeighing.date),
+                  weight: t("units.kgValue", { value: formatNumber(Number(deletingWeighing.weightKg)) }),
+                })}
               </p>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setDeletingWeighing(null)}
                   className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={handleDeleteWeighing}
                   disabled={deletingWeighingLoading}
                   className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
                 >
-                  {deletingWeighingLoading ? "Excluindo..." : "Excluir"}
+                  {deletingWeighingLoading ? t("common.deleting") : t("common.delete")}
                 </button>
               </div>
             </div>
@@ -690,7 +704,7 @@ export function AnimalDetail() {
             onSaved={() => {
               setShowStatusModal(false);
               loadData();
-              showToast("Status atualizado.");
+              showToast(t("animalDetail.statusUpdated"));
             }}
           />
         )}
@@ -702,7 +716,7 @@ export function AnimalDetail() {
             animalTag={animal.tag}
             onClose={() => setShowDeleteModal(false)}
             onDeleted={() => {
-              showToast("Animal excluído.");
+              showToast(t("animalDetail.animalDeleted"));
               navigate("/");
             }}
           />
@@ -718,10 +732,14 @@ export function AnimalDetail() {
             onClose={() => setTradeModal(null)}
             onSaved={() => {
               const wasEdit = !!tradeModal.existing;
-              const noun = tradeModal.kind === "sale" ? "Venda" : "Compra";
+              const isSale = tradeModal.kind === "sale";
               setTradeModal(null);
               loadData();
-              showToast(`${noun} ${wasEdit ? "atualizada" : "registrada"}.`);
+              showToast(
+                isSale
+                  ? t(wasEdit ? "animalDetail.saleUpdated" : "animalDetail.saleCreated")
+                  : t(wasEdit ? "animalDetail.purchaseUpdated" : "animalDetail.purchaseCreated"),
+              );
             }}
           />
         )}
@@ -736,7 +754,7 @@ export function AnimalDetail() {
             onSaved={() => {
               setShowPriceModal(false);
               loadData();
-              showToast("Preço estimado atualizado.");
+              showToast(t("animalDetail.priceUpdated"));
             }}
           />
         )}
@@ -753,20 +771,20 @@ export function AnimalDetail() {
             >
               <h2 className="text-lg font-medium text-texto mb-1">
                 {deletingTrade === "purchase"
-                  ? "Remover compra?"
-                  : "Desfazer venda?"}
+                  ? t("animalDetail.removePurchaseTitle")
+                  : t("animalDetail.undoSaleTitle")}
               </h2>
               <p className="text-sm text-texto-suave mb-5">
                 {deletingTrade === "purchase"
-                  ? "O custo de compra deixa de entrar no resultado deste animal."
-                  : "A venda é apagada e o animal volta para o status Ativo."}
+                  ? t("animalDetail.removePurchaseBody")
+                  : t("animalDetail.undoSaleBody")}
               </p>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setDeletingTrade(null)}
                   className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={handleDeleteTrade}
@@ -774,10 +792,10 @@ export function AnimalDetail() {
                   className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
                 >
                   {deletingTradeLoading
-                    ? "Processando..."
+                    ? t("animalDetail.processing")
                     : deletingTrade === "purchase"
-                      ? "Remover"
-                      : "Desfazer"}
+                      ? t("animalDetail.remove")
+                      : t("animalDetail.undo")}
                 </button>
               </div>
             </div>

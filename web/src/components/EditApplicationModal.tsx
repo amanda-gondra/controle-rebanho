@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { listProducts, updateApplication } from "../services/sanitary.js";
 import type { Application, Product, ProductType } from "../types/animal.js";
+import { t } from "../i18n/index.js";
+import { singleErrorMessage } from "../i18n/errors.js";
 
 type Props = {
   application: Application;
@@ -35,10 +37,10 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!productId) return setError("Escolha o produto.");
-    if (!date) return setError("Informe a data da aplicação.");
+    if (!productId) return setError(t("application.productRequired"));
+    if (!date) return setError(t("application.dateRequired"));
     if (needsReapply && !reapplyDate)
-      return setError("Informe a data da reaplicação.");
+      return setError(t("application.reapplyDateRequired"));
 
     setSaving(true);
     try {
@@ -49,8 +51,8 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
         notes: notes.trim() || undefined,
       });
       onSaved();
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
+    } catch (err) {
+      setError(singleErrorMessage(err));
       setSaving(false);
     }
   }
@@ -65,11 +67,12 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-medium text-texto">Editar aplicação</h2>
+          <h2 className="text-lg font-medium text-texto">{t("application.editTitle")}</h2>
           <button
             type="button"
             onClick={onClose}
-            title="Fechar"
+            title={t("common.close")}
+            aria-label={t("common.close")}
             className="text-texto-leve hover:text-texto cursor-pointer"
           >
             <X size={20} />
@@ -79,14 +82,9 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
         <form onSubmit={handleSave}>
           {/* Tipo */}
           <div className="mb-4">
-            <label className="block font-medium text-texto mb-1">Tipo</label>
+            <label className="block font-medium text-texto mb-1">{t("application.type")}</label>
             <div className="flex gap-3">
-              {(
-                [
-                  ["VACCINE", "Vacina"],
-                  ["DEWORMER", "Vermífugo"],
-                ] as const
-              ).map(([value, label]) => (
+              {(["VACCINE", "DEWORMER"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -100,7 +98,7 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
                       : "bg-card border-borda-chip text-texto-suave"
                   }`}
                 >
-                  {label}
+                  {t(`product.type.${value}`)}
                 </button>
               ))}
             </div>
@@ -109,14 +107,14 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
           {/* Produto */}
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Produto <span className="text-alerta">*</span>
+              {t("application.product")} <span className="text-alerta">*</span>
             </label>
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto cursor-pointer"
             >
-              <option value="">Escolha o produto</option>
+              <option value="">{t("application.chooseProduct")}</option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -128,7 +126,7 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
           {/* Data */}
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Data <span className="text-alerta">*</span>
+              {t("application.date")} <span className="text-alerta">*</span>
             </label>
             <input
               type="date"
@@ -147,12 +145,12 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
                 onChange={(e) => setNeedsReapply(e.target.checked)}
                 className="w-4 h-4 cursor-pointer accent-[#3B6D11]"
               />
-              <span className="font-medium text-texto">Precisa reaplicar</span>
+              <span className="font-medium text-texto">{t("application.needsReapply")}</span>
             </label>
             {needsReapply && (
               <div className="mt-2">
                 <label className="block text-sm text-texto-suave mb-1">
-                  Data da reaplicação
+                  {t("application.reapplyDate")}
                 </label>
                 <input
                   type="date"
@@ -167,13 +165,13 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
           {/* Observação */}
           <div className="mb-4">
             <label className="block font-medium text-texto mb-1">
-              Observação{" "}
-              <span className="text-texto-leve font-normal">(opcional)</span>
+              {t("application.notes")}{" "}
+              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ex.: 1ª dose"
+              placeholder={t("application.notesPlaceholder")}
               className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
             />
           </div>
@@ -186,14 +184,14 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
               onClick={onClose}
               className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar alterações"}
+              {saving ? t("common.saving") : t("application.saveChanges")}
             </button>
           </div>
         </form>

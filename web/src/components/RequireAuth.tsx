@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthProvider.js";
+import { t } from "../i18n/index.js";
 
 // Protege as telas do sistema: sem login, manda para a tela de entrar e
 // lembra para onde a pessoa queria ir (volta para lá depois de entrar).
@@ -10,7 +11,7 @@ export function RequireAuth() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bege flex items-center justify-center text-texto-suave">
-        Carregando...
+        {t("common.loading")}
       </div>
     );
   }

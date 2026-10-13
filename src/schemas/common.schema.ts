@@ -27,13 +27,19 @@ export const weightKg = z.coerce
   .number({ error: "O peso deve ser um número." })
   .positive("O peso deve ser maior que zero.")
   .max(MAX_WEIGHT_KG, `O peso não pode passar de ${MAX_WEIGHT_KG} kg.`)
-  .refine(hasAtMostTwoDecimals, "O peso aceita no máximo 2 casas decimais.");
+  .refine(hasAtMostTwoDecimals, {
+    message: "O peso aceita no máximo 2 casas decimais.",
+    params: { code: "MAX_2_DECIMALS" },
+  });
 
 export const pricePerKg = z.coerce
   .number({ error: "O preço deve ser um número." })
   .positive("O preço por kg deve ser maior que zero.")
   .max(MAX_PRICE_PER_KG, "O preço por kg está acima do limite permitido.")
-  .refine(hasAtMostTwoDecimals, "O preço aceita no máximo 2 casas decimais.");
+  .refine(hasAtMostTwoDecimals, {
+    message: "O preço aceita no máximo 2 casas decimais.",
+    params: { code: "MAX_2_DECIMALS" },
+  });
 
 // Texto obrigatório: tira espaços das pontas e exige pelo menos 1 caractere
 export const requiredText = (max: number, requiredMessage: string) =>

@@ -27,6 +27,7 @@ import { DeleteModal } from "../components/DeleteModal.js";
 import { useToast } from "../components/ToastProvider.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
+import { t } from "../i18n/index.js";
 
 type StatusFilter = Status | "ALL";
 type CategoryFilter = Category | "ALL";
@@ -34,12 +35,7 @@ type SortValue = "tag-asc" | "tag-desc" | "createdAt-desc" | "createdAt-asc";
 
 const PAGE_SIZE = 20;
 
-const STATUS_TABS: [StatusFilter, string][] = [
-  ["ALL", "Todos"],
-  ["ACTIVE", "Ativos"],
-  ["SOLD", "Vendidos"],
-  ["DEAD", "Mortos"],
-];
+const STATUS_TABS: StatusFilter[] = ["ALL", "ACTIVE", "SOLD", "DEAD"];
 
 export function AnimalList() {
   const navigate = useNavigate();
@@ -127,23 +123,23 @@ export function AnimalList() {
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-4 mb-5">
           <div>
-            <h1 className="text-2xl font-semibold text-texto">Rebanho</h1>
+            <h1 className="text-2xl font-semibold text-texto">{t("herd.title")}</h1>
             <div className="flex items-center gap-4 mt-1.5 text-sm text-texto-suave flex-wrap">
               <span className="flex items-center gap-1.5">
                 <img src="/logo.png" alt="" className="w-4 h-4 opacity-60" />
-                {counts.ALL} {counts.ALL === 1 ? "animal" : "animais"}
+                {t("herd.countAll", { count: counts.ALL })}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${statusDotStyle.ACTIVE}`} />
-                {counts.ACTIVE} ativos
+                {t("herd.countActive", { count: counts.ACTIVE })}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${statusDotStyle.SOLD}`} />
-                {counts.SOLD} {counts.SOLD === 1 ? "vendido" : "vendidos"}
+                {t("herd.countSold", { count: counts.SOLD })}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${statusDotStyle.DEAD}`} />
-                {counts.DEAD} {counts.DEAD === 1 ? "morto" : "mortos"}
+                {t("herd.countDead", { count: counts.DEAD })}
               </span>
             </div>
           </div>
@@ -152,7 +148,7 @@ export function AnimalList() {
             onClick={() => navigate("/animais/novo")}
             className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer shrink-0"
           >
-            <Plus size={18} /> Cadastrar animal
+            <Plus size={18} /> {t("herd.addAnimal")}
           </button>
         </div>
 
@@ -166,7 +162,8 @@ export function AnimalList() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por brinco, categoria ou raça…"
+              placeholder={t("herd.searchPlaceholder")}
+              aria-label={t("herd.searchPlaceholder")}
               className="w-full bg-card border border-borda rounded-xl pl-11 pr-4 py-2.5 text-texto placeholder:text-texto-leve"
             />
           </div>
@@ -174,7 +171,7 @@ export function AnimalList() {
             onClick={() => setShowFilters((v) => !v)}
             className="flex items-center gap-2 bg-card border border-borda rounded-xl px-4 py-2.5 text-sm text-texto-suave font-medium cursor-pointer shrink-0"
           >
-            <SlidersHorizontal size={16} /> Filtros
+            <SlidersHorizontal size={16} /> {t("herd.filters")}
             <ChevronDown
               size={15}
               className={`transition-transform ${showFilters ? "rotate-180" : ""}`}
@@ -186,7 +183,8 @@ export function AnimalList() {
         {showFilters && (
           <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
             <div className="flex gap-2 flex-wrap">
-              {STATUS_TABS.map(([value, label]) => {
+              {STATUS_TABS.map((value) => {
+                const label = t(`herd.tab${value}`);
                 const active = status === value;
                 return (
                   <button
@@ -213,7 +211,7 @@ export function AnimalList() {
 
             <div className="flex items-center gap-4 flex-wrap">
               <label className="flex items-center gap-2 text-sm text-texto-suave">
-                Categoria
+                {t("herd.category")}
                 <select
                   value={category}
                   onChange={(e) =>
@@ -221,7 +219,7 @@ export function AnimalList() {
                   }
                   className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
                 >
-                  <option value="ALL">Todas</option>
+                  <option value="ALL">{t("herd.allCategories")}</option>
                   {CATEGORY_FILTER_ORDER.map((value) => (
                     <option key={value} value={value}>
                       {filterLabelOf(value)}
@@ -231,16 +229,16 @@ export function AnimalList() {
               </label>
 
               <label className="flex items-center gap-2 text-sm text-texto-suave">
-                Ordenar por
+                {t("herd.sortBy")}
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as SortValue)}
                   className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
                 >
-                  <option value="createdAt-desc">Mais recentes</option>
-                  <option value="createdAt-asc">Mais antigos</option>
-                  <option value="tag-asc">Brinco (A→Z)</option>
-                  <option value="tag-desc">Brinco (Z→A)</option>
+                  <option value="createdAt-desc">{t("herd.sortNewest")}</option>
+                  <option value="createdAt-asc">{t("herd.sortOldest")}</option>
+                  <option value="tag-asc">{t("herd.sortTagAsc")}</option>
+                  <option value="tag-desc">{t("herd.sortTagDesc")}</option>
                 </select>
               </label>
             </div>
@@ -249,29 +247,28 @@ export function AnimalList() {
 
         {/* Conteúdo */}
         {loading ? (
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave">{t("common.loading")}</p>
         ) : allAnimals.length === 0 ? (
           <div className="bg-card border border-borda rounded-xl p-12 text-center max-w-xl mx-auto mt-4">
             <div className="w-16 h-16 rounded-full bg-verde-claro flex items-center justify-center mx-auto mb-4">
               <img src="/logo.png" alt="" className="w-9 h-9" />
             </div>
             <h2 className="text-lg font-medium text-texto mb-1">
-              Seu rebanho está vazio
+              {t("herd.emptyTitle")}
             </h2>
             <p className="text-texto-suave text-sm mb-5">
-              Cadastre o primeiro animal para começar a acompanhar o desempenho
-              do seu rebanho.
+              {t("herd.emptyHelp")}
             </p>
             <button
               onClick={() => navigate("/animais/novo")}
               className="inline-flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
             >
-              <Plus size={18} /> Cadastrar primeiro animal
+              <Plus size={18} /> {t("herd.addFirst")}
             </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center text-texto-suave mt-8">
-            <p>Nenhum animal encontrado com esse filtro.</p>
+            <p>{t("herd.noMatch")}</p>
           </div>
         ) : (
           <div className="bg-card border border-borda rounded-2xl overflow-hidden">
@@ -279,13 +276,13 @@ export function AnimalList() {
               <table className="w-full min-w-[900px] text-sm">
                 <thead>
                   <tr className="text-left text-texto-suave border-b border-borda">
-                    <th className="font-medium px-5 py-3.5">Brinco</th>
-                    <th className="font-medium px-5 py-3.5">Animal</th>
-                    <th className="font-medium px-5 py-3.5">Sexo</th>
-                    <th className="font-medium px-5 py-3.5">Raça</th>
-                    <th className="font-medium px-5 py-3.5">Peso atual</th>
-                    <th className="font-medium px-5 py-3.5">Status</th>
-                    <th className="font-medium px-5 py-3.5 text-right">Ações</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colTag")}</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colAnimal")}</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colSex")}</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colBreed")}</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colWeight")}</th>
+                    <th className="font-medium px-5 py-3.5">{t("herd.colStatus")}</th>
+                    <th className="font-medium px-5 py-3.5 text-right">{t("herd.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -339,12 +336,11 @@ export function AnimalList() {
                         {animal.currentWeightKg != null ? (
                           <>
                             <p className="font-medium text-texto">
-                              {formatNumber(animal.currentWeightKg)} kg
+                              {t("herd.weightKg", { value: formatNumber(animal.currentWeightKg) })}
                             </p>
                             {animal.lastWeighingDate && (
                               <p className="text-xs text-texto-leve">
-                                Última pesagem{" "}
-                                {formatDate(animal.lastWeighingDate)}
+                                {t("herd.lastWeighing", { date: formatDate(animal.lastWeighingDate) })}
                               </p>
                             )}
                           </>
@@ -352,7 +348,7 @@ export function AnimalList() {
                           <>
                             <p className="text-texto-leve">—</p>
                             <p className="text-xs text-texto-leve">
-                              Sem pesagem registrada
+                              {t("herd.noWeighing")}
                             </p>
                           </>
                         )}
@@ -390,14 +386,17 @@ export function AnimalList() {
             {/* Paginação */}
             <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-t border-borda text-sm text-texto-suave flex-wrap">
               <span>
-                Mostrando {start + 1}–{Math.min(start + PAGE_SIZE, filtered.length)}{" "}
-                de {filtered.length}{" "}
-                {filtered.length === 1 ? "animal" : "animais"}
+                {t("herd.showing", {
+                  from: start + 1,
+                  to: Math.min(start + PAGE_SIZE, filtered.length),
+                  count: filtered.length,
+                })}
               </span>
               <div className="flex items-center gap-1.5">
                 <button
                   disabled={currentPage === 1}
                   onClick={() => setPage((p) => p - 1)}
+                  aria-label={t("herd.prevPage")}
                   className="p-1.5 rounded-lg border border-borda-chip text-texto-suave cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft size={16} />
@@ -406,6 +405,7 @@ export function AnimalList() {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
+                    aria-label={t("herd.page", { page: p })}
                     className={`min-w-8 h-8 px-2 rounded-lg text-sm cursor-pointer ${
                       p === currentPage
                         ? "bg-verde text-white"
@@ -418,6 +418,7 @@ export function AnimalList() {
                 <button
                   disabled={currentPage === totalPages}
                   onClick={() => setPage((p) => p + 1)}
+                  aria-label={t("herd.nextPage")}
                   className="p-1.5 rounded-lg border border-borda-chip text-texto-suave cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronRight size={16} />
@@ -436,7 +437,7 @@ export function AnimalList() {
             onDeleted={() => {
               setDeleting(null);
               loadAnimals();
-              showToast("Animal excluído.");
+              showToast(t("herd.deleted"));
             }}
           />
         )}

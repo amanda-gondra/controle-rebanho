@@ -5,6 +5,8 @@ import { AuthField, AuthLayout, inputClass } from "../components/AuthLayout.js";
 import { PasswordInput } from "../components/PasswordInput.js";
 import { useAuth } from "../components/AuthProvider.js";
 import type { ApiError } from "../services/api.js";
+import { t } from "../i18n/index.js";
+import { errorMessage, fieldErrorsOf } from "../i18n/errors.js";
 
 const MIN_PASSWORD = 8;
 
@@ -27,7 +29,7 @@ export function Register() {
   function handleContinue(event: FormEvent) {
     event.preventDefault();
     if (!farmName.trim()) {
-      setErrors({ farmName: "Informe o nome da fazenda." });
+      setErrors({ farmName: t("auth.register.farmNameRequired") });
       return;
     }
     setErrors({});
@@ -38,12 +40,12 @@ export function Register() {
     event.preventDefault();
 
     const found: Record<string, string> = {};
-    if (!name.trim()) found.name = "Informe o seu nome.";
-    if (!email.trim()) found.email = "Informe o seu e-mail.";
+    if (!name.trim()) found.name = t("auth.register.nameRequired");
+    if (!email.trim()) found.email = t("auth.login.emailRequired");
     if (password.length < MIN_PASSWORD) {
-      found.password = `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`;
+      found.password = t("auth.register.passwordMin", { min: MIN_PASSWORD });
     }
-    if (confirm !== password) found.confirm = "As senhas não conferem.";
+    if (confirm !== password) found.confirm = t("auth.register.confirmMismatch");
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
@@ -53,17 +55,14 @@ export function Register() {
       navigate("/", { replace: true });
     } catch (err) {
       const error = err as ApiError;
+      const fields = fieldErrorsOf(error);
       if (error.code === "EMAIL_ALREADY_REGISTERED") {
-        setErrors({ email: "Já existe uma conta com esse e-mail." });
-      } else if (error.code === "VALIDATION_ERROR" && error.errors?.length) {
-        const mapped: Record<string, string> = {};
-        for (const e of error.errors) mapped[e.field] = e.error;
-        if (mapped.farmName) setStep(1);
-        setErrors(mapped);
-      } else if (error.code === "RATE_LIMITED") {
-        setErrors({ geral: "Muitas tentativas. Espere um minuto e tente de novo." });
+        setErrors({ email: errorMessage(error) });
+      } else if (fields) {
+        if (fields.farmName) setStep(1);
+        setErrors(fields);
       } else {
-        setErrors({ geral: "Não foi possível criar a conta. Tente de novo." });
+        setErrors({ geral: errorMessage(error, "auth.register.failed") });
       }
       setSubmitting(false);
     }
@@ -71,19 +70,19 @@ export function Register() {
 
   return (
     <AuthLayout>
-      <p className="text-sm text-texto-leve mb-2">Passo {step} de 2</p>
-      <h1 className="text-2xl font-medium text-texto mb-1">Criar conta</h1>
+      <p className="text-sm text-texto-leve mb-2">{t("auth.register.step", { step })}</p>
+      <h1 className="text-2xl font-medium text-texto mb-1">{t("auth.register.title")}</h1>
 
       {step === 1 ? (
         <form onSubmit={handleContinue} noValidate>
-          <p className="text-texto-suave mb-6">Comece pela sua fazenda.</p>
+          <p className="text-texto-suave mb-6">{t("auth.register.step1Intro")}</p>
 
-          <AuthField id="farmName" label="Nome da fazenda" error={errors.farmName}>
+          <AuthField id="farmName" label={t("auth.register.farmName")} error={errors.farmName}>
             <input
               id="farmName"
               value={farmName}
               onChange={(e) => setFarmName(e.target.value)}
-              placeholder="Ex.: Fazenda Boa Vista"
+              placeholder={t("auth.register.farmNamePlaceholder")}
               autoComplete="organization"
               aria-invalid={!!errors.farmName}
               aria-describedby={errors.farmName ? "farmName-error" : undefined}
@@ -95,14 +94,14 @@ export function Register() {
             type="submit"
             className="w-full bg-verde text-white font-medium py-2.5 rounded-lg cursor-pointer"
           >
-            Continuar
+            {t("auth.register.continue")}
           </button>
         </form>
       ) : (
         <form onSubmit={handleSubmit} noValidate>
-          <p className="text-texto-suave mb-6">Agora, os seus dados de acesso.</p>
+          <p className="text-texto-suave mb-6">{t("auth.register.step2Intro")}</p>
 
-          <AuthField id="name" label="Seu nome" error={errors.name}>
+          <AuthField id="name" label={t("auth.register.name")} error={errors.name}>
             <input
               id="name"
               value={name}
@@ -114,13 +113,13 @@ export function Register() {
             />
           </AuthField>
 
-          <AuthField id="email" label="E-mail" error={errors.email}>
+          <AuthField id="email" label={t("auth.email")} error={errors.email}>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
+              placeholder={t("auth.emailPlaceholder")}
               autoComplete="email"
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? "email-error" : undefined}
@@ -128,7 +127,7 @@ export function Register() {
             />
           </AuthField>
 
-          <AuthField id="password" label="Senha" error={errors.password}>
+          <AuthField id="password" label={t("auth.password")} error={errors.password}>
             <PasswordInput
               id="password"
               value={password}
@@ -137,11 +136,11 @@ export function Register() {
               autoComplete="new-password"
             />
             {!errors.password && (
-              <p className="text-sm text-texto-leve mt-1">Pelo menos {MIN_PASSWORD} caracteres.</p>
+              <p className="text-sm text-texto-leve mt-1">{t("auth.register.passwordHint", { min: MIN_PASSWORD })}</p>
             )}
           </AuthField>
 
-          <AuthField id="confirm" label="Confirmar senha" error={errors.confirm}>
+          <AuthField id="confirm" label={t("auth.register.confirm")} error={errors.confirm}>
             <PasswordInput
               id="confirm"
               value={confirm}
@@ -166,23 +165,23 @@ export function Register() {
               }}
               className="flex-1 border border-borda-chip text-texto-suave font-medium py-2.5 rounded-lg cursor-pointer"
             >
-              Voltar
+              {t("common.back")}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="flex-1 bg-verde text-white font-medium py-2.5 rounded-lg cursor-pointer disabled:opacity-60"
             >
-              {submitting ? "Criando..." : "Criar conta"}
+              {submitting ? t("auth.register.submitting") : t("auth.register.submit")}
             </button>
           </div>
         </form>
       )}
 
       <p className="text-sm text-texto-suave mt-6 text-center">
-        Já tem conta?{" "}
+        {t("auth.register.hasAccount")}{" "}
         <Link to="/login" className="text-verde font-medium hover:underline">
-          Entrar
+          {t("auth.register.login")}
         </Link>
       </p>
     </AuthLayout>

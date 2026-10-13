@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 
-// Dois grupos de teste:
+// Três grupos de teste:
 // - unit: funções puras em src/ (rápidos, sem banco)
+// - web-unit: funções puras da tela em web/src (ex.: tradução)
 // - integration: rotas da API contra um banco de TESTE real (tests/integration)
 export default defineConfig({
   test: {
@@ -10,6 +11,13 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["src/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          // regras puras da tela (textos e tradução — G3), sem navegador
+          name: "web-unit",
+          include: ["web/src/**/*.test.ts"],
         },
       },
       {
