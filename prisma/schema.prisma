@@ -42,6 +42,21 @@ enum ProductType {
   DEWORMER // vermífugo
 }
 
+// Certeza da causa da morte (D-27). O sistema não sugere causa nem diagnostica.
+enum DeathCauseCertainty {
+  CONFIRMED    // confirmada
+  SUSPECTED    // suspeita
+  NOT_INFORMED // não informada
+}
+
+// De onde veio a pesagem (D-08): manual, ou criada por compra/venda (G5).
+// Pesagem de compra/venda só muda pela negociação (RN-PES-009).
+enum WeighingSource {
+  MANUAL
+  PURCHASE
+  SALE
+}
+
 // Unidade de preço de uma negociação (compra/venda). Na fazenda, é só a que
 // vem marcada por padrão (G2); cada negociação grava a sua (G5).
 enum PriceUnit {
@@ -124,6 +139,12 @@ model Animal {
   category            Category
   castrated           Boolean? // G4: só machos (fêmea = vazio — CHECK no banco)
   status              Status              @default(ACTIVE)
+  // Saída (D-27): data em que o animal foi vendido ou morreu. Nada (pesagem,
+  // aplicação) pode ter data depois dela (RN-ANIMAL-012). Na morte, causa e
+  // certeza. Ativo = sem saída (CHECK no banco).
+  exitDate            DateTime?            @db.Date
+  deathCause          String?
+  deathCauseCertainty DeathCauseCertainty?
   birthDate           DateTime?           @db.Date
   birthPrecision      BirthDatePrecision  @default(UNKNOWN)
   notes               String?
@@ -145,11 +166,12 @@ model Weighing {
   farm      Farm     @relation(fields: [farmId], references: [id])
   animalId  String
   animal    Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date      DateTime @db.Date
-  weightKg  Decimal  @db.Decimal(6, 2)
-  createdAt DateTime @default(now())
+  date      DateTime       @db.Date
+  weightKg  Decimal        @db.Decimal(6, 2)
+  source    WeighingSource @default(MANUAL) // D-08 / RN-PES-009
+  createdAt DateTime       @default(now())
 
-  @@index([animalId, date])
+  @@unique([animalId, date]) // D-33: uma pesagem por animal por dia
   @@index([farmId])
 }
 

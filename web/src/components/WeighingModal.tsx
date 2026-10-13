@@ -9,17 +9,21 @@ type Props = {
   animalTag: string;
   onClose: () => void; // fechar sem salvar
   onSaved: () => void; // salvou com sucesso
+  // Já existe pesagem nesse dia (D-33): abrir a edição dela
+  onEditExisting?: (date: string) => void;
 };
 
-export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) {
+export function WeighingModal({ animalId, animalTag, onClose, onSaved, onEditExisting }: Props) {
   const [date, setDate] = useState("");
   const [weight, setWeight] = useState("");
   const [error, setError] = useState("");
+  const [duplicateDate, setDuplicateDate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); // impede o navegador de recarregar a página
     setError("");
+    setDuplicateDate(null);
     if (!date) return setError(t("weighing.dateRequired"));
     const weightNumber = Number(weight.replace(",", "."));
     if (!weight || weightNumber <= 0)
@@ -31,6 +35,7 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
       onSaved();
     } catch (err) {
       setError(singleErrorMessage(err));
+      if ((err as { code?: string })?.code === "DUPLICATE_WEIGHING_DATE") setDuplicateDate(date);
       setSaving(false);
     }
   }
@@ -87,7 +92,20 @@ export function WeighingModal({ animalId, animalTag, onClose, onSaved }: Props) 
             />
           </div>
 
-          {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-alerta mb-4">
+              {error}{" "}
+              {duplicateDate && onEditExisting && (
+                <button
+                  type="button"
+                  onClick={() => onEditExisting(duplicateDate)}
+                  className="text-verde font-medium underline cursor-pointer"
+                >
+                  {t("weighing.editExisting")}
+                </button>
+              )}
+            </p>
+          )}
 
           <div className="flex justify-end gap-3">
             <button

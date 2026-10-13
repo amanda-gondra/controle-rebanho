@@ -77,3 +77,13 @@ export function monthNames(): string[] {
     return name.charAt(0).toLocaleUpperCase(intlLocale()) + name.slice(1);
   });
 }
+
+// "Hoje" (AAAA-MM-DD) no fuso da fazenda — padrão dos campos de data
+export function todayInTimeZone(timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date()); // en-CA só para sair no formato AAAA-MM-DD
+}

@@ -47,6 +47,23 @@
   conferir que só aparecem chaves `⟦...⟧`, dados digitados, números e datas (feito em
   2026-10-13 em todas as telas, janelas e num erro vindo da API).
 
+## Saída do animal e pesagens (G5a)
+
+- `tests/integration/exit.test.ts`: morte com data/causa/certeza, vendido sem venda, data
+  obrigatória e não no futuro, conflito com pesagem/aplicação/nascimento (diz qual e a data),
+  no mesmo dia pode, corrigir a saída, voltar para ativo (limpa tudo), morto ↔ vendido recusado,
+  com venda registrada recusado, o banco também recusa (`CHECK`s), venda grava a saída e
+  desfazer apaga; pesagem e aplicação depois da saída recusadas (inclusive ao editar);
+  pesagem repetida no dia (inclusive duas ao mesmo tempo: só uma grava); pesagem de
+  negociação não é editada/apagada; outra fazenda não vê nada.
+- `src/services/exit.service.test.ts`: regras puras (qual registro impede, mesmo dia, nascimento
+  com/sem dia certo).
+- A antiga checagem de GMD "primeira e última no mesmo dia" pela API ficou impossível (uma
+  pesagem por dia); a regra continua coberta no teste de unidade do GMD.
+- Verificado no navegador em 2026-10-13: erro de data citando a pesagem, faixa "Saiu em …",
+  botão de pesagem desligado, voltar para ativo, pesagem repetida com atalho para editar,
+  aplicação com animal que saiu, celular 360 px sem rolagem lateral e idioma de teste limpo.
+
 ## Categorias (G4)
 
 - `categories.test.ts` (integração): as 7 combinações válidas aceitas e as 5 inválidas recusadas

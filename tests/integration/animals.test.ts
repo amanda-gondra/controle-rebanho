@@ -201,10 +201,10 @@ describe("PATCH /animals/:id/status", () => {
     const response = await t.client.inject({
       method: "PATCH",
       url: `/animals/${animal.id}/status`,
-      payload: { status: "DEAD" },
+      payload: { status: "DEAD", exitDate: "2026-01-10" },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().status).toBe("DEAD");
+    expect(response.json()).toMatchObject({ status: "DEAD", deathCauseCertainty: "NOT_INFORMED" });
   });
 
   it("animal com venda não volta a ativo nem vira morto pelo status (D-06, F-08)", async () => {

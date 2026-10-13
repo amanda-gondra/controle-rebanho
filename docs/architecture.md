@@ -1,7 +1,8 @@
 # Arquitetura do backend
 
 > Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
-> por fazenda) + G2 (configurações da fazenda) + G4 (categorias) + G3 (textos fora do código).
+> por fazenda) + G2 (configurações da fazenda) + G4 (categorias) + G3 (textos fora do código) + G5a (saída do animal e
+> pesagens com origem).
 
 ## Visão geral (atual)
 
@@ -86,9 +87,9 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
 | JSON malformado / requisição ruim | 400 | `BAD_REQUEST` |
 | Registro não existe | 404 | `*_NOT_FOUND` / `RECORD_NOT_FOUND` |
 | Rota não existe | 404 | `ROUTE_NOT_FOUND` |
-| Unicidade (brinco, compra, venda) | 409 | `DUPLICATE_TAG`, `DUPLICATE_PURCHASE`, `DUPLICATE_SALE`, `DUPLICATE_RECORD` |
-| Estado não permite | 409 | `ANIMAL_HAS_TRANSACTIONS`, `ANIMAL_HAS_SALE`, `DEAD_ANIMAL_CANNOT_BE_SOLD` |
-| Regra de data/cálculo | 422 | `SALE_BEFORE_PURCHASE`, `INSUFFICIENT_WEIGHINGS`, `SAME_DAY_WEIGHINGS` |
+| Unicidade (brinco, compra, venda, pesagem no dia) | 409 | `DUPLICATE_TAG`, `DUPLICATE_PURCHASE`, `DUPLICATE_SALE`, `DUPLICATE_WEIGHING_DATE`, `DUPLICATE_RECORD` |
+| Estado não permite | 409 | `ANIMAL_HAS_TRANSACTIONS`, `ANIMAL_HAS_SALE`, `DEAD_ANIMAL_CANNOT_BE_SOLD`, `INVALID_STATUS_TRANSITION`, `WEIGHING_FROM_TRADE` |
+| Regra de data/cálculo | 422 | `SALE_BEFORE_PURCHASE`, `INSUFFICIENT_WEIGHINGS`, `SAME_DAY_WEIGHINGS`, `EXIT_DATE_CONFLICT`, `WEIGHING_DATE_OUT_OF_RANGE`, `ANIMALS_NOT_IN_HERD_ON_DATE` |
 | Corpo grande / mídia | 413 / 415 | `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE` |
 | Limite de requisições | 429 | `RATE_LIMITED` |
 | Qualquer outra falha | 500 | `INTERNAL_ERROR` (detalhe só no log) |
@@ -168,6 +169,30 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
   já resolvidos em `settings.categoryLabels`. `PATCH /farm { categoryLabels: { CHAVE: "nome" | null } }`
   muda só as chaves enviadas (`null` = padrão); nomes repetidos → `DUPLICATE_CATEGORY_LABEL`.
   O código da categoria nunca muda. No frontend, o hook `useCategoryLabels` dá o nome certo.
+
+## Saída do animal e pesagens (G5a — D-27, D-33)
+
+- `PATCH /animals/:id/status` `{ status, exitDate?, deathCause?, deathCauseCertainty? }`:
+  - ativo → `DEAD` ou `SOLD` exige `exitDate` (não no futuro, pelo fuso da fazenda);
+  - morto/vendido → pode corrigir a própria saída ou voltar para `ACTIVE` (apaga data, causa e
+    certeza); trocar morto ↔ vendido direto → 409 `INVALID_STATUS_TRANSITION`;
+  - causa e certeza só valem para `DEAD` (certeza padrão `NOT_INFORMED`; o sistema não sugere causa);
+  - com venda registrada → 409 `ANIMAL_HAS_SALE` (a saída é a da venda).
+- Regras puras em `src/services/exit.service.ts` (`findExitConflict`, `checkDateWithinLife`);
+  consultas ao banco em `src/lib/animal-life.ts`:
+  - `assertExitDateAllowed`: a saída não pode ser antes do nascimento, da compra, da última
+    pesagem nem da última aplicação → 422 `EXIT_DATE_CONFLICT` com `params { kind, date }`
+    (no mesmo dia pode);
+  - `assertWeighingDateAllowed`: pesagem depois da saída ou antes do nascimento (quando o dia é
+    conhecido) → 422 `WEIGHING_DATE_OUT_OF_RANGE` com `params { reason, date }`;
+  - `assertAnimalsInHerdOnDate`: aplicação (criar/editar) com animal fora do rebanho na data →
+    422 `ANIMALS_NOT_IN_HERD_ON_DATE` com `params { tags, count }`.
+- A venda (modelo atual) também é a saída: registrar/editar a venda grava `exitDate`;
+  desfazer volta para ativo sem data.
+- Pesagem: `source` = `MANUAL` | `PURCHASE` | `SALE`. Só `MANUAL` é editada/apagada à mão
+  (as outras → 409 `WEIGHING_FROM_TRADE`; serão criadas pelas negociações na entrega 2 da G5).
+  Uma por animal por dia (índice único) → 409 `DUPLICATE_WEIGHING_DATE`; na tela, o botão
+  "Editar a pesagem desse dia" abre a existente.
 
 ## Textos da tela (G3 — D-01)
 

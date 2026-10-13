@@ -1,5 +1,6 @@
 import { request } from "./api.js";
 import type {
+  DeathCauseCertainty,
   Animal,
   Status,
   Category,
@@ -64,10 +65,19 @@ export function createWeighing(
   });
 }
 
-export function updateStatus(id: string, status: Status): Promise<Animal> {
+// Mudar situação (D-27): ao sair (vendido/morto) vai a data de saída; na
+// morte, causa e certeza. Voltar para ativo apaga a saída.
+export type UpdateStatusInput = {
+  status: Status;
+  exitDate?: string;
+  deathCause?: string | null;
+  deathCauseCertainty?: DeathCauseCertainty;
+};
+
+export function updateStatus(id: string, input: UpdateStatusInput): Promise<Animal> {
   return request<Animal>(`/animals/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(input),
   });
 }
 

@@ -86,11 +86,13 @@ Backend (raiz):
   src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
                                 password.ts, errors.ts, error-handler.ts, dates.ts,
                                 farm.ts (configurações: campos, padrões, fusos do Brasil),
-                                categories.ts (categorias: regra de sexo e nomes — G4)
+                                categories.ts (categorias: regra de sexo e nomes — G4),
+                                animal-life.ts (saída e "nada depois da saída" — G5a)
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
   src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance, farm, auth
   src/routes/                   auth.routes.ts (público) + animals, sanitary, finance, farm (protegidas)
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
+                                exit.service.ts (saída do animal: o que impede a data — G5a),
                                 finance.service.ts (resultado por animal),
                                 animal.service.ts (categoria × sexo e castrado — G4)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
@@ -149,7 +151,8 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
   unidade de preço, antecedência do lembrete, castrado padrão) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
   `Session` (hash do token, validade).
 - Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda; categoria G4 combinando
-  com o sexo; `castrated` só machos) · `Weighing` ·
+  com o sexo; `castrated` só machos; saída G5a: `exitDate`, `deathCause`, `deathCauseCertainty`) ·
+  `Weighing` (`source` MANUAL/PURCHASE/SALE; uma por animal por dia) ·
   `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
 - Datas de calendário são `@db.Date`. Dinheiro e peso são `Decimal`.
 
@@ -164,15 +167,19 @@ Fazenda:    GET /farm · PATCH /farm   (sem id: sempre a fazenda da sessão; G2)
 Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
             devolve currentWeightKg + lastWeighingDate da última pesagem)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
-            PATCH /animals/:id/status
+            PATCH /animals/:id/status   (saída: exitDate obrigatória p/ DEAD/SOLD; causa+certeza só DEAD — G5a)
             DELETE: 409 ANIMAL_HAS_TRANSACTIONS se houver compra/venda (D-10)
-            PATCH status: 409 ANIMAL_HAS_SALE se houver venda e status ≠ SOLD (D-06)
+            PATCH status: 409 ANIMAL_HAS_SALE se houver venda; 409 INVALID_STATUS_TRANSITION
+            (morto ↔ vendido direto); 422 EXIT_DATE_CONFLICT (saída antes de pesagem/aplicação/compra/nascimento)
 Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
             PUT /animals/:id/weighings/:weighingId · DELETE /animals/:id/weighings/:weighingId
             GET /animals/:id/weight-gain   (422 INSUFFICIENT_WEIGHINGS | SAME_DAY_WEIGHINGS)
+            Uma pesagem por animal por dia (409 DUPLICATE_WEIGHING_DATE); nada depois da saída
+            (422 WEIGHING_DATE_OUT_OF_RANGE); só source=MANUAL edita/apaga (409 WEIGHING_FROM_TRADE)
 Sanitário:  POST /products · GET /products (filtro type)
             POST /applications · GET /applications (filtro type) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
+            (422 ANIMALS_NOT_IN_HERD_ON_DATE se algum animal já tinha saído na data)
             GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
             GET /animals/:id/applications
 Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
@@ -220,3 +227,10 @@ antigos e para se houver "vaca macho"/"boi fêmea".
 teste `?lang=test` em desenvolvimento), erros traduzidos pelo `code` (inclusive por campo, com
 `params`), datas/números/dinheiro por `Intl`, nomes padrão de categoria e fusos na tradução,
 conferência automática de texto fixo no `npm run lint` do web.
+
+**G5 entrega 1 — G5a (2026-10-13):** saída do animal (D-27): data de saída obrigatória para morto
+e vendido; na morte, causa (texto livre, opcional) + certeza (confirmada/suspeita/não informada);
+corrigir a saída ou voltar para ativo (engano). Nada depois da saída: pesagem e aplicação
+recusadas. Pesagem com origem (`source`) e uma por animal por dia (D-33). Ficha mostra a faixa
+"Saiu em …" e desliga "Registrar pesagem". Falta na G5: negociações (`Trade`), pesagens de
+compra/venda criadas por elas, linha do tempo (D-28).

@@ -209,23 +209,38 @@ export function AnimalDetail() {
     birthText = t("animalDetail.bornOn", { date: formatMonthYear(animal.birthDate) });
   }
 
+  // Saída (D-27): o animal vendido/morto não recebe pesagens novas (RN-ANIMAL-012)
+  const hasExited = animal.status !== "ACTIVE";
+  let exitText = t("animalDetail.exitNoDate");
+  if (animal.exitDate) {
+    const date = formatDate(animal.exitDate);
+    if (animal.status === "SOLD") exitText = t("animalDetail.exitSold", { date });
+    else if (animal.deathCause) {
+      exitText = t("animalDetail.exitDeadWithCause", {
+        date,
+        cause: animal.deathCause,
+        certainty: t(`animalDetail.certaintyLower${animal.deathCauseCertainty ?? "NOT_INFORMED"}`),
+      });
+    } else exitText = t("animalDetail.exitDead", { date });
+  }
+
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex flex-wrap items-start gap-3 mb-6">
           <button
             onClick={() => navigate("/")}
             title={t("animalDetail.backToHerd")}
             aria-label={t("animalDetail.backToHerd")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
+            className="text-texto-suave hover:text-texto cursor-pointer mt-1.5"
           >
             <ArrowLeft size={22} />
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-[12rem]">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-medium text-texto">{animal.tag}</h1>
+              <h1 className="text-2xl font-medium text-texto whitespace-nowrap">{animal.tag}</h1>
               <span
                 className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}
               >
@@ -242,6 +257,12 @@ export function AnimalDetail() {
               })}
             </p>
             <p className="text-sm text-texto-leve">{birthText}</p>
+            {/* Faixa de saída (D-27): quando e por quê o animal saiu */}
+            {animal.status !== "ACTIVE" && (
+              <p role="status" className="mt-2 inline-block text-sm rounded-lg bg-card border border-borda text-texto px-3 py-1.5">
+                {exitText}
+              </p>
+            )}
           </div>
 
           {/* Botões de ação */}
@@ -334,7 +355,9 @@ export function AnimalDetail() {
             </p>
             <button
               onClick={() => setShowWeighingModal(true)}
-              className="inline-flex items-center gap-2 bg-verde text-white text-sm font-medium px-4 py-2.5 rounded-lg cursor-pointer"
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
+              className="inline-flex items-center gap-2 bg-verde text-white text-sm font-medium px-4 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
@@ -347,12 +370,19 @@ export function AnimalDetail() {
             <p className="font-medium text-texto">{t("animalDetail.weighings")}</p>
             <button
               onClick={() => setShowWeighingModal(true)}
-              className="flex items-center gap-2 bg-verde text-white text-sm font-medium px-3 py-2 rounded-lg cursor-pointer"
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
+              className="flex items-center gap-2 bg-verde text-white text-sm font-medium px-3 py-2 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
           </div>
 
+          {hasExited && (
+            <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-3">
+              {t("animalDetail.weighingDisabled")}
+            </p>
+          )}
           {weighings.length === 0 ? (
             <p className="text-texto-suave text-sm">
               {t("animalDetail.noWeighings")}
@@ -371,22 +401,29 @@ export function AnimalDetail() {
                     <span className="font-medium text-texto">
                       {t("units.kgValue", { value: formatNumber(Number(w.weightKg)) })}
                     </span>
-                    <button
-                      onClick={() => setEditingWeighing(w)}
-                      title={t("animalDetail.editWeighing")}
-                      aria-label={t("animalDetail.editWeighing")}
-                      className="text-texto-leve hover:text-verde cursor-pointer"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      onClick={() => setDeletingWeighing(w)}
-                      title={t("animalDetail.deleteWeighing")}
-                      aria-label={t("animalDetail.deleteWeighing")}
-                      className="text-texto-leve hover:text-alerta cursor-pointer"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {w.source === "MANUAL" ? (
+                      <>
+                        <button
+                          onClick={() => setEditingWeighing(w)}
+                          title={t("animalDetail.editWeighing")}
+                          aria-label={t("animalDetail.editWeighing")}
+                          className="text-texto-leve hover:text-verde cursor-pointer"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => setDeletingWeighing(w)}
+                          title={t("animalDetail.deleteWeighing")}
+                          aria-label={t("animalDetail.deleteWeighing")}
+                          className="text-texto-leve hover:text-alerta cursor-pointer"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    ) : (
+                      // Pesagem de compra/venda só muda pela negociação (RN-PES-009)
+                      <span className="text-xs text-texto-leve">{t("animalDetail.weighingFromTrade")}</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -634,6 +671,12 @@ export function AnimalDetail() {
             animalId={animal.id}
             animalTag={animal.tag}
             onClose={() => setShowWeighingModal(false)}
+            onEditExisting={(date) => {
+              // D-33: já tem pesagem nesse dia → abre a edição dela
+              const existing = weighings.find((w) => w.date.slice(0, 10) === date);
+              setShowWeighingModal(false);
+              if (existing) setEditingWeighing(existing);
+            }}
             onSaved={() => {
               setShowWeighingModal(false);
               loadData();
@@ -697,9 +740,8 @@ export function AnimalDetail() {
         {/* Modal de mudar status */}
         {showStatusModal && (
           <StatusModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            currentStatus={animal.status}
+            animal={animal}
+            hasSale={!!sale}
             onClose={() => setShowStatusModal(false)}
             onSaved={() => {
               setShowStatusModal(false);

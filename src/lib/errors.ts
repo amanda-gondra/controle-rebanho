@@ -33,6 +33,14 @@ export const ErrorCode = {
   INSUFFICIENT_WEIGHINGS: "INSUFFICIENT_WEIGHINGS",
   SAME_DAY_WEIGHINGS: "SAME_DAY_WEIGHINGS",
 
+  // saída do animal e pesagens (G5 — entrega 1)
+  EXIT_DATE_CONFLICT: "EXIT_DATE_CONFLICT",
+  INVALID_STATUS_TRANSITION: "INVALID_STATUS_TRANSITION",
+  WEIGHING_DATE_OUT_OF_RANGE: "WEIGHING_DATE_OUT_OF_RANGE",
+  DUPLICATE_WEIGHING_DATE: "DUPLICATE_WEIGHING_DATE",
+  WEIGHING_FROM_TRADE: "WEIGHING_FROM_TRADE",
+  ANIMALS_NOT_IN_HERD_ON_DATE: "ANIMALS_NOT_IN_HERD_ON_DATE",
+
   // categorias (G4)
   CATEGORY_INCOMPATIBLE_WITH_SEX: "CATEGORY_INCOMPATIBLE_WITH_SEX",
   CASTRATED_ONLY_FOR_MALES: "CASTRATED_ONLY_FOR_MALES",
@@ -98,5 +106,5 @@ export const fieldError = (field: string, code: string, error: string) =>
 
 // Erro de regra de negócio ligado a campos, com código PRÓPRIO (ex.: categoria
 // que não combina com o sexo) — o frontend decide pelo código e mostra no campo.
-export const ruleError = (code: ErrorCode, message: string, errors: FieldError[]) =>
-  new AppError(400, code, message, errors);
+export const ruleError = (code: ErrorCode, message: string, errors: FieldError[], status = 400) =>
+  new AppError(status, code, message, errors);

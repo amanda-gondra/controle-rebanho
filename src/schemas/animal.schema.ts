@@ -53,10 +53,23 @@ export const listAnimalsQuerySchema = z
   })
   .strict();
 
-// Valida o corpo do PATCH de status (só aceita um status válido)
+// Mudar situação (G5 — entrega 1, D-27). Ao sair (vendido/morto), a data de
+// saída é obrigatória (conferida na rota, porque depende do status). Na morte,
+// causa (opcional) e certeza (padrão "não informada"). Voltar para ativo apaga
+// tudo isso.
+export const MAX_DEATH_CAUSE_LENGTH = 200;
+
 export const updateStatusSchema = z
   .object({
     status,
+    exitDate: calendarDate.optional(),
+    deathCause: z
+      .string()
+      .trim()
+      .max(MAX_DEATH_CAUSE_LENGTH, `Use no máximo ${MAX_DEATH_CAUSE_LENGTH} caracteres.`)
+      .nullable()
+      .optional(),
+    deathCauseCertainty: z.enum(["CONFIRMED", "SUSPECTED", "NOT_INFORMED"]).optional(),
   })
   .strict();
 

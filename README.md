@@ -184,7 +184,7 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
 | `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |
 | `PUT`    | `/animals/:id`            | Atualiza os dados de um animal          |
-| `PATCH`  | `/animals/:id/status`     | Atualiza o status do animal             |
+| `PATCH`  | `/animals/:id/status`     | Saída do animal (morte com causa, venda sem registro) ou volta para ativo |
 | `DELETE` | `/animals/:id`            | Exclui um animal                        |
 | `POST`   | `/animals/:id/weighings`  | Registra uma nova pesagem               |
 | `GET`    | `/animals/:id/weighings`  | Retorna o histórico de pesagens         |
@@ -224,6 +224,7 @@ A documentação completa e interativa da API está disponível na rota `/docs` 
 * [x] Gráfico de evolução do peso
 * [x] Manejo sanitário completo (produtos, aplicação em lote, histórico, alertas de reaplicação)
 * [x] Financeiro base — compra e venda por animal, resultado por animal (v3.0)
+* [x] Saída do animal (data, causa da morte) e uma pesagem por animal por dia
 
 ### Em andamento / próximas etapas
 

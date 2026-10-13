@@ -1,4 +1,5 @@
 import { t, tOptional, type MessageKey } from "./index.js";
+import { formatDate } from "../types/format.js";
 
 // Erros da API → frase no idioma da pessoa (G3).
 //
@@ -30,10 +31,20 @@ export function errorMessage(err: unknown, fallback: MessageKey = "errors.generi
 
 // Frase de um erro de campo, com os números da regra (ex.: { max: 100 })
 export function fieldErrorMessage(fieldError: FieldErrorLike): string {
+  // Datas da API ("AAAA-MM-DD") aparecem no formato do idioma da tela
   const params = Object.fromEntries(
-    Object.entries(fieldError.params ?? {}).map(([key, value]) => [key, String(value)]),
+    Object.entries(fieldError.params ?? {}).map(([key, value]) => [
+      key,
+      typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : String(value),
+    ]),
   );
   const code = fieldError.code ?? "INVALID";
+
+  // Variante pelo motivo (ex.: EXIT_DATE_CONFLICT + kind WEIGHING →
+  // EXIT_DATE_CONFLICT_WEIGHING), quando existir frase própria
+  const variant = fieldError.params?.kind ?? fieldError.params?.reason;
+  const specific = variant ? tOptional(`errors.fieldCodes.${code}_${variant}`, params) : undefined;
+  if (specific) return specific;
 
   // "maior que zero" lê melhor que "maior que 0 (exclusivo)"
   if (code === "TOO_SMALL" && Number(params.min) === 0 && params.inclusive === "false") {

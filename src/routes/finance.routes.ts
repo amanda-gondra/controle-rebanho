@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { assertExitDateAllowed } from "../lib/animal-life.js";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { assertNotInFuture, calendarDateOf, toDbDate } from "../lib/dates.js";
 import {
@@ -205,6 +206,8 @@ export async function financeRoutes(app: FastifyInstance) {
       if (animal.purchase) {
         assertSaleNotBeforePurchase(date, calendarDateOf(animal.purchase.date));
       }
+      // A venda é a SAÍDA do animal (D-27): nada pode ter ficado depois dela
+      await assertExitDateAllowed(request.db, animal, date, "date");
 
       // A venda e a mudança de status andam juntas: ou as duas, ou nenhuma.
       const sale = await request.db.$transaction(async (tx) => {
@@ -220,7 +223,7 @@ export async function financeRoutes(app: FastifyInstance) {
         });
         await tx.animal.update({
           where: { id: request.params.id },
-          data: { status: "SOLD" },
+          data: { status: "SOLD", exitDate: toDbDate(date) },
         });
         return created;
       });
@@ -271,15 +274,24 @@ export async function financeRoutes(app: FastifyInstance) {
       if (sale.animal.purchase) {
         assertSaleNotBeforePurchase(date, calendarDateOf(sale.animal.purchase.date));
       }
+      await assertExitDateAllowed(request.db, sale.animal, date, "date");
 
-      return request.db.animalSale.update({
-        where: { animalId: request.params.id },
-        data: {
-          date: toDbDate(date),
-          weightKg,
-          pricePerKg,
-          notes: notes ?? null,
-        },
+      // Venda e data de saída mudam juntas
+      return request.db.$transaction(async (tx) => {
+        const updated = await tx.animalSale.update({
+          where: { animalId: request.params.id },
+          data: {
+            date: toDbDate(date),
+            weightKg,
+            pricePerKg,
+            notes: notes ?? null,
+          },
+        });
+        await tx.animal.update({
+          where: { id: request.params.id },
+          data: { exitDate: toDbDate(date) },
+        });
+        return updated;
       });
     },
   );
@@ -304,7 +316,7 @@ export async function financeRoutes(app: FastifyInstance) {
 
         await tx.animal.update({
           where: { id: request.params.id },
-          data: { status: "ACTIVE" },
+          data: { status: "ACTIVE", exitDate: null },
         });
       });
 

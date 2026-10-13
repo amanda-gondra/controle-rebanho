@@ -24,6 +24,12 @@ Integridade garantida hoje:
 | Venda + status `SOLD` juntos | transação |
 | Categoria combina com o sexo (G4 — D-02) | API (`resolveAnimalProfile`) + banco (`CHECK Animal_category_sex_check`) |
 | Castrado só em machos (G4) | API + banco (`CHECK Animal_castrated_male_only_check`) |
+| Animal ativo não tem data de saída; morto/vendido tem (G5a — D-27) | API + banco (`CHECK Animal_active_without_exit_check`) |
+| Causa e certeza da morte só em animal morto; causa até 200 letras (G5a) | API (Zod) + banco (`CHECK Animal_death_fields_check`, `Animal_deathCause_length_check`) |
+| Saída não antes de nascimento, compra, pesagem ou aplicação (RN-ANIMAL-011) | API (`assertExitDateAllowed`) |
+| Nada depois da saída: pesagem e aplicação (RN-ANIMAL-012 / RN-PES-004) | API (`assertWeighingDateAllowed`, `assertAnimalsInHerdOnDate`) |
+| Uma pesagem por animal por dia (G5a — D-33) | banco (`@@unique([animalId, date])`) + erro `DUPLICATE_WEIGHING_DATE` |
+| Pesagem vinda de compra/venda não é editada nem apagada à mão (RN-PES-009) | API (`WEIGHING_FROM_TRADE`) |
 | Configurações da fazenda dentro dos limites (G2) | API (Zod) + banco (`CHECK`: fator da arroba > 0, antecedência 0–60, moeda com 3 letras, unidade kg/lb) |
 
 ⚠️ No banco, `AnimalPurchase` e `AnimalSale` ainda têm `onDelete: Cascade` (F-05). A
@@ -32,7 +38,7 @@ nasce com `Restrict`.
 
 ## Migrations
 
-Nove migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+Dez migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
 como está: **não reescrever migrations já aplicadas**.
 
 **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
@@ -53,6 +59,15 @@ diz quantos são; (2) converte as categorias — `YEARLING` macho → `YEARLING`
 fêmea → `HEIFER`, `STEER` → `ADULT_MALE`, `CALF`/`COW` iguais; (3) cria `castrated` (machos que já
 existem → `false`, o padrão D-21; fêmeas → vazio); (4) cria `Farm.categoryLabels`; (5) `CHECK`s.
 Testada com dados antigos (conversão) e com um "vaca macho" (para sem alterar nada).
+
+**G5a (`20261013150000_g5a_exit_and_weighing_source`)** — numa transação só: (1) **para sem
+mudar nada** se algum animal tiver mais de uma pesagem no mesmo dia e diz quantos dias são
+(a pessoa decide qual manter; nada é apagado pela migration); (2) cria `Animal.exitDate`,
+`deathCause`, `deathCauseCertainty` (tipo `DeathCauseCertainty`); (3) preenche a data de saída
+dos vendidos com a data da venda registrada; mortos antigos ficam sem data e com certeza
+"não informada"; (4) cria `Weighing.source` (tipo `WeighingSource`, padrão `MANUAL`); (5) troca o
+índice de pesagem por um único `[animalId, date]`; (6) `CHECK`s. Testada com dados antigos
+(conversão) e com pesagens repetidas (para sem alterar nada).
 
 Procedimento:
 

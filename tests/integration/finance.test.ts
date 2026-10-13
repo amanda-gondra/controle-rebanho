@@ -68,7 +68,7 @@ describe("venda", () => {
 
   it("animal morto não recebe venda → 409 DEAD_ANIMAL_CANNOT_BE_SOLD", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({ method: "PATCH", url: `/animals/${animal.id}/status`, payload: { status: "DEAD" } });
+    await t.client.inject({ method: "PATCH", url: `/animals/${animal.id}/status`, payload: { status: "DEAD", exitDate: "2026-01-10" } });
     const response = await t.client.inject({ method: "POST", url: `/animals/${animal.id}/sale`, payload: sale });
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("DEAD_ANIMAL_CANNOT_BE_SOLD");
@@ -110,7 +110,7 @@ describe("venda", () => {
 
   it("desfazer venda que não existe → 404 e o status não muda", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({ method: "PATCH", url: `/animals/${animal.id}/status`, payload: { status: "SOLD" } });
+    await t.client.inject({ method: "PATCH", url: `/animals/${animal.id}/status`, payload: { status: "SOLD", exitDate: "2026-01-10" } });
     const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}/sale` });
     expect(response.statusCode).toBe(404);
     expect((await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })).status).toBe("SOLD");

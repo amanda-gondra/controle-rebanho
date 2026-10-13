@@ -21,6 +21,8 @@ import {
 } from "../schemas/weighing.schema.js";
 import { calculateWeightGain } from "../services/weighing.service.js";
 import { resolveAnimalProfile } from "../services/animal.service.js";
+import { assertExitDateAllowed, assertWeighingDateAllowed } from "../lib/animal-life.js";
+import { fieldError } from "../lib/errors.js";
 
 const animalNotFound = () =>
   notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
@@ -30,6 +32,16 @@ const weighingNotFound = () =>
 
 const FUTURE_BIRTH = "A data de nascimento não pode ser no futuro.";
 const FUTURE_WEIGHING = "A data da pesagem não pode ser no futuro.";
+
+// Pesagem criada por compra/venda só muda pela negociação (RN-PES-009, D-08)
+function assertNotFromTrade(source: string) {
+  if (source !== "MANUAL") {
+    throw conflict(
+      ErrorCode.WEIGHING_FROM_TRADE,
+      "Esta pesagem veio de uma compra ou venda. Para mudar, corrija a negociação.",
+    );
+  }
+}
 
 // Garante que o animal existe NESTA fazenda; senão, 404.
 async function findAnimalOrFail(db: FarmDb, id: string) {
@@ -189,8 +201,11 @@ export async function animalRoutes(app: FastifyInstance) {
     },
   );
 
-  // PATCH /animals/:id/status
-  // D-06: animal com venda registrada fica "vendido"; para mudar, desfaça a venda.
+  // PATCH /animals/:id/status — muda a situação e registra a SAÍDA (D-27)
+  // - ativo ⇄ morto; ativo ⇄ vendido (sem venda registrada). Morto ⇄ vendido
+  //   direto não: volte para ativo antes (RN-ANIMAL-010).
+  // - Mesma situação de novo = corrigir a data/causa da saída.
+  // - D-06: animal com venda registrada fica "vendido"; para mudar, desfaça a venda.
   r.patch(
     "/animals/:id/status",
     {
@@ -208,16 +223,47 @@ export async function animalRoutes(app: FastifyInstance) {
       });
       if (!animal) throw animalNotFound();
 
-      if (animal.sale && request.body.status !== "SOLD") {
+      const { status, exitDate, deathCause, deathCauseCertainty } = request.body;
+
+      // Com venda registrada, a saída é a da venda: só "Desfazer venda" muda
+      if (animal.sale) {
         throw conflict(
           ErrorCode.ANIMAL_HAS_SALE,
           "Este animal tem uma venda registrada. Para mudar o status, desfaça a venda.",
         );
       }
 
+      // Voltar para ativo (ex.: morte registrada por engano): apaga a saída
+      if (status === "ACTIVE") {
+        return request.db.animal.update({
+          where: { id: animal.id },
+          data: { status, exitDate: null, deathCause: null, deathCauseCertainty: null },
+        });
+      }
+
+      // Morto ⇄ vendido direto não existe na vida real; passa por ativo
+      if (animal.status !== "ACTIVE" && animal.status !== status) {
+        throw conflict(
+          ErrorCode.INVALID_STATUS_TRANSITION,
+          "Para mudar de morto para vendido (ou o contrário), volte o animal para ativo antes.",
+        );
+      }
+
+      if (!exitDate) {
+        throw fieldError("exitDate", "REQUIRED", "Informe a data de saída.");
+      }
+      assertNotInFuture(exitDate, request.auth.farm.timezone, "exitDate", "A data de saída não pode ser no futuro.");
+      await assertExitDateAllowed(request.db, animal, exitDate, "exitDate");
+
       return request.db.animal.update({
-        where: { id: request.params.id },
-        data: { status: request.body.status },
+        where: { id: animal.id },
+        data: {
+          status,
+          exitDate: toDbDate(exitDate),
+          // causa e certeza só existem na morte
+          deathCause: status === "DEAD" ? deathCause || null : null,
+          deathCauseCertainty: status === "DEAD" ? (deathCauseCertainty ?? "NOT_INFORMED") : null,
+        },
       });
     },
   );
@@ -234,8 +280,11 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      await findAnimalOrFail(request.db, request.params.id);
+      const animal = await findAnimalOrFail(request.db, request.params.id);
       assertNotInFuture(request.body.date, request.auth.farm.timezone, "date", FUTURE_WEIGHING);
+      // Nada depois da saída nem antes do nascimento (RN-ANIMAL-012, RN-PES-004).
+      // Mesmo dia de outra pesagem → o banco recusa (DUPLICATE_WEIGHING_DATE, D-33).
+      assertWeighingDateAllowed(animal, request.body.date);
       const weighing = await request.db.weighing.create({
         data: {
           date: toDbDate(request.body.date),
@@ -280,6 +329,15 @@ export async function animalRoutes(app: FastifyInstance) {
     },
     async (request) => {
       assertNotInFuture(request.body.date, request.auth.farm.timezone, "date", FUTURE_WEIGHING);
+      const animal = await findAnimalOrFail(request.db, request.params.id);
+      const existing = await request.db.weighing.findFirst({
+        where: { id: request.params.weighingId, animalId: request.params.id },
+        select: { source: true },
+      });
+      if (!existing) throw weighingNotFound();
+      assertNotFromTrade(existing.source);
+      assertWeighingDateAllowed(animal, request.body.date);
+
       // a pesagem tem que existir E pertencer a este animal (e a esta fazenda)
       const { count } = await request.db.weighing.updateMany({
         where: { id: request.params.weighingId, animalId: request.params.id },
@@ -307,9 +365,17 @@ export async function animalRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      // a pesagem tem que existir E pertencer a este animal (e a esta fazenda)
-      const { count } = await request.db.weighing.deleteMany({
+      const existing = await request.db.weighing.findFirst({
         where: { id: request.params.weighingId, animalId: request.params.id },
+        select: { source: true },
+      });
+      if (!existing) throw weighingNotFound();
+      assertNotFromTrade(existing.source);
+
+      // a pesagem tem que existir E pertencer a este animal (e a esta fazenda);
+      // só apaga se continuar sendo manual (numa instrução só)
+      const { count } = await request.db.weighing.deleteMany({
+        where: { id: request.params.weighingId, animalId: request.params.id, source: "MANUAL" },
       });
       if (count === 0) throw weighingNotFound();
       return reply.status(204).send();

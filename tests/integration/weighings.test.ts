@@ -110,12 +110,7 @@ describe("GET /animals/:id/weight-gain", () => {
     expect(response.json().code).toBe("INSUFFICIENT_WEIGHINGS");
   });
 
-  it("pesagens no mesmo dia → 422 SAME_DAY_WEIGHINGS (F-09)", async () => {
-    const animal = await createAnimal(t.client);
-    await addWeighing(t.client, animal.id, "2024-06-01", 180);
-    await addWeighing(t.client, animal.id, "2024-06-01", 190);
-    const response = await t.client.inject({ url: `/animals/${animal.id}/weight-gain` });
-    expect(response.statusCode).toBe(422);
-    expect(response.json().code).toBe("SAME_DAY_WEIGHINGS");
-  });
+  // Desde a D-33 (uma pesagem por animal por dia) não existem mais duas
+  // pesagens no mesmo dia; o caso SAME_DAY_WEIGHINGS (F-09) segue coberto no
+  // teste de unidade do cálculo (weighing.service.test.ts).
 });

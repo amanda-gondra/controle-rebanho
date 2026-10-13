@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { assertAnimalsInHerdOnDate } from "../lib/animal-life.js";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { assertNotInFuture, toDbDate } from "../lib/dates.js";
 import { ErrorCode, badRequest, notFound } from "../lib/errors.js";
@@ -96,6 +97,10 @@ export async function sanitaryRoutes(app: FastifyInstance) {
           "Um ou mais animais não foram encontrados.",
         );
       }
+
+      // 2b. todos precisam estar no rebanho na data (nada depois da saída —
+      // RN-ANIMAL-012 — nem antes do nascimento com dia certo)
+      await assertAnimalsInHerdOnDate(request.db, animalIds, date);
 
       // 3. cria a aplicação (evento) JÁ com as ligações por animal.
       // As ligações são criação ANINHADA: o farmId vai explícito em cada uma.
@@ -228,6 +233,17 @@ export async function sanitaryRoutes(app: FastifyInstance) {
 
       const { productId, date, reapplyDate, notes } = request.body;
       assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
+
+      // mudar a data não pode deixar algum animal da aplicação fora do rebanho
+      const links = await request.db.applicationAnimal.findMany({
+        where: { applicationId: existing.id },
+        select: { animalId: true },
+      });
+      await assertAnimalsInHerdOnDate(
+        request.db,
+        links.map((link) => link.animalId),
+        date,
+      );
 
       // confere se o produto novo existe
       const product = await request.db.product.findUnique({

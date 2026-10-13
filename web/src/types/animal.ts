@@ -6,6 +6,8 @@ export type Sex = "MALE" | "FEMALE";
 export type Category = "CALF" | "HEIFER" | "COW" | "YEARLING" | "ADULT_MALE" | "BULL";
 export type Status = "ACTIVE" | "SOLD" | "DEAD";
 export type BirthPrecision = "DAY_MONTH_YEAR" | "MONTH_YEAR" | "UNKNOWN";
+export type DeathCauseCertainty = "CONFIRMED" | "SUSPECTED" | "NOT_INFORMED";
+export type WeighingSource = "MANUAL" | "PURCHASE" | "SALE";
 
 export type Animal = {
   id: string;
@@ -15,6 +17,10 @@ export type Animal = {
   category: Category;
   castrated: boolean | null; // só machos (fêmea = null)
   status: Status;
+  // Saída (D-27): data em que foi vendido ou morreu; na morte, causa e certeza
+  exitDate: string | null;
+  deathCause: string | null;
+  deathCauseCertainty: DeathCauseCertainty | null;
   birthDate: string | null;
   birthPrecision: BirthPrecision;
   notes: string | null;
@@ -30,6 +36,7 @@ export type Weighing = {
   animalId: string;
   date: string;
   weightKg: string;
+  source: WeighingSource; // manual, ou criada por compra/venda (só muda pela negociação)
   createdAt: string;
 };
 

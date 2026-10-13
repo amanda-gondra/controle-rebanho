@@ -22,6 +22,10 @@ const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> =
     code: ErrorCode.EMAIL_ALREADY_REGISTERED,
     message: "Já existe uma conta com esse e-mail.",
   },
+  "Weighing.animalId,date": {
+    code: ErrorCode.DUPLICATE_WEIGHING_DATE,
+    message: "Este animal já tem uma pesagem nesse dia. Edite a pesagem existente.",
+  },
   "AnimalSale.animalId": {
     code: ErrorCode.DUPLICATE_SALE,
     message: "Este animal já tem uma venda registrada.",
