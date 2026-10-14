@@ -65,6 +65,19 @@ enum PriceUnit {
   PER_HEAD   // por cabeça
 }
 
+// Compra ou venda (G5). Cada animal tem no máximo uma de cada (RN-NEG-004).
+enum TradeType {
+  PURCHASE // compra
+  SALE     // venda
+}
+
+// Arroba: sobre o peso de carcaça do frigorífico (÷ 15) ou sobre o peso vivo
+// dividido por um fator (padrão da fazenda: 30 kg vivos por arroba).
+enum ArrobaBasis {
+  CARCASS
+  LIVE_FACTOR
+}
+
 // ── Conta (G1) ──────────────────────────────────────────────────────────────
 // Cada produtor tem a sua fazenda. TODO dado do rebanho pertence a uma fazenda
 // (farmId) e uma fazenda nunca enxerga os dados de outra.
@@ -95,8 +108,8 @@ model Farm {
   products           Product[]
   applications       Application[]
   applicationAnimals ApplicationAnimal[]
-  purchases          AnimalPurchase[]
-  sales              AnimalSale[]
+  trades             Trade[]
+  tradeItems         TradeItem[]
 }
 
 // Na Release 1.0: um usuário por fazenda (farmId @unique).
@@ -108,6 +121,7 @@ model User {
   email        String    @unique // sempre guardado em minúsculas
   passwordHash String // scrypt (D-24) — nunca a senha
   sessions     Session[]
+  trades       Trade[] // negociações que registrou
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -150,9 +164,7 @@ model Animal {
   notes               String?
   weighings           Weighing[]
   applications        ApplicationAnimal[]
-  purchase            AnimalPurchase?
-  sale                AnimalSale?
-  estimatedPricePerKg Decimal?            @db.Decimal(10, 2) // preço/kg informado p/ animal vivo
+  tradeItems          TradeItem[] // compra e venda (no máximo uma de cada)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -169,6 +181,7 @@ model Weighing {
   date      DateTime       @db.Date
   weightKg  Decimal        @db.Decimal(6, 2)
   source    WeighingSource @default(MANUAL) // D-08 / RN-PES-009
+  tradeItem TradeItem? // a negociação que criou esta pesagem (se não for manual)
   createdAt DateTime       @default(now())
 
   @@unique([animalId, date]) // D-33: uma pesagem por animal por dia
@@ -221,35 +234,59 @@ model ApplicationAnimal {
   @@index([farmId])
 }
 
-// Compra do animal: o produtor pensa em peso × preço por kg. 1 compra por animal.
-// (O modelo definitivo, Trade/TradeItem, chega na G5.)
-model AnimalPurchase {
-  id         String   @id @default(uuid())
-  farmId     String
-  farm       Farm     @relation(fields: [farmId], references: [id])
-  animalId   String   @unique
-  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime @db.Date
-  weightKg   Decimal  @db.Decimal(6, 2)
-  pricePerKg Decimal  @db.Decimal(10, 2)
-  notes      String?
-  createdAt  DateTime @default(now())
+// ── Compra e venda (G5) ─────────────────────────────────────────────────────
+// "Negocia em lote, guarda individual" (mesmo raciocínio da aplicação): uma
+// negociação (Trade) com um item por animal (TradeItem). Cada negociação
+// grava a forma de preço, o fator e a moeda que valeram NAQUELE dia — mudar a
+// configuração da fazenda depois não altera nada (RN-NEG-003).
 
-  @@index([farmId])
+model Trade {
+  id             String       @id @default(uuid())
+  farmId         String
+  farm           Farm         @relation(fields: [farmId], references: [id])
+  type           TradeType
+  date           DateTime     @db.Date
+  priceUnit      PriceUnit
+  arrobaBasis    ArrobaBasis? // só na arroba (CHECK no banco)
+  arrobaFactorKg Decimal?     @db.Decimal(4, 2) // só na arroba sobre peso vivo
+  currency       String // D-30: gravada na negociação (BRL na 1.0)
+  counterparty   String? // comprador (venda) ou vendedor (compra)
+  notes          String?
+  // Envio repetido (toque duplo, internet que volta) devolve a MESMA
+  // negociação em vez de criar outra (RN-NEG-016)
+  idempotencyKey String?
+  createdById    String?
+  createdBy      User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items          TradeItem[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([id, type]) // alvo da chave do item: item e negociação têm sempre o mesmo tipo
+  @@unique([farmId, idempotencyKey])
+  @@index([farmId, date])
 }
 
-// Venda do animal: mesma ideia da compra. 1 venda por animal.
-model AnimalSale {
-  id         String   @id @default(uuid())
-  farmId     String
-  farm       Farm     @relation(fields: [farmId], references: [id])
-  animalId   String   @unique
-  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime @db.Date
-  weightKg   Decimal  @db.Decimal(6, 2)
-  pricePerKg Decimal  @db.Decimal(10, 2)
-  notes      String?
-  createdAt  DateTime @default(now())
+model TradeItem {
+  id              String    @id @default(uuid())
+  farmId          String
+  farm            Farm      @relation(fields: [farmId], references: [id])
+  tradeId         String
+  type            TradeType // repetido da negociação: garante 1 compra e 1 venda por animal
+  trade           Trade     @relation(fields: [tradeId, type], references: [id, type], onDelete: Cascade)
+  animalId        String
+  // D-10 / F-05: animal com negociação não é apagado (o banco recusa)
+  animal          Animal    @relation(fields: [animalId], references: [id], onDelete: Restrict)
+  liveWeightKg    Decimal?  @db.Decimal(6, 2) // obrigatório, exceto por cabeça
+  carcassWeightKg Decimal?  @db.Decimal(6, 2) // arroba por carcaça; pode ficar pendente (D-35)
+  unitPrice       Decimal   @db.Decimal(10, 2) // R$ por kg, por arroba ou por cabeça
+  priceAdjusted   Boolean   @default(false) // preço diferente do da categoria (RN-NEG-018/021)
+  value           Decimal?  @db.Decimal(14, 2) // calculado no servidor; vazio = pendente
+  weighingId      String?   @unique // pesagem criada pelo peso vivo (D-08)
+  weighing        Weighing? @relation(fields: [weighingId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
+  @@unique([animalId, type]) // RN-NEG-004: no máximo uma compra e uma venda por animal
+  @@index([tradeId])
   @@index([farmId])
 }

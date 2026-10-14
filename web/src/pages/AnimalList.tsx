@@ -374,6 +374,11 @@ export function AnimalList() {
                               navigate(`/animais/${animal.id}/editar`)
                             }
                             onDelete={() => setDeleting(animal)}
+                            onSell={
+                              animal.status === "ACTIVE"
+                                ? () => navigate(`/negociacoes/nova?tipo=venda&animal=${animal.id}`)
+                                : undefined
+                            }
                           />
                         </div>
                       </td>

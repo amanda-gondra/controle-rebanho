@@ -47,6 +47,29 @@
   conferir que só aparecem chaves `⟦...⟧`, dados digitados, números e datas (feito em
   2026-10-13 em todas as telas, janelas e num erro vindo da API).
 
+## Negociações (G5b)
+
+- `tests/integration/trades.test.ts`: venda em lote com preços por categoria (valores, total,
+  vendidos com a saída, pesagens), linha com problema não grava nada (e diz o motivo de cada
+  linha), valor do navegador ignorado, arroba de carcaça e de peso vivo (fator gravado não muda
+  quando a fazenda muda), por cabeça sem pesagem, carcaça pendente e completada, morto / já
+  vendido / venda antes da compra / saída com pesagem depois, pesagem manual do dia trocada,
+  compra (uma por animal, datas), formas de preço inválidas, envio repetido e simultâneo (uma
+  negociação), duas vendas do mesmo animal ao mesmo tempo, corrigir / tirar animal / desfazer,
+  excluir animal com negociação recusado (também no banco), listar, último preço e resultado.
+- Acesso cruzado: todas as rotas de `/trades` em `tenancy.test.ts` (ver, corrigir, tirar,
+  desfazer, incluir animal de outra fazenda).
+- `src/services/trade.service.test.ts`: as 4 formas, centavos (333,33 × 10,01), arredondamento,
+  limites, soma, quem pode entrar. `src/services/finance.service.test.ts`: os casos do resultado.
+- `web/src/types/tradeMath.test.ts`: a prévia da tela dá **o mesmo valor do servidor** em todas
+  as combinações; `tradeForm.test.ts`: conferência do formulário e erros por linha.
+- Verificado no navegador em 2026-10-14: venda de 5 animais (2 categorias, 1 preço ajustado,
+  total R$ 45.958,25 igual ao do servidor), animal morto apagado no seletor, erro por linha,
+  troca da pesagem manual do dia, tirar animal, desfazer, compra pela ficha e diferença
+  "R$ 4.800,00 — não inclui custos", arroba de carcaça aguardando romaneio e completada
+  (R$ 5.400,00), cartão Negociações em Configurações, celular 360 px sem rolagem lateral e
+  idioma de teste limpo.
+
 ## Saída do animal e pesagens (G5a)
 
 - `tests/integration/exit.test.ts`: morte com data/causa/certeza, vendido sem venda, data

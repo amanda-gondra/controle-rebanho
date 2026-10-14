@@ -8,9 +8,9 @@ const TABLES = [
   "ApplicationAnimal",
   "Application",
   "Product",
+  "TradeItem",
+  "Trade",
   "Weighing",
-  "AnimalPurchase",
-  "AnimalSale",
   "Animal",
   "Farm",
 ];

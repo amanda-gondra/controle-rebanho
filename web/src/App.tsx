@@ -10,6 +10,10 @@ import { Sanitary } from "./pages/Sanitary.js";
 import { Login } from "./pages/Login.js";
 import { Register } from "./pages/Register.js";
 import { Settings } from "./pages/Settings.js";
+import { TradeList } from "./pages/TradeList.js";
+import { TradeCreate } from "./pages/TradeCreate.js";
+import { TradeDetail } from "./pages/TradeDetail.js";
+import { TradeEdit } from "./pages/TradeEdit.js";
 import { ToastProvider } from "./components/ToastProvider.js";
 import { AuthProvider } from "./components/AuthProvider.js";
 import { RedirectIfLoggedIn, RequireAuth } from "./components/RequireAuth.js";
@@ -36,6 +40,10 @@ function App() {
               <Route path="/produtos" element={<Products />} />
               <Route path="/aplicacoes/nova" element={<ApplicationCreate />} />
               <Route path="/aplicacoes/:id" element={<ApplicationDetail />} />
+              <Route path="/negociacoes" element={<TradeList />} />
+              <Route path="/negociacoes/nova" element={<TradeCreate />} />
+              <Route path="/negociacoes/:id" element={<TradeDetail />} />
+              <Route path="/negociacoes/:id/editar" element={<TradeEdit />} />
               <Route path="/configuracoes" element={<Settings />} />
             </Route>
           </Routes>

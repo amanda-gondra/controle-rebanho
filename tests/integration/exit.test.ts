@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { useTestApp } from "../helpers/suite.js";
-import { addWeighing, createAnimal, createProduct, daysFromToday } from "../helpers/factories.js";
+import { addWeighing, createAnimal, createProduct, daysFromToday, sellAnimal } from "../helpers/factories.js";
 import { createLoggedClient } from "../helpers/client.js";
 import { prisma } from "../../src/lib/prisma.js";
 
@@ -136,11 +136,7 @@ describe("registrar morte e venda manual (D-27)", () => {
 
   it("com venda registrada, nem o botão de situação muda nada (19, D-06)", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({
-      method: "POST",
-      url: `/animals/${animal.id}/sale`,
-      payload: { date: "2026-10-01", weightKg: 400, pricePerKg: 10 },
-    });
+    await sellAnimal(t.client, animal.id, "2026-10-01");
     for (const status of ["ACTIVE", "DEAD", "SOLD"]) {
       const response = await setStatus(animal.id, { status, exitDate: "2026-10-01" });
       expect(response.json().code, status).toBe("ANIMAL_HAS_SALE");
@@ -159,18 +155,17 @@ describe("registrar morte e venda manual (D-27)", () => {
 });
 
 describe("venda registrada é a saída do animal", () => {
-  it("registrar venda grava a saída; editar muda; desfazer apaga", async () => {
+  it("registrar venda grava a saída; corrigir a data muda; desfazer apaga", async () => {
     const animal = await createAnimal(t.client);
-    const url = `/animals/${animal.id}/sale`;
     const exitOf = async () => (await prisma.animal.findUniqueOrThrow({ where: { id: animal.id } })).exitDate;
 
-    await t.client.inject({ method: "POST", url, payload: { date: "2026-10-01", weightKg: 400, pricePerKg: 10 } });
+    const trade = await sellAnimal(t.client, animal.id, "2026-10-01");
     expect(await exitOf()).toEqual(new Date("2026-10-01"));
 
-    await t.client.inject({ method: "PUT", url, payload: { date: "2026-10-03", weightKg: 400, pricePerKg: 10 } });
+    await t.client.inject({ method: "PATCH", url: `/trades/${trade.id}`, payload: { date: "2026-10-03" } });
     expect(await exitOf()).toEqual(new Date("2026-10-03"));
 
-    await t.client.inject({ method: "DELETE", url });
+    await t.client.inject({ method: "DELETE", url: `/trades/${trade.id}` });
     expect(await exitOf()).toBeNull();
   });
 
@@ -179,12 +174,21 @@ describe("venda registrada é a saída do animal", () => {
     await addWeighing(t.client, animal.id, "2026-10-05", 380);
     const response = await t.client.inject({
       method: "POST",
-      url: `/animals/${animal.id}/sale`,
-      payload: { date: "2026-10-01", weightKg: 400, pricePerKg: 10 },
+      url: "/trades",
+      payload: {
+        type: "SALE",
+        date: "2026-10-01",
+        priceUnit: "PER_KG",
+        items: [{ animalId: animal.id, liveWeightKg: 400, unitPrice: 10 }],
+      },
     });
     expect(response.statusCode).toBe(422);
-    expect(response.json().code).toBe("EXIT_DATE_CONFLICT");
-    expect(await prisma.animalSale.count()).toBe(0);
+    expect(response.json().code).toBe("TRADE_ITEM_ERRORS");
+    expect(response.json().errors[0]).toMatchObject({
+      code: "EXIT_DATE_CONFLICT",
+      params: { kind: "WEIGHING", date: "2026-10-05" },
+    });
+    expect(await prisma.trade.count()).toBe(0);
   });
 });
 
@@ -302,16 +306,9 @@ describe("pesagens: uma por dia e origem (D-33, D-08)", () => {
 
   it("pesagem de compra/venda não se edita nem se exclui direto → 409 WEIGHING_FROM_TRADE (RN-PES-009)", async () => {
     const animal = await createAnimal(t.client);
-    // (a criação pela negociação chega na entrega 2; aqui ela é simulada no banco)
-    const fromSale = await prisma.weighing.create({
-      data: {
-        farmId: t.client.farm.id,
-        animalId: animal.id,
-        date: new Date("2026-10-01"),
-        weightKg: 420,
-        source: "SALE",
-      },
-    });
+    await sellAnimal(t.client, animal.id, "2026-10-01");
+    const fromSale = await prisma.weighing.findFirstOrThrow({ where: { animalId: animal.id } });
+    expect(fromSale.source).toBe("SALE");
     const url = `/animals/${animal.id}/weighings/${fromSale.id}`;
 
     const edit = await t.client.inject({ method: "PUT", url, payload: { date: "2026-10-01", weightKg: 400 } });

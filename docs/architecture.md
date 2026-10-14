@@ -2,7 +2,7 @@
 
 > Estado em 2026-10-13: Fase 3 (fundação técnica) + G1 (fazenda, usuário, login e separação
 > por fazenda) + G2 (configurações da fazenda) + G4 (categorias) + G3 (textos fora do código) + G5a (saída do animal e
-> pesagens com origem).
+> pesagens com origem) + G5b (negociações de compra e venda).
 
 ## Visão geral (atual)
 
@@ -36,7 +36,7 @@ requisição
 | `src/lib/password.ts` | Hash e verificação de senha (scrypt) |
 | `src/lib/farm.ts` | Fazenda e configurações (G2): campos lidos, formato da resposta, padrões e fusos do Brasil |
 | `src/schemas/` | Schemas Zod (fonte única de validação e do Swagger); limites em `common.schema.ts` |
-| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `finance`, `farm` (protegidas) |
+| `src/routes/` | Rotas HTTP: `auth` (pública), `animals`, `sanitary`, `trades`, `finance` (resultado), `farm` (protegidas) |
 | `src/services/` | Regras de cálculo puras (GMD, alertas, resultado) + testes unitários |
 
 ## Convenções
@@ -87,9 +87,9 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
 | JSON malformado / requisição ruim | 400 | `BAD_REQUEST` |
 | Registro não existe | 404 | `*_NOT_FOUND` / `RECORD_NOT_FOUND` |
 | Rota não existe | 404 | `ROUTE_NOT_FOUND` |
-| Unicidade (brinco, compra, venda, pesagem no dia) | 409 | `DUPLICATE_TAG`, `DUPLICATE_PURCHASE`, `DUPLICATE_SALE`, `DUPLICATE_WEIGHING_DATE`, `DUPLICATE_RECORD` |
-| Estado não permite | 409 | `ANIMAL_HAS_TRANSACTIONS`, `ANIMAL_HAS_SALE`, `DEAD_ANIMAL_CANNOT_BE_SOLD`, `INVALID_STATUS_TRANSITION`, `WEIGHING_FROM_TRADE` |
-| Regra de data/cálculo | 422 | `SALE_BEFORE_PURCHASE`, `INSUFFICIENT_WEIGHINGS`, `SAME_DAY_WEIGHINGS`, `EXIT_DATE_CONFLICT`, `WEIGHING_DATE_OUT_OF_RANGE`, `ANIMALS_NOT_IN_HERD_ON_DATE` |
+| Unicidade (brinco, compra, venda, pesagem no dia) | 409 | `DUPLICATE_TAG`, `DUPLICATE_PURCHASE`, `DUPLICATE_WEIGHING_DATE`, `DUPLICATE_RECORD` |
+| Estado não permite | 409 | `ANIMAL_HAS_TRANSACTIONS`, `ANIMAL_HAS_SALE`, `INVALID_STATUS_TRANSITION`, `WEIGHING_FROM_TRADE`, `ANIMAL_ALREADY_SOLD`, `ANIMAL_ALREADY_PURCHASED` (corrida entre duas negociações) |
+| Regra de data/cálculo | 422 | `SALE_BEFORE_PURCHASE`, `INSUFFICIENT_WEIGHINGS`, `SAME_DAY_WEIGHINGS`, `EXIT_DATE_CONFLICT`, `WEIGHING_DATE_OUT_OF_RANGE`, `ANIMALS_NOT_IN_HERD_ON_DATE`, `TRADE_ITEM_ERRORS` (lista por linha) |
 | Corpo grande / mídia | 413 / 415 | `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE` |
 | Limite de requisições | 429 | `RATE_LIMITED` |
 | Qualquer outra falha | 500 | `INTERNAL_ERROR` (detalhe só no log) |
@@ -102,7 +102,7 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
 ## Isolamento por fazenda (G1)
 
 - Banco compartilhado; **todas** as tabelas do rebanho têm `farmId` (Animal, Weighing, Product,
-  Application, ApplicationAnimal, AnimalPurchase, AnimalSale). Brinco único **por fazenda**.
+  Application, ApplicationAnimal, Trade, TradeItem). Brinco único **por fazenda**.
 - O `farmId` vem **só da sessão**. Os schemas `.strict()` recusam `farmId` no corpo ou na query.
 - **Ponto único:** `forFarm(farmId)` (`src/lib/tenant.ts`) é uma extensão do Prisma que acrescenta
   `where.farmId` em toda leitura/edição/exclusão e `data.farmId` em toda criação. As rotas
@@ -193,6 +193,35 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
   (as outras → 409 `WEIGHING_FROM_TRADE`; serão criadas pelas negociações na entrega 2 da G5).
   Uma por animal por dia (índice único) → 409 `DUPLICATE_WEIGHING_DATE`; na tela, o botão
   "Editar a pesagem desse dia" abre a existente.
+
+## Negociações — compra e venda (G5b — D-03, D-08, D-22, D-35, D-37)
+
+- "Negocia em lote, guarda individual": `Trade` (data, forma de preço, base e fator da arroba,
+  moeda, comprador/vendedor, `idempotencyKey`, quem registrou) + `TradeItem` (um por animal: peso
+  vivo, peso de carcaça, preço, `priceAdjusted`, valor, pesagem criada).
+- **Valor de cada animal** (`computeItemValue`, `src/services/trade.service.ts`): por kg = peso ×
+  preço; arroba de carcaça = carcaça ÷ 15 × preço; arroba de peso vivo = peso ÷ fator × preço; por
+  cabeça = preço. Conta em centavos inteiros (`BigInt`), arredondada meio para cima **por item**;
+  total = soma exata dos itens. A tela repete a mesma conta só como prévia (`web/src/types/tradeMath.ts`,
+  com teste que compara as duas); valor e total enviados pelo navegador são ignorados.
+- **Quem pode entrar** (`checkAnimalForTrade`): venda — nunca morto, nunca já vendido, não antes
+  da compra, nada registrado depois (saída); compra — uma por animal, não depois da venda nem da
+  saída, não antes do nascimento conhecido. Os erros voltam juntos, por linha
+  (`items.N.animalId` + `params { tag, date, kind/reason }`), e nada é gravado.
+- **Tudo numa transação** (até 5.000 animais, tempo maior): itens, pesagens, situação e saída.
+  Venda marca `SOLD` com `exitDate` = data da venda; tirar o animal ou desfazer volta para ativo.
+- **Pesagens** (`src/lib/trades.ts`): o peso vivo vira a pesagem do dia (`source` = tipo); se já
+  havia pesagem manual nesse dia, ela é trocada (D-37) e a resposta traz `replacedWeighings`.
+  Desfazer/tirar apaga a pesagem do item. Por cabeça sem peso: nenhuma.
+- **Arroba de carcaça sem peso** (D-35): o item fica com `value = null`; a negociação sai como
+  `pending` (`total` nulo e `knownTotal` com o que já tem valor). `PATCH /trades/:id` completa.
+- **Envio repetido** (RN-NEG-016): mesmo `idempotencyKey` devolve a negociação já gravada (200),
+  inclusive se as duas chegarem juntas.
+- **Último preço** (`GET /trades/last-prices`): por categoria e por categoria + raça, só preços
+  sem ajuste; a tela mostra como sugestão clicável — nunca preenche sozinha (RN-NEG-020).
+- **Resultado do animal** (`GET /animals/:id/result`, `finance.service.ts`): venda − compra, sem
+  custos; `kind` diz o caso (diferença, só compra, só venda, pendente, moedas diferentes).
+- As rotas antigas `/animals/:id/purchase`, `/sale` e `/estimated-price` saíram (D-09).
 
 ## Textos da tela (G3 — D-01)
 

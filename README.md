@@ -35,7 +35,7 @@ O sistema também prioriza a experiência do usuário final, com linguagem clara
 * **Filtros de animais** por status e categoria.
 * **Atualização de status** para situações como venda ou morte, preservando o histórico do animal.
 * **Manejo sanitário completo**, com cadastro de produtos (vacinas e vermífugos), aplicação em lote, histórico por animal e por evento, e alertas de reaplicação.
-* **Módulo financeiro base**, com registro de compra e venda por animal (preço por kg) e cálculo do resultado — realizado ou estimado — na ficha do animal.
+* **Compra e venda (negociações)** de um ou muitos animais, com preço por kg, por arroba (carcaça ou peso vivo) ou por cabeça, preço por categoria e diferença venda − compra (sem custos) na ficha do animal.
 * **Interface responsiva**, adaptada para computador e dispositivos móveis.
 * **Mensagens e estados vazios orientados ao usuário**, evitando a exposição de informações técnicas desnecessárias.
 
@@ -191,8 +191,12 @@ O frontend será iniciado na porta configurada pelo Vite.
 | `GET`    | `/animals/:id/weight-gain`| Retorna o ganho de peso e o GMD         |
 | `POST`   | `/applications`           | Registra uma aplicação sanitária em lote (vacina/vermífugo) |
 | `GET`    | `/alerts`                 | Lista alertas de reaplicação (vencidas e próximas) |
-| `POST`   | `/animals/:id/sale`       | Registra a venda de um animal (preço/kg) |
-| `GET`    | `/animals/:id/result`     | Retorna o resultado financeiro do animal |
+| `POST`   | `/trades`                 | Registra uma compra ou venda (um ou muitos animais) |
+| `GET`    | `/trades`                 | Lista as negociações |
+| `GET`    | `/trades/:id`             | Detalhe de uma negociação |
+| `PATCH`  | `/trades/:id`             | Corrige uma negociação (recalcula os valores) |
+| `DELETE` | `/trades/:id`             | Desfaz uma negociação |
+| `GET`    | `/animals/:id/result`     | Compra, venda e diferença venda − compra do animal |
 
 Todas as rotas de dados exigem login, e cada fazenda só enxerga os próprios dados.
 
@@ -225,6 +229,7 @@ A documentação completa e interativa da API está disponível na rota `/docs` 
 * [x] Manejo sanitário completo (produtos, aplicação em lote, histórico, alertas de reaplicação)
 * [x] Financeiro base — compra e venda por animal, resultado por animal (v3.0)
 * [x] Saída do animal (data, causa da morte) e uma pesagem por animal por dia
+* [x] Negociações: compra e venda em lote, por kg, arroba ou cabeça
 
 ### Em andamento / próximas etapas
 

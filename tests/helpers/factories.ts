@@ -46,4 +46,23 @@ export async function addWeighing(app: Client, animalId: string, date: string, w
   return response.json() as { id: string };
 }
 
+// Negociação (G5). Atalhos: um animal por kg — o caso mais comum dos testes.
+export async function createTrade(app: Client, body: Record<string, unknown>) {
+  const response = await app.inject({ method: "POST", url: "/trades", payload: body });
+  if (response.statusCode !== 201) {
+    throw new Error(`createTrade falhou: ${response.statusCode} ${response.body}`);
+  }
+  return response.json() as {
+    id: string;
+    total: string | null;
+    items: { id: string; value: string | null; animal: { id: string; tag: string } }[];
+  };
+}
+
+export const sellAnimal = (app: Client, animalId: string, date: string, liveWeightKg = 420, unitPrice = 11) =>
+  createTrade(app, { type: "SALE", date, priceUnit: "PER_KG", items: [{ animalId, liveWeightKg, unitPrice }] });
+
+export const buyAnimal = (app: Client, animalId: string, date: string, liveWeightKg = 200, unitPrice = 12.5) =>
+  createTrade(app, { type: "PURCHASE", date, priceUnit: "PER_KG", items: [{ animalId, liveWeightKg, unitPrice }] });
+
 export const NON_EXISTENT_ID = "00000000-0000-4000-8000-000000000000";

@@ -34,7 +34,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
 
       {/* Os toasts aparecem no canto superior direito */}
-      <div className="fixed top-4 right-4 flex flex-col gap-2 z-[100]">
+      <div role="status" aria-live="polite" className="fixed top-4 right-4 flex flex-col gap-2 z-[100]">
         {toasts.map((toast) => (
           <div
             key={toast.id}

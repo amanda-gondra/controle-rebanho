@@ -29,6 +29,8 @@ export const FieldErrorCode = {
   FUTURE_DATE: "FUTURE_DATE",
   REAPPLY_BEFORE_DATE: "REAPPLY_BEFORE_DATE",
   EMPTY_UPDATE: "EMPTY_UPDATE",
+  NOT_ALLOWED: "NOT_ALLOWED", // campo que não vale nesta combinação (ex.: carcaça na venda por kg)
+  CARCASS_ABOVE_LIVE_WEIGHT: "CARCASS_ABOVE_LIVE_WEIGHT", // G5: peso de carcaça maior que o vivo
   INVALID: "INVALID",
 } as const;
 

@@ -87,29 +87,33 @@ Backend (raiz):
                                 password.ts, errors.ts, error-handler.ts, dates.ts,
                                 farm.ts (configurações: campos, padrões, fusos do Brasil),
                                 categories.ts (categorias: regra de sexo e nomes — G4),
-                                animal-life.ts (saída e "nada depois da saída" — G5a)
+                                animal-life.ts (saída e "nada depois da saída" — G5a),
+                                trades.ts (negociações: pesagens criadas, desfazer, resposta da API — G5b)
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
-  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance, farm, auth
-  src/routes/                   auth.routes.ts (público) + animals, sanitary, finance, farm (protegidas)
+  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, trade, farm, auth
+  src/routes/                   auth.routes.ts (público) + animals, sanitary, trades, finance (resultado), farm
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
                                 exit.service.ts (saída do animal: o que impede a data — G5a),
-                                finance.service.ts (resultado por animal),
+                                trade.service.ts (valor de cada animal em centavos exatos; quem pode entrar — G5b),
+                                finance.service.ts (resultado por animal: venda − compra, sem custos),
                                 animal.service.ts (categoria × sexo e castrado — G4)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
 
 Frontend (web/):
   src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
                                 AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
+                                TradeList, TradeCreate (assistente), TradeDetail, TradeEdit (Negociações — G5b),
                                 Settings (Configurações da fazenda)
   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
-                                EditApplication, Trade, EstimatedPrice), ToastProvider,
+                                EditApplication, Confirm), ToastProvider,
+                                TradeDealFields + TradePricesEditor (assistente de negociação), AnimalTradesCard,
                                 CategoryPicker (categoria pelo sexo + castrado)
   src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
   src/i18n/                     index.ts (t()), pt-BR.ts (TODOS os textos), errors.ts (erro da
                                 API → frase), RichText (frase com <b>), i18n.test.ts
-  src/services/                 auth.ts, animals.ts, sanitary.ts, finance.ts, farm.ts,
+  src/services/                 auth.ts, animals.ts, sanitary.ts, trades.ts, farm.ts,
                                 api.ts (request<T>: manda o cookie; 401 → volta para o login)
   src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
                                 timezones.ts (nomes dos fusos do Brasil), categories.ts
@@ -153,7 +157,8 @@ usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolve
 - Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda; categoria G4 combinando
   com o sexo; `castrated` só machos; saída G5a: `exitDate`, `deathCause`, `deathCauseCertainty`) ·
   `Weighing` (`source` MANUAL/PURCHASE/SALE; uma por animal por dia) ·
-  `Product` · `Application` + `ApplicationAnimal` · `AnimalPurchase` · `AnimalSale`.
+  `Product` · `Application` + `ApplicationAnimal` · `Trade` + `TradeItem` (G5b: negociação de compra/venda
+  com um item por animal; no máximo 1 compra e 1 venda por animal; item → animal `Restrict`).
 - Datas de calendário são `@db.Date`. Dinheiro e peso são `Decimal`.
 
 ### Rotas
@@ -182,12 +187,13 @@ Sanitário:  POST /products · GET /products (filtro type)
             (422 ANIMALS_NOT_IN_HERD_ON_DATE se algum animal já tinha saído na data)
             GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
             GET /animals/:id/applications
-Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
-            POST/GET/PUT/DELETE /animals/:id/sale       (POST marca SOLD; DELETE volta ACTIVE;
-                                                         409 se animal DEAD ou venda já existe;
-                                                         422 SALE_BEFORE_PURCHASE — D-06)
-            PATCH /animals/:id/estimated-price   (pricePerKg: número ou null p/ limpar)
-            GET /animals/:id/result   (resultType: REALIZED | ESTIMATED | null)
+Negociações (G5b): POST /trades (compra/venda de 1 ou muitos animais; idempotencyKey; o servidor
+            calcula os valores; 422 TRADE_ITEM_ERRORS com erro por linha `items.N.animalId`)
+            GET /trades (type, from, to, pending, page, pageSize) · GET /trades/:id
+            GET /trades/last-prices (último preço por categoria — só referência)
+            PATCH /trades/:id (corrige; recalcula; peso de carcaça pendente) ·
+            DELETE /trades/:id/items/:itemId (tira um animal) · DELETE /trades/:id (desfaz)
+            GET /animals/:id/result   (kind: DIFFERENCE | INVESTED | SALE_ONLY | PENDING | CURRENCY_MISMATCH)
 Saúde:      GET /health (processo) · GET /ready (banco)
 ```
 
@@ -234,3 +240,12 @@ corrigir a saída ou voltar para ativo (engano). Nada depois da saída: pesagem 
 recusadas. Pesagem com origem (`source`) e uma por animal por dia (D-33). Ficha mostra a faixa
 "Saiu em …" e desliga "Registrar pesagem". Falta na G5: negociações (`Trade`), pesagens de
 compra/venda criadas por elas, linha do tempo (D-28).
+
+**G5 entrega 2 — G5b (2026-10-14):** negociações no modelo definitivo (`Trade` + `TradeItem`, D-03/D-08):
+preço por kg, por arroba (carcaça ÷ 15 ou peso vivo ÷ fator gravado na negociação) ou por cabeça;
+venda e compra em lote com preço por categoria (ajuste para marcados ou por animal); valores em
+centavos exatos no servidor; peso vivo vira pesagem (troca a manual do dia — D-37); carcaça
+pendente (D-35); tirar animal e desfazer; resultado venda − compra sem custos; valor estimado
+removido (D-09); dados antigos migrados. Telas: menu "Negociações", assistente em 3 passos,
+detalhe, correção, cartão em Configurações. Falta na G5: compra em lote que cadastra os animais
+(entrega 3), linha do tempo (D-28).

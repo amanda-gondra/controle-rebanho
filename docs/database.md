@@ -6,7 +6,7 @@
 
 PostgreSQL 16 via Prisma 6. Tabelas de conta: `Farm`, `User`, `Session`. Tabelas do rebanho
 (todas com `farmId`): `Animal`, `Weighing`, `Product`, `Application`, `ApplicationAnimal`,
-`AnimalPurchase`, `AnimalSale`. Datas de calendário em `DATE` (F-17) e índices nas chaves e
+`Trade`, `TradeItem`. Datas de calendário em `DATE` (F-17) e índices nas chaves e
 nos filtros mais usados (F-15) — ambos vieram na migração da G1.
 
 Integridade garantida hoje:
@@ -17,11 +17,15 @@ Integridade garantida hoje:
 | E-mail único (minúsculas) | banco (`@unique`) + erro `EMAIL_ALREADY_REGISTERED` |
 | Um usuário por fazenda (Release 1.0) | banco (`User.farmId @unique`) |
 | Dado de uma fazenda invisível para outra | `forFarm` + testes de acesso cruzado |
-| Uma compra e uma venda por animal | banco (`animalId @unique`) + checagem na rota |
+| Uma compra e uma venda por animal (RN-NEG-004) | banco (`TradeItem @@unique([animalId, type])`) + checagem na rota |
 | Mesmo animal uma vez por aplicação | banco (`@@unique`) + schema recusa ids repetidos |
 | Animal com compra/venda não é excluído (D-10) | rota, numa instrução só (`deleteMany` com filtro) |
 | Venda não anterior à compra (D-06) | rota (compra e venda, POST e PUT) |
-| Venda + status `SOLD` juntos | transação |
+| Venda + status `SOLD` + data de saída + pesagens juntos | transação |
+| Item e negociação com o mesmo tipo | banco (chave `[tradeId, type]` → `Trade[id, type]`) |
+| Arroba precisa de base; fator só na arroba de peso vivo; moeda com 3 letras | API + banco (`CHECK Trade_*`) |
+| Preço > 0; pesos > 0; carcaça ≤ peso vivo; valor ≥ 0 | API + banco (`CHECK TradeItem_amounts_check`) |
+| Mesmo envio não grava duas negociações | banco (`@@unique([farmId, idempotencyKey])`) |
 | Categoria combina com o sexo (G4 — D-02) | API (`resolveAnimalProfile`) + banco (`CHECK Animal_category_sex_check`) |
 | Castrado só em machos (G4) | API + banco (`CHECK Animal_castrated_male_only_check`) |
 | Animal ativo não tem data de saída; morto/vendido tem (G5a — D-27) | API + banco (`CHECK Animal_active_without_exit_check`) |
@@ -32,13 +36,12 @@ Integridade garantida hoje:
 | Pesagem vinda de compra/venda não é editada nem apagada à mão (RN-PES-009) | API (`WEIGHING_FROM_TRADE`) |
 | Configurações da fazenda dentro dos limites (G2) | API (Zod) + banco (`CHECK`: fator da arroba > 0, antecedência 0–60, moeda com 3 letras, unidade kg/lb) |
 
-⚠️ No banco, `AnimalPurchase` e `AnimalSale` ainda têm `onDelete: Cascade` (F-05). A
-proteção hoje é da aplicação; a garantia no banco vem com o modelo `Trade` (G5), que já
-nasce com `Restrict`.
+Desde a G5b, a ligação item da negociação → animal é `Restrict` (F-05 resolvido): o banco
+também recusa apagar animal com compra ou venda.
 
 ## Migrations
 
-Dez migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+Onze migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
 como está: **não reescrever migrations já aplicadas**.
 
 **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
@@ -68,6 +71,18 @@ dos vendidos com a data da venda registrada; mortos antigos ficam sem data e com
 "não informada"; (4) cria `Weighing.source` (tipo `WeighingSource`, padrão `MANUAL`); (5) troca o
 índice de pesagem por um único `[animalId, date]`; (6) `CHECK`s. Testada com dados antigos
 (conversão) e com pesagens repetidas (para sem alterar nada).
+
+**G5b (`20261013180000_g5b_trades`)** — sem `BEGIN/COMMIT` no arquivo (o Prisma já manda tudo de
+uma vez e o PostgreSQL executa como uma transação; assim a mensagem de erro aparece como foi
+escrita — com `BEGIN` dentro, o Prisma mostrava "current transaction is aborted" no lugar dela):
+(1) **para sem mudar nada** se houver compra/venda antiga com peso ou preço zero/negativo;
+(2) cria `Trade` e `TradeItem`; (3) cada `AnimalPurchase`/`AnimalSale` vira uma negociação de
+um animal, por kg, na moeda da fazenda, com o mesmo id e o mesmo valor (peso × preço arredondado);
+(4) o peso vira pesagem de compra/venda quando o animal ainda não tem pesagem nesse dia (nenhuma
+pesagem existente é alterada); (5) confere que o número de registros e a soma dos valores
+batem antes de seguir; (6) apaga as tabelas antigas e `Animal.estimatedPricePerKg` (D-09);
+(7) `CHECK`s. Testada com dados de duas fazendas (valores com centavos, pesagem manual no dia da
+compra) e com um preço zero (parou sem alterar nada).
 
 Procedimento:
 

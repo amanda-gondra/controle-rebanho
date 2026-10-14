@@ -101,13 +101,17 @@ export async function animalRoutes(app: FastifyInstance) {
         orderBy: { [sortBy]: order },
         include: {
           weighings: { orderBy: { date: "desc" }, take: 1 },
+          tradeItems: { select: { type: true } },
         },
       });
 
-      return animals.map(({ weighings, ...animal }) => ({
+      return animals.map(({ weighings, tradeItems, ...animal }) => ({
         ...animal,
         currentWeightKg: weighings[0] ? Number(weighings[0].weightKg) : null,
         lastWeighingDate: weighings[0] ? weighings[0].date : null,
+        // Para as telas de negociação: quem já tem compra/venda registrada
+        hasPurchase: tradeItems.some((item) => item.type === "PURCHASE"),
+        hasSale: tradeItems.some((item) => item.type === "SALE"),
       }));
     },
   );
@@ -185,7 +189,7 @@ export async function animalRoutes(app: FastifyInstance) {
 
       // Uma instrução só: apaga apenas se não houver compra nem venda.
       const { count } = await request.db.animal.deleteMany({
-        where: { id, purchase: { is: null }, sale: { is: null } },
+        where: { id, tradeItems: { none: {} } },
       });
 
       if (count === 0) {
@@ -219,14 +223,14 @@ export async function animalRoutes(app: FastifyInstance) {
     async (request) => {
       const animal = await request.db.animal.findUnique({
         where: { id: request.params.id },
-        include: { sale: { select: { id: true } } },
+        include: { tradeItems: { where: { type: "SALE" }, select: { id: true } } },
       });
       if (!animal) throw animalNotFound();
 
       const { status, exitDate, deathCause, deathCauseCertainty } = request.body;
 
       // Com venda registrada, a saída é a da venda: só "Desfazer venda" muda
-      if (animal.sale) {
+      if (animal.tradeItems.length > 0) {
         throw conflict(
           ErrorCode.ANIMAL_HAS_SALE,
           "Este animal tem uma venda registrada. Para mudar o status, desfaça a venda.",

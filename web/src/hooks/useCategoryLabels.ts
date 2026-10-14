@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useAuth } from "../components/AuthProvider.js";
 import type { Category, Sex } from "../types/animal.js";
-import { categoryLabelKey, resolveCategoryLabels } from "../types/categories.js";
+import { categoryLabelKey, resolveCategoryLabels, type CategoryLabelKey } from "../types/categories.js";
 import { t } from "../i18n/index.js";
 
 // Nomes das categorias DESTA fazenda (Configurações → Animais): os que a
@@ -26,5 +26,8 @@ export function useCategoryLabels() {
     [labels],
   );
 
-  return useMemo(() => ({ labelOf, filterLabelOf }), [labelOf, filterLabelOf]);
+  // Nome de um grupo de preço (os 7 nomes — bezerro e bezerra separados)
+  const labelOfKey = useCallback((key: CategoryLabelKey) => labels[key], [labels]);
+
+  return useMemo(() => ({ labelOf, filterLabelOf, labelOfKey }), [labelOf, filterLabelOf, labelOfKey]);
 }

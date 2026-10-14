@@ -1,4 +1,4 @@
-import { List, PlusCircle, Syringe, LogOut, Settings } from "lucide-react";
+import { List, PlusCircle, Syringe, LogOut, Settings, Handshake } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider.js";
 import { t, type MessageKey } from "../i18n/index.js";
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List },
   { to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle },
   { to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe },
+  { to: "/negociacoes", end: false, label: "nav.trades", short: "nav.tradesShort", Icon: Handshake },
 ] satisfies { to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown }[];
 
 // Configurações (G2): fica separada, logo acima do usuário (desktop); no

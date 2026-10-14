@@ -14,10 +14,6 @@ const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> =
     code: ErrorCode.DUPLICATE_TAG,
     message: "Já existe um animal cadastrado com este brinco.",
   },
-  "AnimalPurchase.animalId": {
-    code: ErrorCode.DUPLICATE_PURCHASE,
-    message: "Este animal já tem uma compra registrada.",
-  },
   "User.email": {
     code: ErrorCode.EMAIL_ALREADY_REGISTERED,
     message: "Já existe uma conta com esse e-mail.",
@@ -25,10 +21,6 @@ const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> =
   "Weighing.animalId,date": {
     code: ErrorCode.DUPLICATE_WEIGHING_DATE,
     message: "Este animal já tem uma pesagem nesse dia. Edite a pesagem existente.",
-  },
-  "AnimalSale.animalId": {
-    code: ErrorCode.DUPLICATE_SALE,
-    message: "Este animal já tem uma venda registrada.",
   },
 };
 
@@ -50,6 +42,15 @@ function uniqueFields(error: Prisma.PrismaClientKnownRequestError): string[] {
   }
 
   return [];
+}
+
+// Para as rotas que tratam uma unicidade do jeito delas (ex.: negociação
+// repetida devolve a que já existe): os campos violados, se o erro for de
+// unicidade NESSA tabela; senão null.
+export function uniqueViolation(error: unknown, model: string): string[] | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return null;
+  const errorModel = String((error.meta as { modelName?: string })?.modelName ?? "");
+  return errorModel === model ? uniqueFields(error) : null;
 }
 
 function prismaErrorResponse(

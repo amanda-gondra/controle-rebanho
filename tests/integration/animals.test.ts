@@ -3,7 +3,9 @@ import { useTestApp } from "../helpers/suite.js";
 import {
   NON_EXISTENT_ID,
   addWeighing,
+  buyAnimal,
   createAnimal,
+  sellAnimal,
   daysFromToday,
   today,
 } from "../helpers/factories.js";
@@ -164,29 +166,28 @@ describe("DELETE /animals/:id", () => {
 
   it("NÃO exclui animal com compra registrada (D-10)", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({
-      method: "POST",
-      url: `/animals/${animal.id}/purchase`,
-      payload: { date: "2026-01-01", weightKg: 200, pricePerKg: 12 },
-    });
+    await buyAnimal(t.client, animal.id, "2026-01-01");
 
     const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}` });
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("ANIMAL_HAS_TRANSACTIONS");
-    expect(await prisma.animalPurchase.count()).toBe(1);
+    expect(await prisma.tradeItem.count()).toBe(1);
   });
 
   it("NÃO exclui animal com venda registrada (D-10)", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({
-      method: "POST",
-      url: `/animals/${animal.id}/sale`,
-      payload: { date: "2026-01-01", weightKg: 450, pricePerKg: 11 },
-    });
+    await sellAnimal(t.client, animal.id, "2026-01-01");
 
     const response = await t.client.inject({ method: "DELETE", url: `/animals/${animal.id}` });
     expect(response.statusCode).toBe(409);
-    expect(await prisma.animalSale.count()).toBe(1);
+    expect(await prisma.tradeItem.count()).toBe(1);
+  });
+
+  it("o banco também não apaga animal com negociação (Restrict — F-05)", async () => {
+    const animal = await createAnimal(t.client);
+    await sellAnimal(t.client, animal.id, "2026-01-01");
+    await expect(prisma.animal.delete({ where: { id: animal.id } })).rejects.toThrow();
+    expect(await prisma.tradeItem.count()).toBe(1);
   });
 
   it("animal inexistente → 404", async () => {
@@ -209,11 +210,7 @@ describe("PATCH /animals/:id/status", () => {
 
   it("animal com venda não volta a ativo nem vira morto pelo status (D-06, F-08)", async () => {
     const animal = await createAnimal(t.client);
-    await t.client.inject({
-      method: "POST",
-      url: `/animals/${animal.id}/sale`,
-      payload: { date: "2026-01-01", weightKg: 450, pricePerKg: 11 },
-    });
+    await sellAnimal(t.client, animal.id, "2026-01-01");
 
     for (const status of ["ACTIVE", "DEAD"]) {
       const response = await t.client.inject({

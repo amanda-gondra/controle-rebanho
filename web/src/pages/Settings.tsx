@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { Bell, Home, Mars, PawPrint, RotateCcw, Venus } from "lucide-react";
+import { Bell, Handshake, Home, Mars, PawPrint, RotateCcw, Venus } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { useAuth } from "../components/AuthProvider.js";
 import { useToast } from "../components/ToastProvider.js";
 import { getFarm, updateFarm } from "../services/farm.js";
-import type { FarmWithDefaults, UpdateFarmInput } from "../services/farm.js";
+import type { FarmWithDefaults, PriceUnit, UpdateFarmInput } from "../services/farm.js";
+import { MAX_ARROBA_FACTOR_KG } from "../types/tradeForm.js";
+import { decimalToInput, parseDecimalInput } from "../types/tradeMath.js";
+import { formatNumber } from "../types/format.js";
 import type { ApiError } from "../services/api.js";
 import { BRAZIL_TIME_ZONES, timeZoneLabel, utcOffsetLabel } from "../types/timezones.js";
 import {
@@ -23,9 +26,8 @@ import { sexIconStyle } from "../types/labels.js";
 //
 // Um cartão por assunto, cada um com o próprio "Salvar": se um der erro, o
 // que foi digitado nos outros não se perde. Aparecem só os cartões que já têm
-// efeito no sistema: Fazenda, Manejo sanitário e Animais (G4). O de
-// Negociações entra junto com a compra e venda (G5) — nada de botão que não
-// muda nada.
+// efeito no sistema: Fazenda, Manejo sanitário, Animais (G4) e Negociações
+// (G5) — nada de botão que não muda nada.
 
 type FieldErrors = Record<string, string>;
 
@@ -96,6 +98,7 @@ export function Settings() {
             <FarmCard farm={farm} onSaved={setFarm} />
             <SanitaryCard farm={farm} onSaved={setFarm} />
             <AnimalsCard farm={farm} onSaved={setFarm} />
+            <TradesCard farm={farm} onSaved={setFarm} />
           </div>
         )}
       </main>
@@ -415,6 +418,101 @@ function CategoryNameInput(props: { value: string; standard: string; error?: str
         </p>
       )}
     </div>
+  );
+}
+
+// ── Cartão: Negociações (G5) ─────────────────────────────────────────────────
+// Só o que vem MARCADO ao registrar uma compra/venda: a forma de preço e o
+// fator da arroba sobre peso vivo. Cada negociação grava os seus; mudar aqui
+// não altera negociações já registradas (RN-NEG-003). Preço não fica guardado
+// aqui: é decidido na hora de cada negociação (RN-NEG-020).
+
+const PRICE_UNITS: PriceUnit[] = ["PER_KG", "PER_ARROBA", "PER_HEAD"];
+
+function TradesCard({ farm, onSaved }: { farm: FarmWithDefaults; onSaved: (f: FarmWithDefaults) => void }) {
+  const saved = farm.settings;
+  const standardFactor = farm.defaults.arrobaLiveFactorKg;
+  const [unit, setUnit] = useState<PriceUnit>(saved.preferredPriceUnit);
+  const [factor, setFactor] = useState(decimalToInput(saved.arrobaLiveFactorKg.toFixed(2)));
+  const [localError, setLocalError] = useState("");
+  const { save, saving, errors, failed } = useSaveFarm(onSaved);
+  const factorId = useId();
+
+  const parsedFactor = parseDecimalInput(factor);
+  const factorChanged = parsedFactor === undefined || parsedFactor === null || Number(parsedFactor) !== saved.arrobaLiveFactorKg;
+  const changed = unit !== saved.preferredPriceUnit || factorChanged;
+  const error = localError || errors.arrobaLiveFactorKg;
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLocalError("");
+    if (!parsedFactor || Number(parsedFactor) <= 0 || Number(parsedFactor) > MAX_ARROBA_FACTOR_KG) {
+      return setLocalError(t("trade.factorInvalid", { max: formatNumber(MAX_ARROBA_FACTOR_KG) }));
+    }
+    const input: UpdateFarmInput = {};
+    if (unit !== saved.preferredPriceUnit) input.preferredPriceUnit = unit;
+    if (Number(parsedFactor) !== saved.arrobaLiveFactorKg) input.arrobaLiveFactorKg = Number(parsedFactor);
+    save(input);
+  }
+
+  return (
+    <Card icon={<Handshake size={18} />} title={t("settings.trades.title")} onSubmit={handleSubmit} saving={saving} changed={changed} failed={failed}>
+      <fieldset className="mb-5">
+        <legend className="block font-medium text-texto mb-1">{t("settings.trades.priceUnit")}</legend>
+        <div role="radiogroup" aria-label={t("settings.trades.priceUnit")} className="flex flex-wrap gap-2">
+          {PRICE_UNITS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={unit === value}
+              onClick={() => setUnit(value)}
+              className={`px-3 py-2 rounded-lg border text-sm cursor-pointer ${
+                unit === value
+                  ? "bg-verde-claro border-verde text-verde-escuro font-medium"
+                  : "bg-card border-borda-chip text-texto-suave"
+              }`}
+            >
+              {t(`trade.choice${value}`)}
+            </button>
+          ))}
+        </div>
+        <p className="text-sm text-texto-leve mt-1">{t("settings.trades.priceUnitHelp")}</p>
+        {errors.preferredPriceUnit && (
+          <p role="alert" className="text-sm text-alerta mt-1">
+            {errors.preferredPriceUnit}
+          </p>
+        )}
+      </fieldset>
+
+      <Field id={factorId} label={t("settings.trades.factor")} error={error} help={t("settings.trades.factorHelp")}>
+        <div className="flex items-center gap-2">
+          <input
+            id={factorId}
+            inputMode="decimal"
+            value={factor}
+            onChange={(e) => setFactor(e.target.value)}
+            aria-invalid={!!error}
+            aria-describedby={`${factorId}-help${error ? ` ${factorId}-error` : ""}`}
+            className={inputClass(!!error, "w-24")}
+          />
+          <span className="text-texto-suave">{t("settings.trades.factorUnit")}</span>
+        </div>
+      </Field>
+
+      {Number(parsedFactor) !== standardFactor && (
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-leve -mt-3 mb-5">
+          {t("settings.trades.standardFactor", { value: decimalToInput(standardFactor.toFixed(2)) })}
+          <button
+            type="button"
+            onClick={() => setFactor(decimalToInput(standardFactor.toFixed(2)))}
+            className="inline-flex items-center gap-1 text-verde font-medium cursor-pointer hover:underline"
+          >
+            <RotateCcw size={14} aria-hidden="true" /> {t("settings.resetToStandard")}
+          </button>
+        </p>
+      )}
+    </Card>
   );
 }
 

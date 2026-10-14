@@ -6,7 +6,7 @@ import { z } from "zod";
 
 // Limites das colunas Decimal do schema.prisma
 const MAX_WEIGHT_KG = 9999.99; // Decimal(6, 2)
-const MAX_PRICE_PER_KG = 99_999_999.99; // Decimal(10, 2)
+const MAX_UNIT_PRICE = 99_999_999.99; // Decimal(10, 2)
 
 // Limites de texto (técnicos: evitam abuso; ajustáveis se o produto pedir)
 export const MAX_TAG_LENGTH = 50;
@@ -32,10 +32,11 @@ export const weightKg = z.coerce
     params: { code: "MAX_2_DECIMALS" },
   });
 
-export const pricePerKg = z.coerce
+// Preço de negociação (G5): R$ por kg, por arroba ou por cabeça
+export const unitPrice = z.coerce
   .number({ error: "O preço deve ser um número." })
-  .positive("O preço por kg deve ser maior que zero.")
-  .max(MAX_PRICE_PER_KG, "O preço por kg está acima do limite permitido.")
+  .positive("O preço deve ser maior que zero.")
+  .max(MAX_UNIT_PRICE, "O preço está acima do limite permitido.")
   .refine(hasAtMostTwoDecimals, {
     message: "O preço aceita no máximo 2 casas decimais.",
     params: { code: "MAX_2_DECIMALS" },

@@ -1,0 +1,175 @@
+import type { DealDraft } from "../components/TradeDealFields.js";
+import type { Trade } from "./trade.js";
+import {
+  evaluateRow,
+  groupKeyOf,
+  parseDecimalInput,
+  sumValues,
+  decimalToInput,
+  type DraftRow,
+  type GroupBy,
+  type Pricing,
+} from "./tradeMath.js";
+import { fieldErrorMessage } from "../i18n/errors.js";
+import { t } from "../i18n/index.js";
+import { formatNumber } from "./format.js";
+
+// O formulário da negociação (criar e corrigir usam o mesmo): confere o que a
+// pessoa digitou, monta o que vai para a API e distribui os erros que voltam
+// (por campo da negociação ou por linha/animal). Sem React aqui: testável.
+
+// Limite do fator (o mesmo do servidor: src/lib/farm.ts)
+export const MAX_ARROBA_FACTOR_KG = 99.99;
+
+export type DealCheck = { pricing: Pricing | null; errors: Record<string, string> };
+
+// Forma de preço + fator digitado → Pricing (ou os erros dos campos)
+export function checkDeal(deal: DealDraft): DealCheck {
+  const errors: Record<string, string> = {};
+  if (!deal.date) errors.date = t("trade.dateRequired");
+
+  let factor: string | null = null;
+  if (deal.priceUnit === "PER_ARROBA") {
+    if (!deal.arrobaBasis) errors.arrobaBasis = t("trade.arrobaBasisRequired");
+    if (deal.arrobaBasis === "LIVE_FACTOR") {
+      const parsed = parseDecimalInput(deal.factor);
+      if (!parsed || Number(parsed) <= 0 || Number(parsed) > MAX_ARROBA_FACTOR_KG) {
+        errors.arrobaFactorKg = t("trade.factorInvalid", { max: formatNumber(MAX_ARROBA_FACTOR_KG) });
+      } else {
+        factor = parsed;
+      }
+    }
+  }
+
+  const pricing: Pricing | null =
+    Object.keys(errors).length > 0
+      ? null
+      : {
+          priceUnit: deal.priceUnit,
+          arrobaBasis: deal.priceUnit === "PER_ARROBA" ? deal.arrobaBasis : null,
+          arrobaFactorKg: factor,
+        };
+  return { pricing, errors };
+}
+
+export type ItemPayload = {
+  liveWeightKg: string | null;
+  carcassWeightKg: string | null;
+  unitPrice: string;
+  priceAdjusted: boolean;
+};
+
+export type RowsCheck = {
+  ok: boolean; // todas as linhas certas (pendência de carcaça pode)
+  items: ItemPayload[]; // na mesma ordem das linhas
+  total: string; // soma dos valores conhecidos
+  awaitingCarcass: number;
+};
+
+// Confere todas as linhas e monta os itens (o valor NÃO vai: quem calcula é o servidor)
+export function checkRows(
+  rows: DraftRow[],
+  pricing: Pricing,
+  groupBy: GroupBy,
+  groupPrices: Record<string, string>,
+): RowsCheck {
+  const evaluated = rows.map((row) => evaluateRow(row, pricing, groupPrices[groupKeyOf(row.animal, groupBy)] ?? ""));
+  const ok = evaluated.every((row) => Object.keys(row.problems).length === 0);
+  return {
+    ok,
+    items: evaluated.map((row) => ({
+      liveWeightKg: row.liveWeightKg,
+      carcassWeightKg: row.carcassWeightKg,
+      unitPrice: row.price ?? "0.00",
+      priceAdjusted: row.adjusted,
+    })),
+    total: sumValues(evaluated.map((row) => row.value)),
+    awaitingCarcass: evaluated.filter((row) => row.awaitingCarcass).length,
+  };
+}
+
+// ── Erros que voltam da API ──
+
+type ApiFieldError = { field: string; code?: string; params?: Record<string, unknown> };
+
+export type SplitErrors = {
+  deal: Record<string, string>; // date, arrobaBasis, arrobaFactorKg, counterparty, notes
+  rows: Record<string, string>; // chave da linha → frase
+  hasAny: boolean;
+};
+
+// "items.3.animalId" → linha 3 (mesma ordem que foi enviada)
+export function splitApiErrors(err: unknown, rowKeys: string[]): SplitErrors {
+  const list = (err && typeof err === "object" ? (err as { errors?: ApiFieldError[] }).errors : undefined) ?? [];
+  const deal: Record<string, string> = {};
+  const rows: Record<string, string> = {};
+  for (const fieldError of list) {
+    const match = /^items\.(\d+)\./.exec(fieldError.field ?? "");
+    if (match) {
+      const key = rowKeys[Number(match[1])];
+      if (key) rows[key] ??= fieldErrorMessage(fieldError);
+    } else if (fieldError.field) {
+      deal[fieldError.field] ??= fieldErrorMessage(fieldError);
+    }
+  }
+  return { deal, rows, hasAny: Object.keys(deal).length + Object.keys(rows).length > 0 };
+}
+
+// ── Correção: começar o formulário com o que a negociação já tem ──
+
+export type EditStart = {
+  deal: DealDraft;
+  rows: DraftRow[];
+  groupBy: GroupBy;
+  groupPrices: Record<string, string>;
+};
+
+// Preço de cada grupo = o dos animais sem preço ajustado; quem tem preço
+// diferente do grupo entra com preço individual. Se a mesma categoria tem
+// preços diferentes sem ajuste, a negociação foi feita por categoria + raça.
+export function startEdit(trade: Trade, farmFactor: number): EditStart {
+  const pickGroupBy = (): GroupBy => {
+    const seen = new Map<string, string>();
+    for (const item of trade.items) {
+      if (item.priceAdjusted) continue;
+      const key = groupKeyOf(item.animal, "category");
+      const previous = seen.get(key);
+      if (previous !== undefined && previous !== item.unitPrice) return "categoryBreed";
+      seen.set(key, item.unitPrice);
+    }
+    return "category";
+  };
+  const groupBy = pickGroupBy();
+
+  const groupPrice = new Map<string, string>();
+  for (const item of trade.items) {
+    const key = groupKeyOf(item.animal, groupBy);
+    if (!item.priceAdjusted && !groupPrice.has(key)) groupPrice.set(key, item.unitPrice);
+  }
+
+  const rows: DraftRow[] = trade.items.map((item) => {
+    const own = groupPrice.get(groupKeyOf(item.animal, groupBy));
+    return {
+      key: item.id,
+      animal: item.animal,
+      liveWeight: decimalToInput(item.liveWeightKg),
+      carcassWeight: decimalToInput(item.carcassWeightKg),
+      individualPrice: own === item.unitPrice ? null : decimalToInput(item.unitPrice),
+      selectionPrice: null,
+    };
+  });
+
+  return {
+    deal: {
+      date: trade.date,
+      priceUnit: trade.priceUnit,
+      arrobaBasis: trade.arrobaBasis,
+      factor: decimalToInput(trade.arrobaFactorKg ?? String(farmFactor.toFixed(2))),
+      counterparty: trade.counterparty ?? "",
+      notes: trade.notes ?? "",
+    },
+    rows,
+    groupBy,
+    groupPrices: Object.fromEntries([...groupPrice].map(([key, price]) => [key, decimalToInput(price)])),
+  };
+}

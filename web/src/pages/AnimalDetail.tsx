@@ -18,34 +18,25 @@ import {
   deleteWeighing,
 } from "../services/animals.js";
 import { listAnimalApplications } from "../services/sanitary.js";
-import {
-  getPurchase,
-  getSale,
-  getAnimalResult,
-  deletePurchase,
-  deleteSale,
-} from "../services/finance.js";
+import { getAnimalResult } from "../services/trades.js";
 import type {
   Animal,
   Weighing,
   WeightGain,
   Application,
-  Purchase,
-  Sale,
-  AnimalResult,
 } from "../types/animal.js";
+import type { AnimalResult } from "../types/trade.js";
 import {
   sexLabel,
   statusLabel,
   statusStyle,
 } from "../types/labels.js";
-import { formatDate, formatMonthYear, formatNumber, formatMoney } from "../types/format.js";
+import { formatDate, formatMonthYear, formatNumber } from "../types/format.js";
 import { WeighingModal } from "../components/WeighingModal.js";
 import { EditWeighingModal } from "../components/EditWeighingModal.js";
 import { StatusModal } from "../components/StatusModal.js";
 import { DeleteModal } from "../components/DeleteModal.js";
-import { TradeModal } from "../components/TradeModal.js";
-import { EstimatedPriceModal } from "../components/EstimatedPriceModal.js";
+import { AnimalTradesCard } from "../components/AnimalTradesCard.js";
 import { useToast } from "../components/ToastProvider.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
@@ -63,8 +54,6 @@ export function AnimalDetail() {
   // Por que o ganho não foi calculado (código vindo da API)
   const [gainUnavailableCode, setGainUnavailableCode] = useState<string | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [purchase, setPurchase] = useState<Purchase | null>(null);
-  const [sale, setSale] = useState<Sale | null>(null);
   const [result, setResult] = useState<AnimalResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -74,17 +63,6 @@ export function AnimalDetail() {
   const [editingWeighing, setEditingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
-  // Financeiro (v3.0)
-  const [tradeModal, setTradeModal] = useState<{
-    kind: "purchase" | "sale";
-    existing: Purchase | Sale | null;
-  } | null>(null);
-  const [showPriceModal, setShowPriceModal] = useState(false);
-  const [deletingTrade, setDeletingTrade] = useState<"purchase" | "sale" | null>(
-    null,
-  );
-  const [deletingTradeLoading, setDeletingTradeLoading] = useState(false);
-
   // Busca (ou rebusca) todos os dados do animal.
   function loadData() {
     if (!id) return;
@@ -110,13 +88,7 @@ export function AnimalDetail() {
     listAnimalApplications(id)
       .then((data) => setApplications(data))
       .catch((err) => console.error(err));
-    // 404 é esperado quando não há compra/venda registrada — vira null.
-    getPurchase(id)
-      .then((data) => setPurchase(data))
-      .catch(() => setPurchase(null));
-    getSale(id)
-      .then((data) => setSale(data))
-      .catch(() => setSale(null));
+    // Compra, venda e diferença (G5)
     getAnimalResult(id)
       .then((data) => setResult(data))
       .catch(() => setResult(null));
@@ -140,27 +112,6 @@ export function AnimalDetail() {
       showToast(errorMessage(err, "animalDetail.weighingDeleteFailed"));
     } finally {
       setDeletingWeighingLoading(false);
-    }
-  }
-
-  // Confirma a exclusão de uma compra, ou o desfazer de uma venda.
-  async function handleDeleteTrade() {
-    if (!id || !deletingTrade) return;
-    setDeletingTradeLoading(true);
-    try {
-      if (deletingTrade === "purchase") {
-        await deletePurchase(id);
-        showToast(t("animalDetail.purchaseRemoved"));
-      } else {
-        await deleteSale(id);
-        showToast(t("animalDetail.saleUndone"));
-      }
-      setDeletingTrade(null);
-      loadData();
-    } catch (err) {
-      showToast(errorMessage(err, "animalDetail.tradeFailed"));
-    } finally {
-      setDeletingTradeLoading(false);
     }
   }
 
@@ -476,194 +427,8 @@ export function AnimalDetail() {
           )}
         </div>
 
-        {/* Financeiro (v3.0) — compra, venda e resultado do animal */}
-        <div className="bg-card border border-borda rounded-xl p-6 mt-6">
-          <p className="font-medium text-texto mb-4">{t("animalDetail.finance")}</p>
-
-          {/* Resultado apurado (real se vendido, estimado se vivo) */}
-          {result && result.resultType ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.purchaseCost")}</p>
-                <p className="text-xl font-medium text-texto">
-                  {result.purchaseCost !== null
-                    ? formatMoney(result.purchaseCost)
-                    : t("animalDetail.notInformed")}
-                </p>
-              </div>
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">
-                  {result.resultType === "REALIZED"
-                    ? t("animalDetail.saleRevenue")
-                    : t("animalDetail.estimatedValue")}
-                </p>
-                <p className="text-xl font-medium text-texto">
-                  {formatMoney(
-                    result.resultType === "REALIZED"
-                      ? (result.saleRevenue ?? 0)
-                      : (result.estimatedValue ?? 0),
-                  )}
-                </p>
-              </div>
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">
-                  {result.resultType === "ESTIMATED"
-                    ? t("animalDetail.resultEstimated")
-                    : t("animalDetail.result")}
-                </p>
-                <p
-                  className={`text-xl font-medium ${
-                    (result.result ?? 0) >= 0 ? "text-verde" : "text-alerta"
-                  }`}
-                >
-                  {formatMoney(result.result ?? 0)}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-texto-suave text-sm mb-6">
-              {t("animalDetail.resultHelp")}
-            </p>
-          )}
-
-          {/* Linhas: compra, venda e — se ainda vivo — preço estimado */}
-          <div className="flex flex-col divide-y divide-borda">
-            {/* Compra */}
-            <div className="flex items-center justify-between gap-3 py-3">
-              <div>
-                <p className="text-sm font-medium text-texto">{t("animalDetail.purchase")}</p>
-                <p className="text-xs text-texto-suave">
-                  {purchase
-                    ? t("animalDetail.tradeLine", {
-                        date: formatDate(purchase.date),
-                        weight: t("units.kgValue", { value: formatNumber(Number(purchase.weightKg)) }),
-                        price: t("units.perKg", { value: formatMoney(Number(purchase.pricePerKg)) }),
-                      })
-                    : t("animalDetail.notRegistered")}
-                </p>
-              </div>
-              {purchase ? (
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-texto">
-                    {formatMoney(
-                      Number(purchase.weightKg) * Number(purchase.pricePerKg),
-                    )}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setTradeModal({ kind: "purchase", existing: purchase })
-                    }
-                    title={t("animalDetail.editPurchase")}
-                    aria-label={t("animalDetail.editPurchase")}
-                    className="text-texto-leve hover:text-verde cursor-pointer"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setDeletingTrade("purchase")}
-                    title={t("animalDetail.removePurchase")}
-                    aria-label={t("animalDetail.removePurchase")}
-                    className="text-texto-leve hover:text-alerta cursor-pointer"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() =>
-                    setTradeModal({ kind: "purchase", existing: null })
-                  }
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-                >
-                  <Plus size={15} /> {t("animalDetail.register")}
-                </button>
-              )}
-            </div>
-
-            {/* Venda */}
-            <div className="flex items-center justify-between gap-3 py-3">
-              <div>
-                <p className="text-sm font-medium text-texto">{t("animalDetail.sale")}</p>
-                <p className="text-xs text-texto-suave">
-                  {sale
-                    ? t("animalDetail.tradeLine", {
-                        date: formatDate(sale.date),
-                        weight: t("units.kgValue", { value: formatNumber(Number(sale.weightKg)) }),
-                        price: t("units.perKg", { value: formatMoney(Number(sale.pricePerKg)) }),
-                      })
-                    : animal.status === "DEAD"
-                      ? t("animalDetail.deadAnimal")
-                      : t("animalDetail.notRegistered")}
-                </p>
-              </div>
-              {sale ? (
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-texto">
-                    {formatMoney(
-                      Number(sale.weightKg) * Number(sale.pricePerKg),
-                    )}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setTradeModal({ kind: "sale", existing: sale })
-                    }
-                    title={t("animalDetail.editSale")}
-                    aria-label={t("animalDetail.editSale")}
-                    className="text-texto-leve hover:text-verde cursor-pointer"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setDeletingTrade("sale")}
-                    title={t("animalDetail.undoSale")}
-                    aria-label={t("animalDetail.undoSale")}
-                    className="text-texto-leve hover:text-alerta cursor-pointer"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setTradeModal({ kind: "sale", existing: null })}
-                  disabled={animal.status === "DEAD"}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Plus size={15} /> {t("animalDetail.register")}
-                </button>
-              )}
-            </div>
-
-            {/* Preço estimado — só faz sentido enquanto o animal está vivo e não vendido */}
-            {!sale && animal.status !== "DEAD" && (
-              <div className="flex items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="text-sm font-medium text-texto">
-                    {t("animalDetail.estimatedPrice")}
-                  </p>
-                  <p className="text-xs text-texto-suave">
-                    {animal.estimatedPricePerKg
-                      ? t("units.perKg", { value: formatMoney(Number(animal.estimatedPricePerKg)) })
-                      : t("animalDetail.notInformed")}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowPriceModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-                >
-                  {animal.estimatedPricePerKg ? (
-                    <>
-                      <Pencil size={15} /> {t("animalDetail.change")}
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={15} /> {t("animalDetail.inform")}
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Compra e venda (G5) — resultado sem custos */}
+        <AnimalTradesCard animal={animal} result={result} />
 
         {/* Modal de registrar pesagem */}
         {showWeighingModal && (
@@ -741,7 +506,7 @@ export function AnimalDetail() {
         {showStatusModal && (
           <StatusModal
             animal={animal}
-            hasSale={!!sale}
+            hasSale={!!result?.sale}
             onClose={() => setShowStatusModal(false)}
             onSaved={() => {
               setShowStatusModal(false);
@@ -764,85 +529,6 @@ export function AnimalDetail() {
           />
         )}
 
-        {/* Modal de compra / venda (cadastro e edição) */}
-        {tradeModal && (
-          <TradeModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            kind={tradeModal.kind}
-            existing={tradeModal.existing}
-            onClose={() => setTradeModal(null)}
-            onSaved={() => {
-              const wasEdit = !!tradeModal.existing;
-              const isSale = tradeModal.kind === "sale";
-              setTradeModal(null);
-              loadData();
-              showToast(
-                isSale
-                  ? t(wasEdit ? "animalDetail.saleUpdated" : "animalDetail.saleCreated")
-                  : t(wasEdit ? "animalDetail.purchaseUpdated" : "animalDetail.purchaseCreated"),
-              );
-            }}
-          />
-        )}
-
-        {/* Modal do preço estimado */}
-        {showPriceModal && (
-          <EstimatedPriceModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            current={animal.estimatedPricePerKg}
-            onClose={() => setShowPriceModal(false)}
-            onSaved={() => {
-              setShowPriceModal(false);
-              loadData();
-              showToast(t("animalDetail.priceUpdated"));
-            }}
-          />
-        )}
-
-        {/* Confirmação de remover compra / desfazer venda */}
-        {deletingTrade && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-            onClick={() => setDeletingTrade(null)}
-          >
-            <div
-              className="bg-card rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-medium text-texto mb-1">
-                {deletingTrade === "purchase"
-                  ? t("animalDetail.removePurchaseTitle")
-                  : t("animalDetail.undoSaleTitle")}
-              </h2>
-              <p className="text-sm text-texto-suave mb-5">
-                {deletingTrade === "purchase"
-                  ? t("animalDetail.removePurchaseBody")
-                  : t("animalDetail.undoSaleBody")}
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingTrade(null)}
-                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={handleDeleteTrade}
-                  disabled={deletingTradeLoading}
-                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-                >
-                  {deletingTradeLoading
-                    ? t("animalDetail.processing")
-                    : deletingTrade === "purchase"
-                      ? t("animalDetail.remove")
-                      : t("animalDetail.undo")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );

@@ -20,6 +20,7 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { animalRoutes } from "./routes/animals.routes.js";
 import { sanitaryRoutes } from "./routes/sanitary.routes.js";
 import { financeRoutes } from "./routes/finance.routes.js";
+import { tradeRoutes } from "./routes/trades.routes.js";
 import { farmRoutes } from "./routes/farm.routes.js";
 
 // Monta a aplicação SEM subir o servidor. Assim os testes conseguem criar a
@@ -112,6 +113,7 @@ export async function buildApp(config: AppConfig) {
     await protectedApp.register(animalRoutes);
     await protectedApp.register(sanitaryRoutes);
     await protectedApp.register(financeRoutes);
+    await protectedApp.register(tradeRoutes);
     await protectedApp.register(farmRoutes);
   });
 

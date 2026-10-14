@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Handshake, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { t } from "../i18n/index.js";
 
 type Props = {
   onEdit: () => void;
   onDelete: () => void;
+  onSell?: () => void; // só para animais ativos (G5)
 };
 
 // Menu de ações (três pontinhos) de uma linha da tabela.
 // Renderizado via portal no <body> e posicionado por coordenadas do botão,
 // pra não ser cortado pelo overflow da tabela.
-export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
+export function AnimalActionsMenu({ onEdit, onDelete, onSell }: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -78,7 +79,7 @@ export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
             role="menu"
             onClick={(e) => e.stopPropagation()}
             style={{ position: "fixed", top: pos.top, right: pos.right }}
-            className="w-40 bg-card border border-borda rounded-xl shadow-lg py-1 z-50"
+            className="w-48 bg-card border border-borda rounded-xl shadow-lg py-1 z-50"
           >
             <button
               role="menuitem"
@@ -91,6 +92,19 @@ export function AnimalActionsMenu({ onEdit, onDelete }: Props) {
             >
               <Pencil size={15} /> {t("common.edit")}
             </button>
+            {onSell && (
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onSell();
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-texto hover:bg-bege cursor-pointer"
+              >
+                <Handshake size={15} /> {t("animalTrades.registerSale")}
+              </button>
+            )}
             <button
               role="menuitem"
               type="button"

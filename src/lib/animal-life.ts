@@ -27,7 +27,10 @@ export async function assertExitDateAllowed(
   field: string,
 ) {
   const [purchase, lastWeighing, lastApplication] = await Promise.all([
-    db.animalPurchase.findUnique({ where: { animalId: animal.id }, select: { date: true } }),
+    db.tradeItem.findUnique({
+      where: { animalId_type: { animalId: animal.id, type: "PURCHASE" } },
+      select: { trade: { select: { date: true } } },
+    }),
     db.weighing.findFirst({
       where: { animalId: animal.id },
       orderBy: { date: "desc" },
@@ -42,7 +45,7 @@ export async function assertExitDateAllowed(
 
   const blocker = findExitConflict(exitDate, {
     birthDate: day(animal.birthDate),
-    purchaseDate: day(purchase?.date),
+    purchaseDate: day(purchase?.trade.date),
     lastWeighingDate: day(lastWeighing?.date),
     lastApplicationDate: day(lastApplication?.application.date),
   });

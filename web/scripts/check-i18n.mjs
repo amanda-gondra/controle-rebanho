@@ -19,7 +19,8 @@ function filesIn(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return SKIP_DIRS.has(name) ? [] : filesIn(path);
-    return /\.(tsx|ts)$/.test(name) && !name.endsWith(".d.ts") ? [path] : [];
+    // Testes não são telas: os nomes dos casos ficam em português
+    return /\.(tsx|ts)$/.test(name) && !/\.(d|test)\.ts$/.test(name) ? [path] : [];
   });
 }
 
@@ -40,7 +41,7 @@ function looksHuman(text) {
 }
 
 const ALLOWED_CALLS = new Set(["t", "tOptional", "errorMessage", "useState", "Error", "console.error", "console.log"]);
-const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "path", "value", "dataKey"]);
+const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "aria-current", "aria-live", "path", "value", "dataKey"]);
 
 const problems = [];
 

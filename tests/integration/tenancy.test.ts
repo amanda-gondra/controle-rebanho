@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestApp } from "../helpers/suite.js";
 import { type Client, createLoggedClient } from "../helpers/client.js";
-import { addWeighing, createAnimal, createProduct } from "../helpers/factories.js";
+import { addWeighing, buyAnimal, createAnimal, createProduct, sellAnimal } from "../helpers/factories.js";
 import { prisma } from "../../src/lib/prisma.js";
 
 // ISOLAMENTO ENTRE FAZENDAS (G1, critério de aceitação 3).
@@ -19,6 +19,8 @@ let b: {
   productId: string;
   applicationId: string;
   soldAnimalId: string;
+  tradeId: string;
+  tradeItemId: string;
 };
 
 beforeEach(async () => {
@@ -34,17 +36,9 @@ beforeEach(async () => {
     url: "/applications",
     payload: { productId: product.id, date: "2026-01-05", reapplyDate: "2099-01-01", animalIds: [animal.id] },
   });
-  await farmB.inject({
-    method: "POST",
-    url: `/animals/${animal.id}/purchase`,
-    payload: { date: "2025-12-01", weightKg: 250, pricePerKg: 12 },
-  });
+  await buyAnimal(farmB, animal.id, "2025-12-01", 250, 12);
   const sold = await createAnimal(farmB, { tag: "B-002" });
-  await farmB.inject({
-    method: "POST",
-    url: `/animals/${sold.id}/sale`,
-    payload: { date: "2026-01-10", weightKg: 400, pricePerKg: 11 },
-  });
+  const sale = await sellAnimal(farmB, sold.id, "2026-01-10", 400, 11);
 
   b = {
     animalId: animal.id,
@@ -52,6 +46,8 @@ beforeEach(async () => {
     productId: product.id,
     applicationId: application.json().id,
     soldAnimalId: sold.id,
+    tradeId: sale.id,
+    tradeItemId: sale.items[0].id,
   };
 });
 
@@ -65,8 +61,8 @@ async function snapshotFarmB() {
       prisma.product.findMany({ where, orderBy: { id: "asc" } }),
       prisma.application.findMany({ where, orderBy: { id: "asc" } }),
       prisma.applicationAnimal.findMany({ where, orderBy: { id: "asc" } }),
-      prisma.animalPurchase.findMany({ where, orderBy: { id: "asc" } }),
-      prisma.animalSale.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.trade.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.tradeItem.findMany({ where, orderBy: { id: "asc" } }),
       prisma.farm.findUnique({ where: { id: farmB.farm.id } }),
     ]),
   );
@@ -75,7 +71,7 @@ async function snapshotFarmB() {
 describe("isolamento entre fazendas", () => {
   it("listas da fazenda A não mostram nada da fazenda B", async () => {
     await createAnimal(farmA, { tag: "A-001" });
-    for (const url of ["/animals", "/products", "/applications", "/alerts"]) {
+    for (const url of ["/animals", "/products", "/applications", "/alerts", "/trades"]) {
       const response = await farmA.inject({ url });
       expect(response.statusCode, url).toBe(200);
       expect(JSON.stringify(response.json()), url).not.toMatch(/B-00|Vacina B/);
@@ -91,7 +87,7 @@ describe("isolamento entre fazendas", () => {
 
   it("toda rota com id da fazenda B responde 404 para a fazenda A, e nada de B muda", async () => {
     const before = await snapshotFarmB();
-    const { animalId, weighingId, productId, applicationId, soldAnimalId } = b;
+    const { animalId, weighingId, productId, applicationId, tradeId, tradeItemId } = b;
 
     const attempts: [string, string, unknown?][] = [
       ["GET", `/animals/${animalId}`],
@@ -107,16 +103,12 @@ describe("isolamento entre fazendas", () => {
       ["GET", `/applications/${applicationId}`],
       ["PUT", `/applications/${applicationId}`, { productId, date: "2026-01-06" }],
       ["DELETE", `/applications/${applicationId}`],
-      ["GET", `/animals/${animalId}/purchase`],
-      ["PUT", `/animals/${animalId}/purchase`, { date: "2025-12-01", weightKg: 1, pricePerKg: 1 }],
-      ["DELETE", `/animals/${animalId}/purchase`],
-      ["POST", `/animals/${animalId}/purchase`, { date: "2025-12-01", weightKg: 1, pricePerKg: 1 }],
-      ["POST", `/animals/${animalId}/sale`, { date: "2026-01-10", weightKg: 1, pricePerKg: 1 }],
-      ["GET", `/animals/${soldAnimalId}/sale`],
-      ["PUT", `/animals/${soldAnimalId}/sale`, { date: "2026-01-10", weightKg: 1, pricePerKg: 1 }],
-      ["DELETE", `/animals/${soldAnimalId}/sale`],
-      ["PATCH", `/animals/${animalId}/estimated-price`, { pricePerKg: 1 }],
       ["GET", `/animals/${animalId}/result`],
+      ["GET", `/trades/${tradeId}`],
+      ["PATCH", `/trades/${tradeId}`, { notes: "invadida" }],
+      ["PATCH", `/trades/${tradeId}`, { items: [{ id: tradeItemId, unitPrice: 1 }] }],
+      ["DELETE", `/trades/${tradeId}/items/${tradeItemId}`],
+      ["DELETE", `/trades/${tradeId}`],
     ];
 
     for (const [method, url, payload] of attempts) {
@@ -161,6 +153,32 @@ describe("isolamento entre fazendas", () => {
     expect(edit.statusCode).toBe(404);
   });
 
+  it("a fazenda A NÃO inclui animal da fazenda B numa negociação (critério 17)", async () => {
+    const before = await snapshotFarmB();
+    const mine = await createAnimal(farmA);
+    for (const type of ["SALE", "PURCHASE"]) {
+      const response = await farmA.inject({
+        method: "POST",
+        url: "/trades",
+        payload: {
+          type,
+          date: "2026-02-01",
+          priceUnit: "PER_KG",
+          items: [
+            { animalId: mine.id, liveWeightKg: 300, unitPrice: 10 },
+            { animalId: b.animalId, liveWeightKg: 300, unitPrice: 10 },
+          ],
+        },
+      });
+      expect(response.statusCode, type).toBe(422);
+      expect(response.json().errors).toEqual([
+        expect.objectContaining({ field: "items.1.animalId", code: "ANIMAL_NOT_FOUND" }),
+      ]);
+    }
+    expect(await prisma.trade.count({ where: { farmId: farmA.farm.id } })).toBe(0);
+    expect(await snapshotFarmB()).toBe(before);
+  });
+
   it("tudo que a fazenda A cria fica com o farmId da sessão", async () => {
     const animal = await createAnimal(farmA);
     await addWeighing(farmA, animal.id, "2026-01-01", 200);
@@ -170,17 +188,15 @@ describe("isolamento entre fazendas", () => {
       url: "/applications",
       payload: { productId: product.id, date: "2026-01-05", animalIds: [animal.id] },
     });
-    await farmA.inject({
-      method: "POST",
-      url: `/animals/${animal.id}/sale`,
-      payload: { date: "2026-01-10", weightKg: 300, pricePerKg: 11 },
-    });
+    await sellAnimal(farmA, animal.id, "2026-01-10", 300, 11);
 
     const notA = { farmId: { not: farmA.farm.id } };
     expect(await prisma.animal.count({ where: { ...notA, id: animal.id } })).toBe(0);
     expect(await prisma.weighing.count({ where: { ...notA, animalId: animal.id } })).toBe(0);
     expect(await prisma.applicationAnimal.count({ where: { ...notA, animalId: animal.id } })).toBe(0);
-    expect(await prisma.animalSale.count({ where: { ...notA, animalId: animal.id } })).toBe(0);
+    expect(await prisma.trade.count({ where: notA })).toBe(2); // só as da fazenda B
+    expect(await prisma.tradeItem.count({ where: { ...notA, animalId: animal.id } })).toBe(0);
+    expect(await prisma.weighing.count({ where: { animalId: animal.id, source: "SALE", ...notA } })).toBe(0);
   });
 
   it("farmId enviado pelo navegador é recusado (campo desconhecido)", async () => {
