@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_ARROBA_LIVE_FACTOR_KG } from "../lib/farm.js";
 import { MAX_NAME_LENGTH, calendarDate, notes, unitPrice, weightKg } from "./common.schema.js";
+import { newAnimalSchema } from "./animal.schema.js";
 
 // Negociações — compra e venda (G5, "Espec — Compra e venda").
 //
@@ -45,9 +46,12 @@ const noRepeated = <T>(pick: (item: T) => string) => ({
 
 // ── Criar ──
 
+// Cada linha é um animal JÁ cadastrado (animalId) ou, na compra em lote, um
+// animal NOVO que é cadastrado junto com a compra (newAnimal — D-36).
 const newItem = z
   .object({
-    animalId: z.uuid("Animal inválido."),
+    animalId: z.uuid("Animal inválido.").optional(),
+    newAnimal: newAnimalSchema.optional(),
     liveWeightKg: weightKg.nullable().optional(),
     carcassWeightKg: weightKg.nullable().optional(), // pode ficar pendente (D-35)
     unitPrice,
@@ -56,9 +60,27 @@ const newItem = z
     // Valor calculado pela tela: aceito e IGNORADO — o servidor recalcula (RN-NEG-010)
     value: z.unknown().optional(),
   })
-  .strict();
+  .strict()
+  .refine((item) => item.animalId !== undefined || item.newAnimal !== undefined, {
+    message: "Escolha o animal.",
+    path: ["animalId"],
+    params: { code: "REQUIRED" },
+  })
+  .refine((item) => item.animalId === undefined || item.newAnimal === undefined, {
+    message: "Use um animal cadastrado OU um animal novo, não os dois.",
+    path: ["newAnimal"],
+    params: { code: "NOT_ALLOWED" },
+  });
 
-const uniqueAnimals = noRepeated<{ animalId: string }>((item) => item.animalId);
+// O mesmo animal cadastrado não entra duas vezes (os novos são conferidos
+// pelo brinco, na rota, com o erro na linha certa)
+const uniqueAnimals = {
+  check: (items: { animalId?: string }[]) => {
+    const ids = items.flatMap((item) => (item.animalId ? [item.animalId] : []));
+    return new Set(ids).size === ids.length;
+  },
+  issue: { message: "O mesmo animal foi incluído mais de uma vez.", params: { code: "DUPLICATE_ITEMS" } },
+};
 
 export const createTradeSchema = z
   .object({

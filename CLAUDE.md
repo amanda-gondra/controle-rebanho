@@ -109,6 +109,7 @@ Frontend (web/):
                                 modais (Weighing, EditWeighing, Status, Delete,
                                 EditApplication, Confirm), ToastProvider,
                                 TradeDealFields + TradePricesEditor (assistente de negociação), AnimalTradesCard,
+                                NewAnimalsEditor (linhas de animais novos na compra em lote — G5c),
                                 CategoryPicker (categoria pelo sexo + castrado)
   src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
   src/i18n/                     index.ts (t()), pt-BR.ts (TODOS os textos), errors.ts (erro da
@@ -188,7 +189,9 @@ Sanitário:  POST /products · GET /products (filtro type)
             GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
             GET /animals/:id/applications
 Negociações (G5b): POST /trades (compra/venda de 1 ou muitos animais; idempotencyKey; o servidor
-            calcula os valores; 422 TRADE_ITEM_ERRORS com erro por linha `items.N.animalId`)
+            calcula os valores; 422 TRADE_ITEM_ERRORS com erro por linha `items.N.animalId`;
+            na compra, a linha pode trazer `newAnimal` {tag, sex, category, castrated?, breed?} —
+            o animal é cadastrado junto (G5c); brinco repetido → `items.N.newAnimal.tag` DUPLICATE_TAG)
             GET /trades (type, from, to, pending, page, pageSize) · GET /trades/:id
             GET /trades/last-prices (último preço por categoria — só referência)
             PATCH /trades/:id (corrige; recalcula; peso de carcaça pendente) ·
@@ -247,5 +250,10 @@ venda e compra em lote com preço por categoria (ajuste para marcados ou por ani
 centavos exatos no servidor; peso vivo vira pesagem (troca a manual do dia — D-37); carcaça
 pendente (D-35); tirar animal e desfazer; resultado venda − compra sem custos; valor estimado
 removido (D-09); dados antigos migrados. Telas: menu "Negociações", assistente em 3 passos,
-detalhe, correção, cartão em Configurações. Falta na G5: compra em lote que cadastra os animais
-(entrega 3), linha do tempo (D-28).
+detalhe, correção, cartão em Configurações.
+
+**G5 entrega 3 — G5c (2026-10-14):** compra em lote que cadastra os animais (D-36, RN-NEG-015): cada
+linha da compra pode ser um animal novo (brinco, categoria — o nome já diz o sexo —, castrado,
+raça), criado na mesma transação com as regras do cadastro; brinco repetido (na fazenda ou na
+lista) volta como erro da linha; desfazer a compra não apaga os animais criados. Com isso a G5
+está completa; fica para depois só a linha do tempo do animal (D-28).

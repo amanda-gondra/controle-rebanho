@@ -229,7 +229,7 @@ A documentação completa e interativa da API está disponível na rota `/docs` 
 * [x] Manejo sanitário completo (produtos, aplicação em lote, histórico, alertas de reaplicação)
 * [x] Financeiro base — compra e venda por animal, resultado por animal (v3.0)
 * [x] Saída do animal (data, causa da morte) e uma pesagem por animal por dia
-* [x] Negociações: compra e venda em lote, por kg, arroba ou cabeça
+* [x] Negociações: compra e venda em lote, por kg, arroba ou cabeça; compra de lote novo já cadastra os animais
 
 ### Em andamento / próximas etapas
 

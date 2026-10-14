@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDeal, checkRows, splitApiErrors, startEdit } from "./tradeForm.js";
+import { checkDeal, checkNewAnimals, checkRows, newAnimalPayload, splitApiErrors, startEdit } from "./tradeForm.js";
 import type { DraftRow } from "./tradeMath.js";
 import type { Trade } from "./trade.js";
 
@@ -129,5 +129,36 @@ describe("startEdit", () => {
     const start = startEdit(trade([item("A", "Nelore", "17.00"), item("B", "Angus", "18.50")]), 30);
     expect(start.groupBy).toBe("categoryBreed");
     expect(start.rows.every((r) => r.individualPrice === null)).toBe(true);
+  });
+});
+
+describe("animais novos na compra (D-36)", () => {
+  const row = (key: string, tag: string, group: "COW" | "CALF_MALE" | "" = "COW", castrated = true, breed = "") => ({
+    key,
+    tag,
+    group,
+    castrated,
+    breed,
+  });
+
+  it("aponta brinco vazio, repetido na lista, já usado na fazenda e categoria vazia", () => {
+    const problems = checkNewAnimals(
+      [row("a", ""), row("b", "X-1"), row("c", "X-1"), row("d", "VELHO"), row("e", "N-1", ""), row("f", "OK-1")],
+      new Set(["VELHO"]),
+    );
+    expect(Object.keys(problems).sort()).toEqual(["a", "b", "c", "d", "e"]);
+    expect(problems.d).toBe("Já existe um animal com o brinco VELHO.");
+    expect(problems.b).toBe("O brinco X-1 aparece mais de uma vez nesta compra.");
+  });
+
+  it("o nome da categoria diz o sexo; castrado só vai para macho; raça vazia não vai", () => {
+    expect(newAnimalPayload(row("a", " V-1 ", "COW", true))).toEqual({ tag: "V-1", sex: "FEMALE", category: "COW" });
+    expect(newAnimalPayload(row("b", "B-1", "CALF_MALE", false, " Nelore "))).toEqual({
+      tag: "B-1",
+      sex: "MALE",
+      category: "CALF",
+      castrated: false,
+      breed: "Nelore",
+    });
   });
 });

@@ -1,5 +1,7 @@
 import type { DealDraft } from "../components/TradeDealFields.js";
 import type { Trade } from "./trade.js";
+import type { Category, Sex } from "./animal.js";
+import { SEX_OF_LABEL_KEY, type CategoryLabelKey } from "./categories.js";
 import {
   evaluateRow,
   groupKeyOf,
@@ -171,5 +173,54 @@ export function startEdit(trade: Trade, farmFactor: number): EditStart {
     rows,
     groupBy,
     groupPrices: Object.fromEntries([...groupPrice].map(([key, price]) => [key, decimalToInput(price)])),
+  };
+}
+
+// ── Animais novos na compra em lote (D-36) ──
+//
+// Uma linha por animal comprado. A categoria é escolhida pelos 7 nomes da
+// fazenda (bezerro, garrote, boi, touro, bezerra, novilha, vaca): o nome já diz
+// o sexo, então a pessoa escolhe UMA coisa só.
+
+export type NewAnimalDraft = {
+  key: string; // "new-1", "new-2"...
+  tag: string;
+  group: CategoryLabelKey | "";
+  castrated: boolean; // só vale para machos
+  breed: string;
+};
+
+export function profileOfGroup(group: CategoryLabelKey): { sex: Sex; category: Category } {
+  return {
+    sex: SEX_OF_LABEL_KEY[group],
+    category: group === "CALF_MALE" || group === "CALF_FEMALE" ? "CALF" : group,
+  };
+}
+
+// Problemas de cada linha antes de enviar (o servidor confere de novo):
+// brinco vazio, repetido na lista ou já usado na fazenda; categoria vazia.
+export function checkNewAnimals(rows: NewAnimalDraft[], existingTags: Set<string>): Record<string, string> {
+  const problems: Record<string, string> = {};
+  const count = new Map<string, number>();
+  for (const row of rows) count.set(row.tag.trim(), (count.get(row.tag.trim()) ?? 0) + 1);
+  for (const row of rows) {
+    const tag = row.tag.trim();
+    if (!tag) problems[row.key] = t("trade.newAnimals.tagRequired");
+    else if (existingTags.has(tag)) problems[row.key] = t("errors.fieldCodes.DUPLICATE_TAG_IN_FARM", { tag });
+    else if ((count.get(tag) ?? 0) > 1) problems[row.key] = t("errors.fieldCodes.DUPLICATE_TAG_IN_LIST", { tag });
+    else if (!row.group) problems[row.key] = t("trade.newAnimals.categoryRequired");
+  }
+  return problems;
+}
+
+// O que vai para a API (castrado só para macho; raça vazia não vai)
+export function newAnimalPayload(row: NewAnimalDraft) {
+  const { sex, category } = profileOfGroup(row.group as CategoryLabelKey);
+  return {
+    tag: row.tag.trim(),
+    sex,
+    category,
+    ...(sex === "MALE" ? { castrated: row.castrated } : {}),
+    ...(row.breed.trim() ? { breed: row.breed.trim() } : {}),
   };
 }

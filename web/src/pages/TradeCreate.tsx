@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, Search } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
@@ -7,12 +7,21 @@ import { useToast } from "../components/ToastProvider.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { TradeDealFields, type DealDraft } from "../components/TradeDealFields.js";
 import { TradePricesEditor } from "../components/TradePricesEditor.js";
+import { NewAnimalsEditor } from "../components/NewAnimalsEditor.js";
 import { listAnimals } from "../services/animals.js";
 import { createTrade, getLastPrices } from "../services/trades.js";
 import type { Animal, Category, Status } from "../types/animal.js";
 import type { LastPrices, TradeType } from "../types/trade.js";
 import type { DraftRow, GroupBy } from "../types/tradeMath.js";
-import { checkDeal, checkRows, splitApiErrors } from "../types/tradeForm.js";
+import {
+  checkDeal,
+  checkNewAnimals,
+  checkRows,
+  newAnimalPayload,
+  profileOfGroup,
+  splitApiErrors,
+  type NewAnimalDraft,
+} from "../types/tradeForm.js";
 import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 import { sexLabel, statusLabel } from "../types/labels.js";
 import { formatMoney, formatNumber, todayInTimeZone } from "../types/format.js";
@@ -26,9 +35,14 @@ import { errorMessage } from "../i18n/errors.js";
 //   3. Preço por categoria + peso de cada animal (valor ao vivo)
 // "Voltar" não perde nada. Salvar grava tudo de uma vez (ou nada).
 // Entradas: /negociacoes/nova?tipo=venda|compra&animal=<id> (da ficha).
+// Na compra, o passo 1 tem duas formas (D-36): cadastrar os animais comprados
+// ali mesmo, linha por linha, ou escolher animais que já estão cadastrados —
+// as duas podem entrar na mesma compra.
 
 type Step = 1 | 2 | 3;
 type StatusFilter = Status | "ALL";
+type PurchaseMode = "new" | "existing";
+const isNewKey = (key: string) => key.startsWith("new-");
 
 const STEPS: Step[] = [1, 2, 3];
 
@@ -58,6 +72,18 @@ export function TradeCreate() {
   const [categoryFilter, setCategoryFilter] = useState<Category | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [selectionError, setSelectionError] = useState("");
+
+  // Passo 1 da compra — animais novos (cadastrados junto com a compra)
+  const [purchaseMode, setPurchaseMode] = useState<PurchaseMode>(preselected ? "existing" : "new");
+  const nextNewKey = useRef(0);
+  const newKey = () => `new-${(nextNewKey.current += 1)}`;
+  const defaultCastrated = settings?.defaultCastrated ?? false;
+  const [newRows, setNewRows] = useState<NewAnimalDraft[]>(() =>
+    type === "PURCHASE" && !preselected
+      ? [{ key: "new-0", tag: "", group: "", castrated: settings?.defaultCastrated ?? false, breed: "" }]
+      : [],
+  );
+  const [showNewProblems, setShowNewProblems] = useState(false);
 
   // Passo 2 — negociação
   const [deal, setDeal] = useState<DealDraft>(() => ({
@@ -96,24 +122,51 @@ export function TradeCreate() {
       animal.tag.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
-  // Linhas do passo 3, na ordem do brinco, guardando o que já foi digitado
-  const rows: DraftRow[] = useMemo(
-    () =>
-      animals
-        .filter((animal) => selected.has(animal.id))
-        .map(
-          (animal) =>
-            typed[animal.id] ?? {
-              key: animal.id,
-              animal: { id: animal.id, tag: animal.tag, sex: animal.sex, category: animal.category, breed: animal.breed },
-              liveWeight: "",
-              carcassWeight: "",
-              individualPrice: null,
-              selectionPrice: null,
-            },
-        ),
-    [animals, selected, typed],
-  );
+  // Linhas do passo 3: os cadastrados escolhidos (na ordem do brinco) e depois
+  // os novos (na ordem digitada), guardando o que já foi digitado em cada um
+  const rows: DraftRow[] = useMemo(() => {
+    const blankRow = (key: string, animal: DraftRow["animal"]): DraftRow => ({
+      key,
+      animal,
+      liveWeight: "",
+      carcassWeight: "",
+      individualPrice: null,
+      selectionPrice: null,
+    });
+    const existing = animals
+      .filter((animal) => selected.has(animal.id))
+      .map(
+        (animal) =>
+          typed[animal.id] ??
+          blankRow(animal.id, {
+            id: animal.id,
+            tag: animal.tag,
+            sex: animal.sex,
+            category: animal.category,
+            breed: animal.breed,
+          }),
+      );
+    const created = isSale
+      ? []
+      : newRows
+          .filter((row) => row.group !== "")
+          .map((row) => {
+            // Dados do animal sempre os atuais da linha (pode ter mudado a categoria)
+            const animal = {
+              id: row.key,
+              tag: row.tag.trim(),
+              ...profileOfGroup(row.group as Exclude<typeof row.group, "">),
+              breed: row.breed.trim() || null,
+            };
+            return typed[row.key] ? { ...typed[row.key], animal } : blankRow(row.key, animal);
+          });
+    return [...existing, ...created];
+  }, [animals, selected, typed, newRows, isSale]);
+
+  const existingTags = useMemo(() => new Set(animals.map((animal) => animal.tag)), [animals]);
+  const newProblems = isSale ? {} : checkNewAnimals(newRows, existingTags);
+  const newRowsOk = Object.keys(newProblems).length === 0;
+  const animalCount = selected.size + (isSale ? 0 : newRows.length);
 
   const { pricing } = checkDeal(deal);
   const priceUnit = deal.priceUnit;
@@ -162,8 +215,14 @@ export function TradeCreate() {
   }
 
   function goToStep(target: Step) {
-    if (target >= 2 && selected.size === 0) {
+    if (target >= 2 && animalCount === 0) {
       setSelectionError(t("trade.animalsRequired"));
+      return setStep(1);
+    }
+    if (target >= 2 && !newRowsOk) {
+      setShowNewProblems(true);
+      setPurchaseMode("new");
+      setSelectionError(t("trade.newAnimals.fixRows"));
       return setStep(1);
     }
     setSelectionError("");
@@ -203,9 +262,18 @@ export function TradeCreate() {
         ...(deal.counterparty.trim() ? { counterparty: deal.counterparty.trim() } : {}),
         ...(deal.notes.trim() ? { notes: deal.notes.trim() } : {}),
         idempotencyKey,
-        items: rows.map((row, index) => ({ animalId: row.key, ...rowsCheck.items[index] })),
+        items: rows.map((row, index) => {
+          const newRow = isNewKey(row.key) ? newRows.find((candidate) => candidate.key === row.key) : undefined;
+          return newRow
+            ? { newAnimal: newAnimalPayload(newRow), ...rowsCheck.items[index] }
+            : { animalId: row.key, ...rowsCheck.items[index] };
+        }),
       });
-      const message = t(isSale ? "trade.savedSale" : "trade.savedPurchase", { count: trade.animalCount });
+      const createdCount = rows.filter((row) => isNewKey(row.key)).length;
+      const message =
+        createdCount > 0
+          ? t("trade.savedPurchaseNew", { count: trade.animalCount, created: createdCount })
+          : t(isSale ? "trade.savedSale" : "trade.savedPurchase", { count: trade.animalCount });
       const replaced = trade.replacedWeighings ?? 0;
       showToast(replaced > 0 ? `${message} ${t("trade.replacedWeighings", { count: replaced })}` : message);
       navigate(`/negociacoes/${trade.id}`);
@@ -216,6 +284,12 @@ export function TradeCreate() {
       setRowErrors(split.rows);
       setDealErrors(split.deal);
       if (Object.keys(split.deal).length > 0) setStep(2);
+      // Brinco ou categoria de um animal novo: volta para a lista dos novos
+      if (Object.keys(split.rows).some(isNewKey)) {
+        setShowNewProblems(true);
+        setPurchaseMode("new");
+        setStep(1);
+      }
       setSaveError(
         Object.keys(split.rows).length > 0
           ? t("trade.rowsHaveProblems", { count: Object.keys(split.rows).length })
@@ -269,100 +343,145 @@ export function TradeCreate() {
         <div className="max-w-4xl">
           {step === 1 && (
             <section className="bg-card border border-borda rounded-xl p-4 md:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <p className="font-medium text-texto">
-                  {t(isSale ? "trade.whichAnimalsSale" : "trade.whichAnimalsPurchase")}{" "}
-                  <span className="text-verde">{t("trade.selectedCount", { count: selected.size })}</span>
-                </p>
-                <button type="button" onClick={toggleAllVisible} className="text-sm text-verde font-medium cursor-pointer">
-                  {allVisibleSelected ? t("trade.clearSelection") : t("trade.selectAll")}
-                </button>
-              </div>
-              {!isSale && <p className="text-sm text-texto-suave mb-3">{t("trade.purchaseExistingHint")}</p>}
-
-              <div className="relative mb-3">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-leve" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("trade.searchTag")}
-                  aria-label={t("trade.searchTag")}
-                  className="w-full bg-bege border border-borda rounded-lg pl-9 pr-3 py-2 text-sm text-texto"
-                />
-              </div>
-              <div className="flex gap-2 mb-4 flex-wrap">
-                <select
-                  aria-label={t("trade.filterStatus")}
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                  className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
-                >
-                  <option value="ACTIVE">{t("application.filterActive")}</option>
-                  <option value="ALL">{t("application.filterAllStatus")}</option>
-                  <option value="SOLD">{t("application.filterSold")}</option>
-                </select>
-                <select
-                  aria-label={t("trade.filterCategory")}
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value as Category | "ALL")}
-                  className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
-                >
-                  <option value="ALL">{t("application.allCategories")}</option>
-                  {CATEGORY_FILTER_ORDER.map((value) => (
-                    <option key={value} value={value}>
-                      {filterLabelOf(value)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {visibleAnimals.length === 0 ? (
-                <p className="text-sm text-texto-suave">{t("application.noAnimals")}</p>
-              ) : (
-                <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
-                  {visibleAnimals.map((animal) => {
-                    const isSelected = selected.has(animal.id);
-                    const blocked = unavailableReason(animal);
-                    return (
+              {!isSale && (
+                <>
+                  <p className="font-medium text-texto mb-2">
+                    {t("trade.newAnimals.purchaseTitle")}{" "}
+                    <span className="text-verde">{t("trade.inThisPurchase", { count: animalCount })}</span>
+                  </p>
+                  <div role="radiogroup" aria-label={t("trade.newAnimals.purchaseTitle")} className="flex flex-wrap gap-2 mb-4">
+                    {(["new", "existing"] as PurchaseMode[]).map((mode) => (
                       <button
-                        key={animal.id}
+                        key={mode}
                         type="button"
-                        role="checkbox"
-                        aria-checked={isSelected}
-                        aria-disabled={!!blocked && !isSelected}
-                        onClick={() => (blocked && !isSelected ? undefined : toggle(animal.id))}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left ${
-                          isSelected
-                            ? "bg-verde-claro border-verde cursor-pointer"
-                            : blocked
-                              ? "bg-bege border-borda opacity-60 cursor-not-allowed"
-                              : "bg-card border-borda-chip cursor-pointer"
+                        role="radio"
+                        aria-checked={purchaseMode === mode}
+                        onClick={() => setPurchaseMode(mode)}
+                        className={`px-3 py-2 rounded-lg border text-sm cursor-pointer ${
+                          purchaseMode === mode
+                            ? "bg-verde-claro border-verde text-verde-escuro font-medium"
+                            : "bg-card border-borda-chip text-texto-suave"
                         }`}
                       >
-                        <span
-                          className={`flex items-center justify-center w-5 h-5 rounded border shrink-0 ${
-                            isSelected ? "bg-verde border-verde text-white" : "border-borda-chip"
+                        {mode === "new"
+                          ? t("trade.newAnimals.modeNew", { count: newRows.length })
+                          : t("trade.newAnimals.modeExisting", { count: selected.size })}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!isSale && purchaseMode === "new" ? (
+                <NewAnimalsEditor
+                  rows={newRows}
+                  onChange={(next) => {
+                    setNewRows(next);
+                    setRowErrors({});
+                  }}
+                  newKey={newKey}
+                  defaultCastrated={defaultCastrated}
+                  problems={{ ...rowErrors, ...newProblems }}
+                  showProblems={showNewProblems || Object.keys(rowErrors).some(isNewKey)}
+                />
+              ) : (
+                <>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <p className="font-medium text-texto">
+                    {t(isSale ? "trade.whichAnimalsSale" : "trade.whichAnimalsPurchase")}{" "}
+                    <span className="text-verde">{t("trade.selectedCount", { count: selected.size })}</span>
+                  </p>
+                  <button type="button" onClick={toggleAllVisible} className="text-sm text-verde font-medium cursor-pointer">
+                    {allVisibleSelected ? t("trade.clearSelection") : t("trade.selectAll")}
+                  </button>
+                </div>
+                {!isSale && <p className="text-sm text-texto-suave mb-3">{t("trade.purchaseExistingHint")}</p>}
+
+                <div className="relative mb-3">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-leve" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={t("trade.searchTag")}
+                    aria-label={t("trade.searchTag")}
+                    className="w-full bg-bege border border-borda rounded-lg pl-9 pr-3 py-2 text-sm text-texto"
+                  />
+                </div>
+                <div className="flex gap-2 mb-4 flex-wrap">
+                  <select
+                    aria-label={t("trade.filterStatus")}
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                    className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
+                  >
+                    <option value="ACTIVE">{t("application.filterActive")}</option>
+                    <option value="ALL">{t("application.filterAllStatus")}</option>
+                    <option value="SOLD">{t("application.filterSold")}</option>
+                  </select>
+                  <select
+                    aria-label={t("trade.filterCategory")}
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value as Category | "ALL")}
+                    className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
+                  >
+                    <option value="ALL">{t("application.allCategories")}</option>
+                    {CATEGORY_FILTER_ORDER.map((value) => (
+                      <option key={value} value={value}>
+                        {filterLabelOf(value)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {visibleAnimals.length === 0 ? (
+                  <p className="text-sm text-texto-suave">{t("application.noAnimals")}</p>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
+                    {visibleAnimals.map((animal) => {
+                      const isSelected = selected.has(animal.id);
+                      const blocked = unavailableReason(animal);
+                      return (
+                        <button
+                          key={animal.id}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          aria-disabled={!!blocked && !isSelected}
+                          onClick={() => (blocked && !isSelected ? undefined : toggle(animal.id))}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left ${
+                            isSelected
+                              ? "bg-verde-claro border-verde cursor-pointer"
+                              : blocked
+                                ? "bg-bege border-borda opacity-60 cursor-not-allowed"
+                                : "bg-card border-borda-chip cursor-pointer"
                           }`}
                         >
-                          {isSelected && <Check size={14} />}
-                        </span>
-                        <span className="font-medium text-texto w-20 shrink-0">{animal.tag}</span>
-                        <span className="text-sm text-texto-suave truncate">
-                          {[labelOf(animal.category, animal.sex), sexLabel[animal.sex], animal.breed]
-                            .filter(Boolean)
-                            .join(" · ")}
-                          {animal.currentWeightKg != null &&
-                            ` · ${t("units.kgValue", { value: formatNumber(animal.currentWeightKg) })}`}
-                        </span>
-                        {(blocked || animal.status !== "ACTIVE") && (
-                          <span className="ml-auto text-xs text-texto-leve shrink-0">
-                            {blocked ?? statusLabel[animal.status]}
+                          <span
+                            className={`flex items-center justify-center w-5 h-5 rounded border shrink-0 ${
+                              isSelected ? "bg-verde border-verde text-white" : "border-borda-chip"
+                            }`}
+                          >
+                            {isSelected && <Check size={14} />}
                           </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                          <span className="font-medium text-texto w-20 shrink-0">{animal.tag}</span>
+                          <span className="text-sm text-texto-suave truncate">
+                            {[labelOf(animal.category, animal.sex), sexLabel[animal.sex], animal.breed]
+                              .filter(Boolean)
+                              .join(" · ")}
+                            {animal.currentWeightKg != null &&
+                              ` · ${t("units.kgValue", { value: formatNumber(animal.currentWeightKg) })}`}
+                          </span>
+                          {(blocked || animal.status !== "ACTIVE") && (
+                            <span className="ml-auto text-xs text-texto-leve shrink-0">
+                              {blocked ?? statusLabel[animal.status]}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                </>
               )}
               {selectionError && (
                 <p role="alert" className="text-sm text-alerta mt-3">
@@ -463,6 +582,9 @@ export function TradeCreate() {
               <p>{t("trade.confirmPending", { count: rowsCheck.awaitingCarcass })}</p>
             )}
             {isSale && <p>{t("trade.confirmSaleEffects")}</p>}
+            {!isSale && rows.some((row) => isNewKey(row.key)) && (
+              <p>{t("trade.confirmNewAnimals", { count: rows.filter((row) => isNewKey(row.key)).length })}</p>
+            )}
           </ConfirmDialog>
         )}
       </main>

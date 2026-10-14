@@ -57,6 +57,14 @@
   compra (uma por animal, datas), formas de preço inválidas, envio repetido e simultâneo (uma
   negociação), duas vendas do mesmo animal ao mesmo tempo, corrigir / tirar animal / desfazer,
   excluir animal com negociação recusado (também no banco), listar, último preço e resultado.
+- Compra em lote com animais novos (G5c): 10 linhas com um brinco já existente → nada gravado e
+  erro na linha 5; corrigida, cria os 10 animais + a compra + as pesagens; brinco repetido na
+  lista, categoria que não combina e castrado em fêmea apontam a linha certa; padrão "castrado"
+  da fazenda; mistura de novos e já cadastrados; animal novo numa venda recusado; mesmo brinco
+  em outra fazenda permitido; desfazer não apaga os animais; envio repetido não duplica.
+  Navegador (2026-10-14): 5 animais novos com "Repetir a anterior" e "linhas iguais à anterior",
+  erros por linha antes de enviar, compra gravada (R$ 28.200,00), desfazer mantém os animais,
+  celular 360 px e idioma de teste limpos.
 - Acesso cruzado: todas as rotas de `/trades` em `tenancy.test.ts` (ver, corrigir, tirar,
   desfazer, incluir animal de outra fazenda).
 - `src/services/trade.service.test.ts`: as 4 formas, centavos (333,33 × 10,01), arredondamento,

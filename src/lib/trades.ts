@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { calendarDateOf, toDbDate } from "./dates.js";
 import { AppError, ErrorCode, type FieldError } from "./errors.js";
+import { resolveAnimalProfile } from "../services/animal.service.js";
+import type { NewAnimalInput } from "../schemas/animal.schema.js";
 import type { FarmDb } from "./tenant.js";
 import {
   checkAnimalForTrade,
@@ -179,6 +181,93 @@ export async function findAnimalProblems(
     if (problem) problems.set(animal.id, problem);
   }
   return problems;
+}
+
+// ── Animais novos na compra em lote (D-36, RN-NEG-015) ──
+//
+// Confere cada linha nova com as MESMAS regras do cadastro (sexo × categoria,
+// castrado só em macho, padrão da fazenda) e o brinco: não pode existir na
+// fazenda nem repetir na própria lista. Devolve os dados prontos para criar
+// (com o id já escolhido, para ligar o item) e os erros por linha.
+
+export type NewAnimalRow = {
+  id: string;
+  tag: string;
+  sex: "MALE" | "FEMALE";
+  category: NewAnimalInput["category"];
+  castrated: boolean | null;
+  breed: string | null;
+};
+
+export async function planNewAnimals(
+  db: TradeTx,
+  type: TradeType,
+  rows: { index: number; animal: NewAnimalInput }[],
+  defaultCastrated: boolean,
+): Promise<{ animals: Map<number, NewAnimalRow>; errors: FieldError[] }> {
+  const errors: FieldError[] = [];
+  const animals = new Map<number, NewAnimalRow>();
+  if (rows.length === 0) return { animals, errors };
+
+  // Animal novo só existe na compra
+  if (type === "SALE") {
+    for (const { index } of rows) {
+      errors.push({
+        field: `items.${index}.newAnimal`,
+        code: "NOT_ALLOWED",
+        params: { reason: "NEW_ANIMAL_IN_SALE" },
+        error: "Animal novo só pode entrar numa compra.",
+      });
+    }
+    return { animals, errors };
+  }
+
+  const existing = await db.animal.findMany({
+    where: { tag: { in: rows.map((row) => row.animal.tag) } },
+    select: { tag: true },
+  });
+  const takenInFarm = new Set(existing.map((animal) => animal.tag));
+  const seenInList = new Map<string, number>();
+  for (const { animal } of rows) seenInList.set(animal.tag, (seenInList.get(animal.tag) ?? 0) + 1);
+
+  for (const { index, animal } of rows) {
+    const tagField = `items.${index}.newAnimal.tag`;
+    if (takenInFarm.has(animal.tag)) {
+      errors.push({
+        field: tagField,
+        code: ErrorCode.DUPLICATE_TAG,
+        params: { tag: animal.tag, reason: "IN_FARM" },
+        error: "Já existe um animal com esse brinco.",
+      });
+      continue;
+    }
+    if ((seenInList.get(animal.tag) ?? 0) > 1) {
+      errors.push({
+        field: tagField,
+        code: ErrorCode.DUPLICATE_TAG,
+        params: { tag: animal.tag, reason: "IN_LIST" },
+        error: "Esse brinco aparece mais de uma vez nesta compra.",
+      });
+      continue;
+    }
+    try {
+      const profile = resolveAnimalProfile(null, animal, defaultCastrated);
+      animals.set(index, {
+        id: randomUUID(),
+        tag: animal.tag,
+        breed: animal.breed ?? null,
+        ...profile,
+      });
+    } catch (error) {
+      // Regra de categoria/castrado: o erro vem com o campo ("category"...)
+      const fieldErrors = error instanceof AppError ? (error.errors ?? []) : [];
+      if (fieldErrors.length === 0) throw error;
+      for (const fieldError of fieldErrors) {
+        errors.push({ ...fieldError, field: `items.${index}.newAnimal.${fieldError.field}` });
+      }
+    }
+  }
+  return { animals, errors };
 }
 
 // Erro por linha (RN-NEG-009: nada é gravado se algum animal não puder entrar)

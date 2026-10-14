@@ -11,6 +11,7 @@ import {
   sellAnimal,
 } from "../helpers/factories.js";
 import { prisma } from "../../src/lib/prisma.js";
+import { createLoggedClient } from "../helpers/client.js";
 
 // G5 — entrega 2: NEGOCIAÇÕES (compra e venda no modelo definitivo).
 // Números entre parênteses = critérios da "Espec — Compra e venda".
@@ -294,6 +295,132 @@ describe("compra", () => {
       items: [{ animalId: born.id, liveWeightKg: 200, unitPrice: 10 }],
     });
     expect(beforeBirth.json().errors[0].params).toMatchObject({ reason: "BEFORE_BIRTH", date: "2026-04-10" });
+  });
+});
+
+describe("compra em lote que cadastra os animais (D-36, RN-NEG-015)", () => {
+  const newAnimal = (tag: string, extra: Record<string, unknown> = {}) => ({
+    newAnimal: { tag, sex: "FEMALE", category: "COW", breed: "Nelore", ...extra },
+    liveWeightKg: 400,
+    unitPrice: 17,
+  });
+  const purchase = (items: Record<string, unknown>[], extra: Record<string, unknown> = {}) =>
+    post({ type: "PURCHASE", date: "2026-10-01", priceUnit: "PER_KG", items, ...extra });
+
+  it("10 linhas, uma com brinco que já existe: nada gravado; corrigida, cria os 10 + a compra (11)", async () => {
+    await createAnimal(t.client, { tag: "NOVA-05" });
+    const rows = Array.from({ length: 10 }, (_, i) => newAnimal(`NOVA-${String(i + 1).padStart(2, "0")}`));
+
+    const refused = await purchase(rows);
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().code).toBe("TRADE_ITEM_ERRORS");
+    expect(refused.json().errors).toEqual([
+      expect.objectContaining({
+        field: "items.4.newAnimal.tag",
+        code: "DUPLICATE_TAG",
+        params: { tag: "NOVA-05", reason: "IN_FARM" },
+      }),
+    ]);
+    expect(await prisma.animal.count()).toBe(1);
+    expect(await prisma.trade.count()).toBe(0);
+
+    rows[4] = newAnimal("NOVA-55");
+    const created = await purchase(rows);
+    expect(created.statusCode).toBe(201);
+    const trade = created.json();
+    expect(trade.animalCount).toBe(10);
+    expect(trade.total).toBe("68000.00");
+    const animals = await prisma.animal.findMany({ where: { tag: { startsWith: "NOVA-" } } });
+    expect(animals).toHaveLength(11);
+    const bought = animals.find((a) => a.tag === "NOVA-55")!;
+    expect(bought).toMatchObject({ sex: "FEMALE", category: "COW", breed: "Nelore", status: "ACTIVE", castrated: null });
+    // Peso vivo vira a pesagem da compra (D-08)
+    const weighings = await prisma.weighing.findMany({ where: { animalId: bought.id } });
+    expect(weighings.map((w) => [w.weightKg.toFixed(2), w.source])).toEqual([["400.00", "PURCHASE"]]);
+  });
+
+  it("brinco repetido na própria lista, categoria que não combina, castrado em fêmea: erro na linha certa", async () => {
+    const response = await purchase([
+      newAnimal("DUP-1"),
+      newAnimal("DUP-1"),
+      newAnimal("ERR-1", { sex: "MALE", category: "COW" }),
+      newAnimal("ERR-2", { castrated: true }),
+    ]);
+    expect(response.statusCode).toBe(422);
+    expect(response.json().errors).toEqual([
+      expect.objectContaining({ field: "items.0.newAnimal.tag", code: "DUPLICATE_TAG", params: { tag: "DUP-1", reason: "IN_LIST" } }),
+      expect.objectContaining({ field: "items.1.newAnimal.tag", code: "DUPLICATE_TAG" }),
+      expect.objectContaining({ field: "items.2.newAnimal.category", code: "CATEGORY_INCOMPATIBLE_WITH_SEX" }),
+      expect.objectContaining({ field: "items.3.newAnimal.castrated", code: "CASTRATED_ONLY_FOR_MALES" }),
+    ]);
+    expect(await prisma.animal.count()).toBe(0);
+  });
+
+  it("macho novo sem 'castrado' recebe o padrão da fazenda; mistura animais novos e já cadastrados", async () => {
+    await t.client.inject({ method: "PATCH", url: "/farm", payload: { defaultCastrated: true } });
+    const existing = await createAnimal(t.client);
+    const response = await purchase([
+      { animalId: existing.id, liveWeightKg: 300, unitPrice: 10 },
+      newAnimal("BOI-1", { sex: "MALE", category: "ADULT_MALE", breed: undefined }),
+    ]);
+    expect(response.statusCode).toBe(201);
+    expect(response.json().animalCount).toBe(2);
+    const boi = await prisma.animal.findFirstOrThrow({ where: { tag: "BOI-1" } });
+    expect(boi).toMatchObject({ castrated: true, breed: null });
+  });
+
+  it("animal novo não entra numa venda; sem animal nenhum na linha → REQUIRED", async () => {
+    const inSale = await post({
+      type: "SALE",
+      date: "2026-10-01",
+      priceUnit: "PER_KG",
+      items: [newAnimal("X-1")],
+    });
+    expect(inSale.statusCode).toBe(422);
+    expect(inSale.json().errors[0]).toMatchObject({
+      field: "items.0.newAnimal",
+      code: "NOT_ALLOWED",
+      params: { reason: "NEW_ANIMAL_IN_SALE" },
+    });
+    const empty = await purchase([{ liveWeightKg: 300, unitPrice: 10 }]);
+    expect(empty.statusCode).toBe(400);
+    expect(empty.json().errors[0]).toMatchObject({ field: "items.0.animalId", code: "REQUIRED" });
+    expect(await prisma.animal.count()).toBe(0);
+  });
+
+  it("o mesmo brinco em OUTRA fazenda não impede; o animal novo fica nesta fazenda", async () => {
+    const other = await createLoggedClient(t.app, "Fazenda Vizinha");
+    await createAnimal(other, { tag: "VIZ-1" });
+    const response = await purchase([newAnimal("VIZ-1")]);
+    expect(response.statusCode).toBe(201);
+    const mine = await prisma.animal.findMany({ where: { tag: "VIZ-1" }, select: { farmId: true } });
+    expect(new Set(mine.map((a) => a.farmId)).size).toBe(2);
+    const list = await other.inject({ url: "/animals" });
+    expect(list.json().filter((a: { tag: string }) => a.tag === "VIZ-1")).toHaveLength(1);
+  });
+
+  it("desfazer a compra NÃO apaga os animais criados por ela (D-10)", async () => {
+    const created = await purchase([newAnimal("FICA-1"), newAnimal("FICA-2")]);
+    const undo = await t.client.inject({ method: "DELETE", url: `/trades/${created.json().id}` });
+    expect(undo.statusCode).toBe(204);
+    expect(await prisma.animal.count({ where: { tag: { startsWith: "FICA-" } } })).toBe(2);
+    expect(await prisma.weighing.count()).toBe(0); // a pesagem da compra sai junto
+  });
+
+  it("envio repetido da mesma compra em lote não cria os animais duas vezes (14)", async () => {
+    const payload = {
+      type: "PURCHASE",
+      date: "2026-10-01",
+      priceUnit: "PER_KG",
+      idempotencyKey: randomUUID(),
+      items: [newAnimal("REP-1"), newAnimal("REP-2")],
+    };
+    const responses = await Promise.all([post(payload), post(payload)]);
+    expect(responses.map((r) => r.statusCode).sort()).toEqual([200, 201]);
+    const again = await post(payload);
+    expect(again.statusCode).toBe(200);
+    expect(await prisma.animal.count({ where: { tag: { startsWith: "REP-" } } })).toBe(2);
+    expect(await prisma.trade.count()).toBe(1);
   });
 });
 

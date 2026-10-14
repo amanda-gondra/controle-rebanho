@@ -1,4 +1,5 @@
 import { request } from "./api.js";
+import type { Category, Sex } from "../types/animal.js";
 import type {
   AnimalResult,
   ArrobaBasis,
@@ -12,8 +13,17 @@ import type {
 // Negociações — compra e venda (G5). O servidor calcula valores e total;
 // a tela só manda pesos e preços.
 
-export type NewTradeItem = {
-  animalId: string;
+// Animal novo cadastrado junto com a compra (D-36)
+export type NewAnimalInput = {
+  tag: string;
+  sex: Sex;
+  category: Category;
+  castrated?: boolean;
+  breed?: string;
+};
+
+// Cada linha: um animal já cadastrado (animalId) OU um animal novo (só na compra)
+export type NewTradeItem = ({ animalId: string; newAnimal?: never } | { newAnimal: NewAnimalInput; animalId?: never }) & {
   liveWeightKg: string | null;
   carcassWeightKg: string | null;
   unitPrice: string;

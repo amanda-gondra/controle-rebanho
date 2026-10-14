@@ -10,6 +10,7 @@ import {
   assertItemsFitPricing,
   createTradeWeighings,
   findAnimalProblems,
+  planNewAnimals,
   itemValue,
   problemToFieldError,
   resolvePricing,
@@ -77,24 +78,45 @@ export async function tradeRoutes(app: FastifyInstance) {
         arrobaBasis: body.arrobaBasis !== undefined,
         arrobaFactorKg: body.arrobaFactorKg !== undefined,
       });
-      const items = body.items.map((item) => ({
-        animalId: item.animalId,
+      assertItemsFitPricing(
+        pricing,
+        body.items.map((item) => ({
+          liveWeightKg: item.liveWeightKg ?? null,
+          carcassWeightKg: item.carcassWeightKg ?? null,
+          unitPrice: item.unitPrice,
+        })),
+      );
+
+      // Animais NOVOS (compra em lote — D-36): mesmas regras do cadastro, e
+      // o brinco não pode existir nem repetir na lista. Recebem o id agora.
+      const newRows = body.items.flatMap((item, index) => (item.newAnimal ? [{ index, animal: item.newAnimal }] : []));
+      const plannedNew = await planNewAnimals(
+        request.db,
+        body.type,
+        newRows,
+        farm.settings.defaultCastrated,
+      );
+      const errors: FieldError[] = [...plannedNew.errors];
+
+      const items = body.items.map((item, index) => ({
+        animalId: item.animalId ?? plannedNew.animals.get(index)?.id ?? "",
+        isNew: item.newAnimal !== undefined,
         liveWeightKg: item.liveWeightKg ?? null,
         carcassWeightKg: item.carcassWeightKg ?? null,
         unitPrice: item.unitPrice,
         priceAdjusted: item.priceAdjusted ?? false,
       }));
-      assertItemsFitPricing(pricing, items);
 
-      // Cada animal: existe nesta fazenda e pode entrar? Erros linha por linha.
+      // Animais JÁ cadastrados: existem nesta fazenda e podem entrar? Erros linha por linha.
+      const existingIds = items.filter((item) => !item.isNew).map((item) => item.animalId);
       const animals = await request.db.animal.findMany({
-        where: { id: { in: items.map((item) => item.animalId) } },
+        where: { id: { in: existingIds } },
         select: { id: true, tag: true, status: true, exitDate: true, birthDate: true, birthPrecision: true },
       });
       const animalById = new Map(animals.map((animal) => [animal.id, animal]));
       const problems = await findAnimalProblems(request.db, body.type, body.date, animals);
-      const errors: FieldError[] = [];
       items.forEach((item, index) => {
+        if (item.isNew) return;
         const animal = animalById.get(item.animalId);
         if (!animal) {
           errors.push({
@@ -120,6 +142,12 @@ export async function tradeRoutes(app: FastifyInstance) {
 
       try {
         const { trade, replaced } = await request.db.$transaction(async (tx) => {
+          // Primeiro os animais novos, depois a compra que aponta para eles
+          if (plannedNew.animals.size > 0) {
+            await tx.animal.createMany({
+              data: [...plannedNew.animals.values()].map((animal) => ({ ...animal, farmId: farm.id })),
+            });
+          }
           const plan = await createTradeWeighings(tx, farm.id, body.type, body.date, items);
 
           // Venda = saída: vendido, com a data da venda (RN-NEG-006)
@@ -171,7 +199,7 @@ export async function tradeRoutes(app: FastifyInstance) {
         // Duas gravações ao mesmo tempo com o mesmo identificador: a segunda
         // esbarra numa unicidade (da negociação ou das pesagens do dia) —
         // devolve a primeira
-        const isDuplicate = ["Trade", "TradeItem", "Weighing"].some((model) => uniqueViolation(error, model));
+        const isDuplicate = ["Trade", "TradeItem", "Weighing", "Animal"].some((model) => uniqueViolation(error, model));
         if (body.idempotencyKey && isDuplicate) {
           const existing = await findTradeDetail(request.db, { idempotencyKey: body.idempotencyKey });
           if (existing) return reply.status(200).send(toTradeView(existing));

@@ -35,6 +35,20 @@ export const createAnimalSchema = z
   })
   .strict();
 
+// Animal novo dentro de uma compra em lote (G5 — D-36): só o que a linha da
+// compra pede. As mesmas regras do cadastro (brinco, sexo × categoria, castrado).
+export const newAnimalSchema = z
+  .object({
+    tag: requiredText(MAX_TAG_LENGTH, "O brinco é obrigatório."),
+    sex,
+    category,
+    castrated: castrated.optional(),
+    breed: breed.optional(),
+  })
+  .strict();
+
+export type NewAnimalInput = z.infer<typeof newAnimalSchema>;
+
 // The TypeScript type comes from the schema itself: a single source of truth.
 export type CreateAnimalInput = z.infer<typeof createAnimalSchema>;
 

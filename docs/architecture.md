@@ -222,6 +222,14 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
 - **Resultado do animal** (`GET /animals/:id/result`, `finance.service.ts`): venda − compra, sem
   custos; `kind` diz o caso (diferença, só compra, só venda, pendente, moedas diferentes).
 - As rotas antigas `/animals/:id/purchase`, `/sale` e `/estimated-price` saíram (D-09).
+- **Compra em lote que cadastra os animais (G5c — D-36):** na compra, cada item traz `animalId`
+  (animal já cadastrado) **ou** `newAnimal` (`tag`, `sex`, `category`, `castrated?`, `breed?`).
+  `planNewAnimals` (`src/lib/trades.ts`) aplica as regras do cadastro (`resolveAnimalProfile`:
+  categoria × sexo, castrado só em macho, padrão da fazenda) e confere o brinco na fazenda e na
+  própria lista (`DUPLICATE_TAG` com `params { tag, reason: IN_FARM | IN_LIST }`, no campo
+  `items.N.newAnimal.tag`). Os animais são criados (`createMany`, com o id já escolhido) dentro da
+  mesma transação da compra e das pesagens. Animal novo numa venda → `NOT_ALLOWED`
+  (`reason: NEW_ANIMAL_IN_SALE`). Desfazer a compra não apaga os animais (D-10).
 
 ## Textos da tela (G3 — D-01)
 
