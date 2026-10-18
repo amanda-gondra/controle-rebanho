@@ -1,5 +1,6 @@
 import { List, PlusCircle, Syringe, LogOut, Settings, Handshake } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { sectionOf, type Section } from "../navigation/origin.js";
 import { useAuth } from "./AuthProvider.js";
 import { t, type MessageKey } from "../i18n/index.js";
 
@@ -12,15 +13,16 @@ function initialsOf(name: string) {
 }
 
 const NAV_ITEMS = [
-  { to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List },
-  { to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle },
-  { to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe },
-  { to: "/negociacoes", end: false, label: "nav.trades", short: "nav.tradesShort", Icon: Handshake },
-] satisfies { to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown }[];
+  { section: "herd", to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List },
+  { section: "addAnimal", to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle },
+  { section: "sanitary", to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe },
+  { section: "trades", to: "/negociacoes", end: false, label: "nav.trades", short: "nav.tradesShort", Icon: Handshake },
+] satisfies { section: Section; to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown }[];
 
 // Configurações (G2): fica separada, logo acima do usuário (desktop); no
 // celular entra como mais um botão da barra inferior.
 const SETTINGS_ITEM = {
+  section: "settings" as Section,
   to: "/configuracoes",
   end: false,
   label: "nav.settings",
@@ -31,6 +33,8 @@ const SETTINGS_ITEM = {
 export function Sidebar() {
   const { account, logout } = useAuth();
   const navigate = useNavigate();
+  // Item marcado pela SEÇÃO (ficha do animal → Rebanho; aplicação e produtos → Manejo)
+  const active = sectionOf(useLocation().pathname);
 
   async function handleLogout() {
     await logout();
@@ -58,14 +62,15 @@ export function Sidebar() {
 
           {/* Navegação */}
           <nav className="flex flex-col gap-1">
-            {NAV_ITEMS.map(({ to, end, label, Icon }) => (
+            {NAV_ITEMS.map(({ section, to, end, label, Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                className={({ isActive }) =>
+                aria-current={active === section ? "page" : undefined}
+                className={() =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-colors ${
-                    isActive
+                    active === section
                       ? "bg-sidebar-ativo text-white font-medium"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`
@@ -82,9 +87,10 @@ export function Sidebar() {
 
           <NavLink
             to={SETTINGS_ITEM.to}
-            className={({ isActive }) =>
+            aria-current={active === SETTINGS_ITEM.section ? "page" : undefined}
+            className={() =>
               `flex items-center gap-3 px-3 py-2.5 mb-2 rounded-lg text-sm cursor-pointer transition-colors ${
-                isActive
+                active === SETTINGS_ITEM.section
                   ? "bg-sidebar-ativo text-white font-medium"
                   : "text-white/70 hover:bg-white/10 hover:text-white"
               }`
@@ -142,14 +148,15 @@ export function Sidebar() {
 
       {/* BARRA INFERIOR — só no mobile (some no md pra cima) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar flex justify-around items-center h-16 z-40">
-        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ to, end, short, Icon }) => (
+        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ section, to, end, short, Icon }) => (
           <NavLink
+            aria-current={active === section ? "page" : undefined}
             key={to}
             to={to}
             end={end}
-            className={({ isActive }) =>
+            className={() =>
               `flex flex-col items-center gap-1 text-xs ${
-                isActive ? "text-white font-medium" : "text-white/60"
+                active === section ? "text-white font-medium" : "text-white/60"
               }`
             }
           >

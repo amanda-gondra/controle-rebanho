@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Scale, Trash2, Undo2 } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { Pencil, Scale, Trash2, Undo2 } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { useToast } from "../components/ToastProvider.js";
@@ -11,6 +11,10 @@ import { formatTradeMoney, formatTradeTotal, formatUnitPrice, priceUnitLabel, tr
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin, useOriginState } from "../navigation/hooks.js";
 
 // Detalhe de uma negociação (G5 — F-NEG-04/05): os animais com peso, preço e
 // valor; corrigir; informar o peso de carcaça que chegou depois; tirar um
@@ -21,7 +25,8 @@ const kg = (value: string | null) =>
 
 export function TradeDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const { goBack } = useOrigin("/negociacoes");
+  const originState = useOriginState();
   const showToast = useToast();
   const { labelOf } = useCategoryLabels();
 
@@ -52,7 +57,7 @@ export function TradeDetail() {
       const { tradeDeleted } = await removeTradeItem(trade.id, removing.id);
       showToast(t("tradeDetail.animalRemoved", { tag: removing.animal.tag }));
       setRemoving(null);
-      if (tradeDeleted) navigate("/negociacoes");
+      if (tradeDeleted) goBack();
       else load();
     } catch (err) {
       setActionError(errorMessage(err, "trade.saveFailed"));
@@ -68,7 +73,7 @@ export function TradeDetail() {
     try {
       await deleteTrade(trade.id);
       showToast(t(trade.type === "SALE" ? "tradeDetail.saleUndone" : "tradeDetail.purchaseUndone"));
-      navigate("/negociacoes");
+      goBack();
     } catch (err) {
       setActionError(errorMessage(err, "trade.saveFailed"));
       setBusy(false);
@@ -79,10 +84,10 @@ export function TradeDetail() {
     return (
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
-        <main className="flex-1 p-4 md:p-8">
+        <main className="flex-1 p-4 pb-24 md:p-8">
           <div className="bg-card border border-borda rounded-xl p-8 text-center max-w-lg">
             <p className="text-texto font-medium mb-3">{t("tradeDetail.notFound")}</p>
-            <Link to="/negociacoes" className="text-verde font-medium">
+            <Link to="/negociacoes" className={buttonClass("primary")}>
               {t("tradeDetail.backToList")}
             </Link>
           </div>
@@ -101,57 +106,49 @@ export function TradeDetail() {
       <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
         {!trade ? (
           loadError ? (
-            <p role="alert" className="text-alerta">
-              {loadError}
-            </p>
+            <>
+              <PageHeader title={t("tradeList.title")} backFallback="/negociacoes" backLabel={t("tradeDetail.backToList")} />
+              <LoadError message={loadError} onRetry={load} />
+            </>
           ) : (
-            <p className="text-texto-suave">{t("common.loading")}</p>
+            <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
           )
         ) : (
           <div className="max-w-4xl">
             {/* Cabeçalho */}
-            <div className="flex flex-wrap items-start gap-3 mb-6">
-              <button
-                type="button"
-                onClick={() => navigate("/negociacoes")}
-                title={t("tradeDetail.backToList")}
-                aria-label={t("tradeDetail.backToList")}
-                className="text-texto-suave hover:text-texto cursor-pointer mt-1.5"
-              >
-                <ArrowLeft size={22} />
-              </button>
-              <div className="flex-1 min-w-[12rem]">
-                <h1 className="text-2xl font-medium text-texto">
-                  {t("tradeDetail.title", { type: tradeTypeLabel(trade.type), date: formatDate(trade.date) })}
-                </h1>
-                <p className="text-texto-suave">
-                  {[
-                    t("common.animalsCount", { count: trade.animalCount }),
-                    unitText,
-                    trade.counterparty &&
-                      t(isSale ? "tradeDetail.buyer" : "tradeDetail.seller", { name: trade.counterparty }),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                {trade.notes && <p className="text-sm text-texto-leve mt-1 whitespace-pre-line">{trade.notes}</p>}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  to={`/negociacoes/${trade.id}/editar`}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-card"
-                >
-                  <Pencil size={16} aria-hidden="true" /> {t("tradeDetail.edit")}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setUndoing(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-card cursor-pointer"
-                >
-                  <Undo2 size={16} aria-hidden="true" /> {t(isSale ? "tradeDetail.undoSale" : "tradeDetail.undoPurchase")}
-                </button>
-              </div>
-            </div>
+            <PageHeader
+              title={t("tradeDetail.title", { type: tradeTypeLabel(trade.type), date: formatDate(trade.date) })}
+              subtitle={[
+                t("common.animalsCount", { count: trade.animalCount }),
+                unitText,
+                trade.counterparty &&
+                  t(isSale ? "tradeDetail.buyer" : "tradeDetail.seller", { name: trade.counterparty }),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              backFallback="/negociacoes"
+              backLabel={t("tradeDetail.backToList")}
+              actions={
+                <>
+                  <Link
+                    to={`/negociacoes/${trade.id}/editar`}
+                    state={originState}
+                    className={buttonClass("secondary", "text-sm px-3 py-2")}
+                  >
+                    <Pencil size={16} aria-hidden="true" /> {t("tradeDetail.edit")}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setUndoing(true)}
+                    className={buttonClass("dangerOutline", "text-sm px-3 py-2")}
+                  >
+                    <Undo2 size={16} aria-hidden="true" /> {t(isSale ? "tradeDetail.undoSale" : "tradeDetail.undoPurchase")}
+                  </button>
+                </>
+              }
+            >
+              {trade.notes && <p className="text-sm text-texto-leve mt-1 whitespace-pre-line">{trade.notes}</p>}
+            </PageHeader>
 
             {/* Total */}
             <div className="bg-card border border-borda rounded-xl p-4 md:p-6 mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -171,7 +168,8 @@ export function TradeDetail() {
                   </span>
                   <Link
                     to={`/negociacoes/${trade.id}/editar`}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-verde text-white text-sm font-medium"
+                    state={originState}
+                    className={buttonClass("primary", "text-sm px-3 py-2")}
                   >
                     <Scale size={16} aria-hidden="true" /> {t("tradeDetail.informCarcass")}
                   </Link>
@@ -186,7 +184,7 @@ export function TradeDetail() {
                 {trade.items.map((item) => (
                   <li key={item.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
                     <div className="min-w-0 flex-1">
-                      <Link to={`/animais/${item.animal.id}`} className="font-medium text-texto hover:text-verde">
+                      <Link to={`/animais/${item.animal.id}`} state={originState} className="font-medium text-texto hover:text-verde">
                         {item.animal.tag}
                       </Link>
                       <span className="text-sm text-texto-suave">

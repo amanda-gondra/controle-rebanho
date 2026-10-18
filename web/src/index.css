@@ -17,3 +17,20 @@
   --color-sidebar: #152B1C; /* verde pinho escuro do menu lateral */
   --color-sidebar-ativo: #37592E; /* item de menu ativo (verde médio discreto) */
 }
+
+/* Foco visível pelo teclado em todo o sistema (auditoria de interface,
+   2026-10-18): contorno verde só quando a navegação é por teclado */
+:focus-visible {
+  outline: 2px solid var(--color-verde);
+  outline-offset: 2px;
+}
+
+/* Quem pede menos movimento no sistema não vê animações */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

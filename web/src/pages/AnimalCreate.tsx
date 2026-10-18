@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useState, useId } from "react";
 import { Sidebar } from "../components/Sidebar.js";
 import { createAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
@@ -12,13 +10,18 @@ import { t } from "../i18n/index.js";
 import { errorMessage, fieldErrorsOf } from "../i18n/errors.js";
 import { monthNames } from "../types/format.js";
 import { sexLabel } from "../types/labels.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin } from "../navigation/hooks.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
 const sexOptions: Sex[] = ["MALE", "FEMALE"];
 
 export function AnimalCreate() {
-  const navigate = useNavigate();
+  const formId = useId(); // liga cada rótulo ao seu campo (leitor de tela, clique no rótulo)
+  const { goBack } = useOrigin("/");
   const showToast = useToast();
   const { account } = useAuth();
 
@@ -36,6 +39,11 @@ export function AnimalCreate() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const defaultCastrated = account?.farm.settings.defaultCastrated ?? false;
+  const dirty =
+    tag !== "" || sex !== "" || category !== "" || castrated !== defaultCastrated || breed !== "" ||
+    birthKnowledge !== "" || birthDate !== "" || birthMonth !== "" || birthYear !== "" || notes !== "";
+  const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
 
   // Trocar o sexo apaga a categoria escolhida se ela deixar de combinar
   // (ex.: "garrote" e depois "fêmea")
@@ -81,7 +89,8 @@ export function AnimalCreate() {
         notes: notes.trim() || undefined,
       });
       showToast(t("animal.form.created"));
-      navigate("/");
+      allowLeave();
+      goBack();
     } catch (err) {
       const fields = fieldErrorsOf(err);
       if ((err as { code?: string })?.code === "DUPLICATE_TAG") {
@@ -98,29 +107,21 @@ export function AnimalCreate() {
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-            <main className="flex-1 p-4 pb-24 md:p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate("/")}
-            title={t("animal.form.backToHerd")}
-            aria-label={t("animal.form.backToHerd")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-medium text-texto">{t("animal.form.createTitle")}</h1>
-            <p className="text-texto-suave">{t("animal.form.createSubtitle")}</p>
-          </div>
-        </div>
+      <main className="flex-1 p-4 pb-24 md:p-8">
+        <PageHeader
+          title={t("animal.form.createTitle")}
+          subtitle={t("animal.form.createSubtitle")}
+          backFallback="/"
+          backLabel={t("animal.form.backToHerd")}
+        />
 
         <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
           {/* Brinco */}
           <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
+            <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">
               {t("animal.form.tag")} <span className="text-alerta">*</span>
             </label>
-            <input
+            <input id={`${formId}-1`}
               value={tag}
               onChange={(e) => setTag(e.target.value)}
               placeholder={t("animal.form.tagPlaceholder")}
@@ -173,11 +174,11 @@ export function AnimalCreate() {
 
           {/* Raça */}
           <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
+            <label htmlFor={`${formId}-2`} className="block font-medium text-texto mb-1">
               {t("animal.form.breed")}{" "}
               <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
-            <input
+            <input id={`${formId}-2`}
               value={breed}
               onChange={(e) => setBreed(e.target.value)}
               placeholder={t("animal.form.breedPlaceholder")}
@@ -257,11 +258,11 @@ export function AnimalCreate() {
 
           {/* Observações */}
           <div className="mb-6">
-            <label className="block font-medium text-texto mb-1">
+            <label htmlFor={`${formId}-3`} className="block font-medium text-texto mb-1">
               {t("animal.form.notes")}{" "}
               <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
-            <textarea
+            <textarea id={`${formId}-3`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("animal.form.notesPlaceholder")}
@@ -270,27 +271,19 @@ export function AnimalCreate() {
             />
           </div>
 
-          {errors.geral && <p className="text-sm text-alerta mb-4">{errors.geral}</p>}
+          {errors.geral && <p role="alert" className="text-sm text-alerta mb-4">{errors.geral}</p>}
 
           {/* Botões */}
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-            >
+            <button type="button" onClick={goBack} className={buttonClass("secondary")}>
               {t("common.cancel")}
             </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={saving}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
-            >
+            <button type="button" onClick={handleSubmit} disabled={saving} className={buttonClass("primary")}>
               {saving ? t("common.saving") : t("animal.form.saveNew")}
             </button>
           </div>
         </div>
+        {unsavedDialog}
       </main>
     </div>
   );

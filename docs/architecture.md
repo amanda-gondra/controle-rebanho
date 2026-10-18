@@ -231,6 +231,55 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
   mesma transação da compra e das pesagens. Animal novo numa venda → `NOT_ALLOWED`
   (`reason: NEW_ANIMAL_IN_SALE`). Desfazer a compra não apaga os animais (D-10).
 
+## Navegação e padrões de tela (auditoria de interface — 2026-10-18)
+
+O roteador é o de dados do React Router (`createBrowserRouter` em `web/src/App.tsx`), necessário
+para o aviso de alterações não salvas (`useBlocker`). Endereço desconhecido mostra `NotFound`.
+
+**Voltar com contexto.** Quem abre uma tela por dentro do sistema deixa a marca de onde veio
+(`state.from` = caminho + filtros). `useOpen()` faz isso em botões; `useOriginState()` em `<Link>`.
+A tela aberta usa `useOrigin(destinoSeguro)`:
+
+| Ação | Com origem (aberta pelo sistema) | Sem origem (link direto, aba nova, recarregada) |
+|---|---|---|
+| `goBack()` — voltar, cancelar, depois de editar/excluir | volta uma página no histórico (a tela de origem, com os filtros dela) | vai para o destino seguro, substituindo a entrada |
+| `replaceWith(destino)` — depois de criar algo que abre outra tela | troca o formulário pelo destino mantendo a origem | idem, sem origem |
+
+A origem só é aceita se for caminho interno (`safeInternalPath`: começa com `/`, sem `//`, sem `\`,
+nunca `/login` ou `/register`, até 2.000 caracteres). Nada de `history.back()` cego: sem origem
+conhecida, o destino é sempre uma tela do sistema.
+
+Destinos seguros: ficha do animal → rebanho; edição do animal → ficha; cadastro → rebanho;
+aplicação (nova/detalhe) e produtos → manejo; nova negociação → ficha do animal escolhido ou
+negociações; detalhe da negociação → negociações; edição da negociação → detalhe.
+
+**Voltar, cancelar e fechar.** "Voltar" (seta no cabeçalho) sai da tela; "Cancelar" sai do
+formulário sem gravar; "Fechar" (X) fecha uma janela. Os três respeitam o aviso abaixo.
+
+**Alterações não salvas.** `useUnsavedChanges(dirty)`: com algo digitado, sair por dentro do sistema
+pergunta "Descartar as alterações?" (Continuar editando / Descartar); fechar ou recarregar a aba
+mostra o aviso do navegador. Depois de salvar, a tela chama `allowLeave()` antes de navegar.
+Usado em: cadastro e edição do animal, nova aplicação, produtos, nova negociação, edição da
+negociação e Configurações (cada cartão avisa a página).
+
+**Janelas.** `ModalFrame`: `role="dialog"`, título ligado (`aria-labelledby`), foco vai para o
+primeiro campo e volta para quem abriu, Esc e clique fora fecham — exceto com algo digitado
+(`dirty`) ou gravando (`busy`), quando só "Cancelar" ou X fecham.
+
+**Listas.** Busca, filtros, ordem e página no endereço (`listParams.ts`, com valores validados e
+`replace` ao digitar): rebanho (`q`, `status`, `category`, `sort`, `page`), manejo (`type`),
+negociações (`type`, `pending`, `page`). Página fora do intervalo vai para a última. Paginação com
+janela de páginas (`pageWindow`). Linhas abrem por link de verdade (teclado, nova aba). No celular,
+o rebanho vira cartões.
+
+**Estados.** Carregando (`aria-busy`), vazio com orientação e ação, "nenhum resultado" com
+"Limpar filtros", falha com `LoadError` ("Tentar de novo") — por tela e por seção. Sucesso por aviso
+(`ToastProvider`, `aria-live`).
+
+**Visual.** Cabeçalho `PageHeader` (h1 `text-2xl font-semibold`), botões `buttonClass`
+(`primary`, `secondary`, `danger`, `dangerOutline`), foco visível verde (`:focus-visible` em
+`index.css`), animações reduzidas com `prefers-reduced-motion`.
+
 ## Textos da tela (G3 — D-01)
 
 - Todo texto da interface fica em `web/src/i18n/pt-BR.ts` (único idioma publicado na 1.0),

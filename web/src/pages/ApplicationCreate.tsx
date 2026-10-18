@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Search, Check } from "lucide-react";
+import { useEffect, useState, useId } from "react";
+import { Search, Check } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { listAnimals } from "../services/animals.js";
 import { listProducts, createApplication } from "../services/sanitary.js";
@@ -17,12 +16,19 @@ import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 import { t } from "../i18n/index.js";
 import { singleErrorMessage } from "../i18n/errors.js";
 import { useToast } from "../components/ToastProvider.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOpen, useOrigin } from "../navigation/hooks.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 type StatusFilter = Status | "ALL";
 type CategoryFilter = Category | "ALL";
 
 export function ApplicationCreate() {
-  const navigate = useNavigate();
+  const formId = useId(); // liga cada rótulo ao seu campo (leitor de tela, clique no rótulo)
+  const open = useOpen();
+  const { goBack } = useOrigin("/manejo");
   const showToast = useToast();
   const { labelOf, filterLabelOf } = useCategoryLabels();
 
@@ -46,19 +52,32 @@ export function ApplicationCreate() {
 
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Falhas de carga (com "Tentar de novo"); o contador refaz a busca
+  const [productsError, setProductsError] = useState(false);
+  const [animalsError, setAnimalsError] = useState(false);
+  const [productsTry, setProductsTry] = useState(0);
+  const [animalsTry, setAnimalsTry] = useState(0);
+
+  // Alterações não salvas: o tipo começa em vacina; o resto começa vazio
+  const dirty =
+    type !== "VACCINE" || productId !== "" || date !== "" || notes !== "" ||
+    needsReapply || reapplyDate !== "" || selected.size > 0;
+  const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
 
   // carrega os produtos do tipo escolhido (vacina ou vermífugo)
   useEffect(() => {
+    setProductsError(false);
     listProducts(type)
       .then((data) => {
         setProducts(data);
         setProductId(""); // limpa a escolha ao trocar de tipo
       })
-      .catch((err) => console.error(err));
-  }, [type]);
+      .catch(() => setProductsError(true));
+  }, [type, productsTry]);
 
   // carrega os animais conforme os filtros
   useEffect(() => {
+    setAnimalsError(false);
     listAnimals({
       status: statusFilter === "ALL" ? undefined : statusFilter,
       category: categoryFilter === "ALL" ? undefined : categoryFilter,
@@ -66,8 +85,8 @@ export function ApplicationCreate() {
       order: "asc",
     })
       .then((data) => setAnimals(data))
-      .catch((err) => console.error(err));
-  }, [statusFilter, categoryFilter]);
+      .catch(() => setAnimalsError(true));
+  }, [statusFilter, categoryFilter, animalsTry]);
 
   // aplica a busca por brinco (no frontend, instantâneo)
   const visibleAnimals = animals.filter((a) =>
@@ -119,7 +138,8 @@ export function ApplicationCreate() {
         animalIds: Array.from(selected),
       });
       showToast(t("application.created"));
-      navigate("/manejo");
+      allowLeave();
+      goBack();
     } catch (err) {
       setError(singleErrorMessage(err));
       setSaving(false);
@@ -135,21 +155,12 @@ export function ApplicationCreate() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            type="button"
-            onClick={() => navigate("/manejo")}
-            title={t("application.back")}
-            aria-label={t("application.back")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-medium text-texto">{t("application.newTitle")}</h1>
-            <p className="text-texto-suave">{t("application.newSubtitle")}</p>
-          </div>
-        </div>
+        <PageHeader
+          title={t("application.newTitle")}
+          subtitle={t("application.newSubtitle")}
+          backFallback="/manejo"
+          backLabel={t("application.back")}
+        />
 
         <form onSubmit={handleSubmit}>
           {/* Dados da aplicação */}
@@ -162,6 +173,7 @@ export function ApplicationCreate() {
                   <button
                     key={value}
                     type="button"
+                    aria-pressed={type === value}
                     onClick={() => setType(value)}
                     className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
                       type === value
@@ -180,12 +192,14 @@ export function ApplicationCreate() {
               <label className="block font-medium text-texto mb-1">
                 {t("application.product")} <span className="text-alerta">*</span>
               </label>
-              {products.length === 0 ? (
+              {productsError ? (
+                <LoadError compact message={t("application.productsLoadFailed")} onRetry={() => setProductsTry((n) => n + 1)} />
+              ) : products.length === 0 ? (
                 <p className="text-sm text-texto-suave">
                   {t("application.noProducts")}{" "}
                   <button
                     type="button"
-                    onClick={() => navigate("/produtos")}
+                    onClick={() => open("/produtos")}
                     className="text-verde underline cursor-pointer"
                   >
                     {t("application.createProductNow")}
@@ -209,10 +223,10 @@ export function ApplicationCreate() {
 
             {/* Data */}
             <div className="mb-4">
-              <label className="block font-medium text-texto mb-1">
+              <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">
                 {t("application.date")} <span className="text-alerta">*</span>
               </label>
-              <input
+              <input id={`${formId}-1`}
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -233,10 +247,10 @@ export function ApplicationCreate() {
               </label>
               {needsReapply && (
                 <div className="mt-2">
-                  <label className="block text-sm text-texto-suave mb-1">
+                  <label htmlFor={`${formId}-2`} className="block text-sm text-texto-suave mb-1">
                     {t("application.reapplyDate")}
                   </label>
-                  <input
+                  <input id={`${formId}-2`}
                     type="date"
                     value={reapplyDate}
                     onChange={(e) => setReapplyDate(e.target.value)}
@@ -251,11 +265,11 @@ export function ApplicationCreate() {
 
             {/* Observação */}
             <div>
-              <label className="block font-medium text-texto mb-1">
+              <label htmlFor={`${formId}-3`} className="block font-medium text-texto mb-1">
                 {t("application.notes")}{" "}
                 <span className="text-texto-leve font-normal">{t("common.optional")}</span>
               </label>
-              <input
+              <input id={`${formId}-3`}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t("application.notesPlaceholder")}
@@ -290,6 +304,7 @@ export function ApplicationCreate() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("application.searchTag")}
+                aria-label={t("application.searchTag")}
                 className="w-full bg-bege border border-borda rounded-lg pl-9 pr-3 py-2 text-sm text-texto"
               />
             </div>
@@ -297,6 +312,7 @@ export function ApplicationCreate() {
             {/* Filtros */}
             <div className="flex gap-2 mb-4 flex-wrap">
               <select
+                aria-label={t("herd.statusLabel")}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="bg-bege border border-borda rounded-lg px-2.5 py-1.5 text-sm text-texto cursor-pointer"
@@ -306,6 +322,7 @@ export function ApplicationCreate() {
                 <option value="SOLD">{t("application.filterSold")}</option>
               </select>
               <select
+                aria-label={t("herd.category")}
                 value={categoryFilter}
                 onChange={(e) =>
                   setCategoryFilter(e.target.value as CategoryFilter)
@@ -322,7 +339,9 @@ export function ApplicationCreate() {
             </div>
 
             {/* Lista de animais com checkbox */}
-            {visibleAnimals.length === 0 ? (
+            {animalsError ? (
+              <LoadError compact message={t("herd.loadFailed")} onRetry={() => setAnimalsTry((n) => n + 1)} />
+            ) : visibleAnimals.length === 0 ? (
               <p className="text-sm text-texto-suave">
                 {t("application.noAnimals")}
               </p>
@@ -334,6 +353,7 @@ export function ApplicationCreate() {
                     <button
                       key={a.id}
                       type="button"
+                      aria-pressed={isSelected}
                       onClick={() => toggle(a.id)}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left cursor-pointer ${
                         isSelected
@@ -364,27 +384,20 @@ export function ApplicationCreate() {
           </div>
 
           {error && (
-            <p className="text-sm text-alerta mb-4 max-w-2xl">{error}</p>
+            <p role="alert" className="text-sm text-alerta mb-4 max-w-2xl">{error}</p>
           )}
 
           {/* Botões */}
           <div className="flex justify-end gap-3 max-w-2xl">
-            <button
-              type="button"
-              onClick={() => navigate("/manejo")}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-            >
+            <button type="button" onClick={goBack} className={buttonClass("secondary")}>
               {t("common.cancel")}
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
-            >
+            <button type="submit" disabled={saving} className={buttonClass("primary")}>
               {saving ? t("application.creating") : t("application.create")}
             </button>
           </div>
         </form>
+        {unsavedDialog}
       </main>
     </div>
   );

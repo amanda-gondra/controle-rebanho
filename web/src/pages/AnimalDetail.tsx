@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, RefreshCw, Trash2, Syringe, Pill } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { Plus, Pencil, RefreshCw, Trash2, Syringe, Pill } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -41,10 +41,17 @@ import { useToast } from "../components/ToastProvider.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOpen, useOrigin, useOriginState } from "../navigation/hooks.js";
 
 export function AnimalDetail() {
   const { id } = useParams(); // pega o :id do endereço
-  const navigate = useNavigate();
+  const open = useOpen();
+  const originState = useOriginState();
+  const { goBack } = useOrigin("/");
   const showToast = useToast();
   const { labelOf } = useCategoryLabels();
 
@@ -57,6 +64,10 @@ export function AnimalDetail() {
   const [result, setResult] = useState<AnimalResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Falhas de carga: da ficha inteira ou de uma seção (cada uma com "Tentar de novo")
+  const [loadError, setLoadError] = useState("");
+  const [weighingsError, setWeighingsError] = useState(false);
+  const [applicationsError, setApplicationsError] = useState(false);
   const [showWeighingModal, setShowWeighingModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -64,18 +75,24 @@ export function AnimalDetail() {
   const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
   // Busca (ou rebusca) todos os dados do animal.
-  function loadData() {
+  const loadData = useCallback(() => {
     if (!id) return;
     getAnimal(id)
-      .then((data) => setAnimal(data))
+      .then((data) => {
+        setAnimal(data);
+        setLoadError("");
+      })
       .catch((err) => {
         if (err?.status === 404) setNotFound(true);
-        else console.error(err);
+        else setLoadError(errorMessage(err, "animalDetail.loadFailed"));
       })
       .finally(() => setLoading(false));
     listWeighings(id)
-      .then((data) => setWeighings(data))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        setWeighings(data);
+        setWeighingsError(false);
+      })
+      .catch(() => setWeighingsError(true));
     getWeightGain(id)
       .then((data) => {
         setGain(data);
@@ -86,18 +103,29 @@ export function AnimalDetail() {
         setGainUnavailableCode(err?.code ?? null);
       });
     listAnimalApplications(id)
-      .then((data) => setApplications(data))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        setApplications(data);
+        setApplicationsError(false);
+      })
+      .catch(() => setApplicationsError(true));
     // Compra, venda e diferença (G5)
     getAnimalResult(id)
       .then((data) => setResult(data))
       .catch(() => setResult(null));
-  }
+  }, [id]);
 
   useEffect(() => {
     setLoading(true);
+    setNotFound(false);
+    setLoadError("");
     loadData();
-  }, [id]);
+  }, [loadData]);
+
+  function retryAll() {
+    setLoading(true);
+    setLoadError("");
+    loadData();
+  }
 
   // Confirma a exclusão de uma pesagem
   async function handleDeleteWeighing() {
@@ -121,7 +149,20 @@ export function AnimalDetail() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        </main>
+      </div>
+    );
+  }
+
+  // Falha de rede/servidor: não é "não encontrado"
+  if (loadError && !animal) {
+    return (
+      <div className="min-h-screen bg-bege flex">
+        <Sidebar />
+        <main className="flex-1 p-4 pb-24 md:p-8">
+          <PageHeader title={t("animalDetail.title")} backFallback="/" backLabel={t("animalDetail.backToHerd")} />
+          <LoadError message={loadError} onRetry={retryAll} />
         </main>
       </div>
     );
@@ -140,12 +181,9 @@ export function AnimalDetail() {
             <p className="text-texto-suave mb-4">
               {t("animalDetail.notFoundHelp")}
             </p>
-            <button
-              onClick={() => navigate("/")}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
-            >
+            <Link to="/" className={buttonClass("primary")}>
               {t("animalDetail.backToHerd")}
-            </button>
+            </Link>
           </div>
         </main>
       </div>
@@ -180,67 +218,61 @@ export function AnimalDetail() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex flex-wrap items-start gap-3 mb-6">
-          <button
-            onClick={() => navigate("/")}
-            title={t("animalDetail.backToHerd")}
-            aria-label={t("animalDetail.backToHerd")}
-            className="text-texto-suave hover:text-texto cursor-pointer mt-1.5"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div className="flex-1 min-w-[12rem]">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-medium text-texto whitespace-nowrap">{animal.tag}</h1>
-              <span
-                className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}
-              >
+        <PageHeader
+          title={
+            <span className="flex items-center gap-3">
+              <span className="whitespace-nowrap">{animal.tag}</span>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}>
                 {statusLabel[animal.status]}
               </span>
-            </div>
-            <p className="text-texto-suave">
-              {t("animalDetail.summary", {
-                category: labelOf(animal.category, animal.sex),
-                sex: animal.castrated
-                  ? `${sexLabel[animal.sex]} ${t("animalDetail.castratedSuffix")}`
-                  : sexLabel[animal.sex],
-                breed: animal.breed ?? t("animalDetail.noBreed"),
-              })}
+            </span>
+          }
+          subtitle={t("animalDetail.summary", {
+            category: labelOf(animal.category, animal.sex),
+            sex: animal.castrated
+              ? `${sexLabel[animal.sex]} ${t("animalDetail.castratedSuffix")}`
+              : sexLabel[animal.sex],
+            breed: animal.breed ?? t("animalDetail.noBreed"),
+          })}
+          backFallback="/"
+          backLabel={t("animalDetail.backToHerd")}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => open(`/animais/${animal.id}/editar`)}
+                title={t("animalDetail.editLabel")}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <Pencil size={16} aria-hidden="true" /> {t("common.edit")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStatusModal(true)}
+                title={t("animalDetail.statusLabel")}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <RefreshCw size={16} aria-hidden="true" /> {t("animalDetail.changeStatus")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(true)}
+                title={t("animalDetail.deleteLabel")}
+                className={buttonClass("dangerOutline", "text-sm px-3 py-2")}
+              >
+                <Trash2 size={16} aria-hidden="true" /> {t("common.delete")}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-texto-leve">{birthText}</p>
+          {/* Faixa de saída (D-27): quando e por quê o animal saiu */}
+          {animal.status !== "ACTIVE" && (
+            <p role="status" className="mt-2 inline-block text-sm rounded-lg bg-card border border-borda text-texto px-3 py-1.5">
+              {exitText}
             </p>
-            <p className="text-sm text-texto-leve">{birthText}</p>
-            {/* Faixa de saída (D-27): quando e por quê o animal saiu */}
-            {animal.status !== "ACTIVE" && (
-              <p role="status" className="mt-2 inline-block text-sm rounded-lg bg-card border border-borda text-texto px-3 py-1.5">
-                {exitText}
-              </p>
-            )}
-          </div>
-
-          {/* Botões de ação */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => navigate(`/animais/${animal.id}/editar`)}
-              title={t("animalDetail.editLabel")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Pencil size={16} /> {t("common.edit")}
-            </button>
-            <button
-              onClick={() => setShowStatusModal(true)}
-              title={t("animalDetail.statusLabel")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <RefreshCw size={16} /> {t("animalDetail.changeStatus")}
-            </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              title={t("animalDetail.deleteLabel")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Trash2 size={16} /> {t("common.delete")}
-            </button>
-          </div>
-        </div>
+          )}
+        </PageHeader>
 
         {/* Resumo + gráfico (se tem 2+ pesagens) ou estado vazio */}
         {gain ? (
@@ -305,10 +337,11 @@ export function AnimalDetail() {
                 : t("animalDetail.noGainHelp")}
             </p>
             <button
+              type="button"
               onClick={() => setShowWeighingModal(true)}
               disabled={hasExited}
               title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
-              className="inline-flex items-center gap-2 bg-verde text-white text-sm font-medium px-4 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className={buttonClass("primary", "text-sm")}
             >
               <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
@@ -320,10 +353,11 @@ export function AnimalDetail() {
           <div className="flex items-center justify-between mb-4">
             <p className="font-medium text-texto">{t("animalDetail.weighings")}</p>
             <button
+              type="button"
               onClick={() => setShowWeighingModal(true)}
               disabled={hasExited}
               title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
-              className="flex items-center gap-2 bg-verde text-white text-sm font-medium px-3 py-2 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className={buttonClass("primary", "text-sm px-3 py-2")}
             >
               <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
@@ -334,7 +368,9 @@ export function AnimalDetail() {
               {t("animalDetail.weighingDisabled")}
             </p>
           )}
-          {weighings.length === 0 ? (
+          {weighingsError ? (
+            <LoadError compact message={t("animalDetail.weighingsLoadFailed")} onRetry={loadData} />
+          ) : weighings.length === 0 ? (
             <p className="text-texto-suave text-sm">
               {t("animalDetail.noWeighings")}
             </p>
@@ -385,7 +421,9 @@ export function AnimalDetail() {
         {/* Manejo sanitário (vacinas e vermífugos deste animal) */}
         <div className="bg-card border border-borda rounded-xl p-6">
           <p className="font-medium text-texto mb-4">{t("animalDetail.sanitary")}</p>
-          {applications.length === 0 ? (
+          {applicationsError ? (
+            <LoadError compact message={t("animalDetail.applicationsLoadFailed")} onRetry={loadData} />
+          ) : applications.length === 0 ? (
             <p className="text-texto-suave text-sm">
               {t("animalDetail.noApplications")}
             </p>
@@ -394,10 +432,11 @@ export function AnimalDetail() {
               {applications.map((app) => {
                 const isVaccine = app.product.type === "VACCINE";
                 return (
-                  <div
+                  <Link
                     key={app.id}
-                    onClick={() => navigate(`/aplicacoes/${app.id}`)}
-                    className="flex items-center gap-3 py-3 cursor-pointer hover:bg-bege -mx-2 px-2 rounded-lg"
+                    to={`/aplicacoes/${app.id}`}
+                    state={originState}
+                    className="flex items-center gap-3 py-3 hover:bg-bege -mx-2 px-2 rounded-lg"
                   >
                     <span
                       className={`flex items-center justify-center w-9 h-9 rounded-full ${
@@ -420,7 +459,7 @@ export function AnimalDetail() {
                         {app.notes ? ` · ${app.notes}` : ""}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>
@@ -466,40 +505,20 @@ export function AnimalDetail() {
 
         {/* Confirmação de excluir pesagem */}
         {deletingWeighing && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-            onClick={() => setDeletingWeighing(null)}
+          <ConfirmDialog
+            title={t("animalDetail.deleteWeighingTitle")}
+            confirmLabel={t("common.delete")}
+            busyLabel={t("common.deleting")}
+            busy={deletingWeighingLoading}
+            danger
+            onConfirm={handleDeleteWeighing}
+            onClose={() => setDeletingWeighing(null)}
           >
-            <div
-              className="bg-card rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-medium text-texto mb-1">
-                {t("animalDetail.deleteWeighingTitle")}
-              </h2>
-              <p className="text-sm text-texto-suave mb-5">
-                {t("animalDetail.deleteWeighingBody", {
-                  date: formatDate(deletingWeighing.date),
-                  weight: t("units.kgValue", { value: formatNumber(Number(deletingWeighing.weightKg)) }),
-                })}
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingWeighing(null)}
-                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={handleDeleteWeighing}
-                  disabled={deletingWeighingLoading}
-                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-                >
-                  {deletingWeighingLoading ? t("common.deleting") : t("common.delete")}
-                </button>
-              </div>
-            </div>
-          </div>
+            {t("animalDetail.deleteWeighingBody", {
+              date: formatDate(deletingWeighing.date),
+              weight: t("units.kgValue", { value: formatNumber(Number(deletingWeighing.weightKg)) }),
+            })}
+          </ConfirmDialog>
         )}
 
         {/* Modal de mudar status */}
@@ -524,7 +543,7 @@ export function AnimalDetail() {
             onClose={() => setShowDeleteModal(false)}
             onDeleted={() => {
               showToast(t("animalDetail.animalDeleted"));
-              navigate("/");
+              goBack();
             }}
           />
         )}

@@ -34,6 +34,19 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
+## Navegação e interface (auditoria — 2026-10-18)
+
+- `web/src/navigation/origin.test.ts`: origem aceita/recusada (externa, `//`, `\`, login,
+  tamanho), seção ativa do menu.
+- `web/src/navigation/listParams.test.ts`: leitura validada dos filtros do endereço, valores
+  padrão omitidos, janela de páginas.
+- Ponta a ponta (navegador real, banco de teste, script fora do repositório): os 10 fluxos de
+  navegação — lista com filtros/página → animal → voltar; link direto → destino seguro; editar →
+  cancelar; alteração não salva (ficar/descartar/recarregar); salvar → ficha → voltar não reabre o
+  formulário; cadastro a partir da lista filtrada; manejo → aplicação → animal → voltar; venda a
+  partir da ficha; negociações filtradas; janela de pesagem (Esc, clique fora, X, foco) — mais erro de
+  carga com "Tentar de novo", celular 360px sem rolagem lateral em 7 telas e console sem erros.
+
 ## Textos da tela (G3)
 
 - `tests/integration/validation-codes.test.ts`: todo erro de campo traz `code` (e `params`

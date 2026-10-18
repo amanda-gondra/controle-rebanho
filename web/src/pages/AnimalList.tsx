@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Search,
@@ -28,6 +28,12 @@ import { useToast } from "../components/ToastProvider.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+import { LoadError } from "../components/LoadError.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOpen, useOriginState } from "../navigation/hooks.js";
+import { buildParams, pageWindow, readChoice, readPage, readText } from "../navigation/listParams.js";
 
 type StatusFilter = Status | "ALL";
 type CategoryFilter = Category | "ALL";
@@ -36,9 +42,13 @@ type SortValue = "tag-asc" | "tag-desc" | "createdAt-desc" | "createdAt-asc";
 const PAGE_SIZE = 20;
 
 const STATUS_TABS: StatusFilter[] = ["ALL", "ACTIVE", "SOLD", "DEAD"];
+const CATEGORY_VALUES: CategoryFilter[] = ["ALL", ...CATEGORY_FILTER_ORDER];
+const SORT_VALUES: SortValue[] = ["createdAt-desc", "createdAt-asc", "tag-asc", "tag-desc"];
+const DEFAULTS = { q: "", status: "ALL", category: "ALL", sort: "createdAt-desc", page: 1 };
 
 export function AnimalList() {
-  const navigate = useNavigate();
+  const open = useOpen();
+  const originState = useOriginState();
   const showToast = useToast();
 
   // A lista completa é buscada uma vez; filtro, busca, ordenação e paginação
@@ -46,31 +56,41 @@ export function AnimalList() {
   const { labelOf, filterLabelOf } = useCategoryLabels();
   const [allAnimals, setAllAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  const [status, setStatus] = useState<StatusFilter>("ALL");
-  const [category, setCategory] = useState<CategoryFilter>("ALL");
-  const [sort, setSort] = useState<SortValue>("createdAt-desc");
-  const [search, setSearch] = useState("");
+  // Busca, filtros, ordenação e página ficam no ENDEREÇO: abrir um animal e
+  // voltar devolve a lista como estava (navigation/listParams.ts)
+  const [params, setParams] = useSearchParams();
+  const search = readText(params, "q");
+  const status = readChoice(params, "status", STATUS_TABS, "ALL");
+  const category = readChoice(params, "category", CATEGORY_VALUES, "ALL");
+  const sort = readChoice(params, "sort", SORT_VALUES, "createdAt-desc");
+  const page = readPage(params);
   const [showFilters, setShowFilters] = useState(true);
-  const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState<Animal | null>(null);
 
-  function loadAnimals() {
+  // Mudar um filtro volta para a 1ª página; `replace` para não encher o
+  // histórico a cada letra digitada
+  const update = useCallback(
+    (changes: Partial<typeof DEFAULTS>) => {
+      const next = { q: search, status, category, sort, page: 1, ...changes };
+      setParams(buildParams(next, DEFAULTS), { replace: true });
+    },
+    [search, status, category, sort, setParams],
+  );
+  const setPage = (value: number) => update({ page: value });
+  const filtersActive = search !== "" || status !== "ALL" || category !== "ALL";
+
+  const loadAnimals = useCallback(() => {
     setLoading(true);
+    setLoadError("");
     listAnimals()
       .then((data) => setAllAnimals(data))
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadError(errorMessage(err, "herd.loadFailed")))
       .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    loadAnimals();
   }, []);
 
-  // Volta pra primeira página sempre que o recorte muda.
-  useEffect(() => {
-    setPage(1);
-  }, [status, category, sort, search]);
+  useEffect(loadAnimals, [loadAnimals]);
 
   // Contadores do topo e das abas — sempre sobre a lista inteira.
   const counts = useMemo(
@@ -121,9 +141,14 @@ export function AnimalList() {
 
       <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <h1 className="text-2xl font-semibold text-texto">{t("herd.title")}</h1>
+        <PageHeader
+          title={t("herd.title")}
+          actions={
+            <button type="button" onClick={() => open("/animais/novo")} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {t("herd.addAnimal")}
+            </button>
+          }
+        >
             <div className="flex items-center gap-4 mt-1.5 text-sm text-texto-suave flex-wrap">
               <span className="flex items-center gap-1.5">
                 <img src="/logo.png" alt="" className="w-4 h-4 opacity-60" />
@@ -142,15 +167,7 @@ export function AnimalList() {
                 {t("herd.countDead", { count: counts.DEAD })}
               </span>
             </div>
-          </div>
-
-          <button
-            onClick={() => navigate("/animais/novo")}
-            className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer shrink-0"
-          >
-            <Plus size={18} /> {t("herd.addAnimal")}
-          </button>
-        </div>
+        </PageHeader>
 
         {/* Busca + botão Filtros */}
         <div className="flex items-center gap-3 mb-4">
@@ -161,13 +178,15 @@ export function AnimalList() {
             />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => update({ q: e.target.value })}
               placeholder={t("herd.searchPlaceholder")}
               aria-label={t("herd.searchPlaceholder")}
               className="w-full bg-card border border-borda rounded-xl pl-11 pr-4 py-2.5 text-texto placeholder:text-texto-leve"
             />
           </div>
           <button
+            type="button"
+            aria-expanded={showFilters}
             onClick={() => setShowFilters((v) => !v)}
             className="flex items-center gap-2 bg-card border border-borda rounded-xl px-4 py-2.5 text-sm text-texto-suave font-medium cursor-pointer shrink-0"
           >
@@ -189,7 +208,9 @@ export function AnimalList() {
                 return (
                   <button
                     key={value}
-                    onClick={() => setStatus(value)}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => update({ status: value })}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border cursor-pointer ${
                       active
                         ? "bg-verde border-verde text-white"
@@ -214,9 +235,7 @@ export function AnimalList() {
                 {t("herd.category")}
                 <select
                   value={category}
-                  onChange={(e) =>
-                    setCategory(e.target.value as CategoryFilter)
-                  }
+                  onChange={(e) => update({ category: e.target.value as CategoryFilter })}
                   className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
                 >
                   <option value="ALL">{t("herd.allCategories")}</option>
@@ -232,7 +251,7 @@ export function AnimalList() {
                 {t("herd.sortBy")}
                 <select
                   value={sort}
-                  onChange={(e) => setSort(e.target.value as SortValue)}
+                  onChange={(e) => update({ sort: e.target.value as SortValue })}
                   className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
                 >
                   <option value="createdAt-desc">{t("herd.sortNewest")}</option>
@@ -247,7 +266,9 @@ export function AnimalList() {
 
         {/* Conteúdo */}
         {loading ? (
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={loadAnimals} />
         ) : allAnimals.length === 0 ? (
           <div className="bg-card border border-borda rounded-xl p-12 text-center max-w-xl mx-auto mt-4">
             <div className="w-16 h-16 rounded-full bg-verde-claro flex items-center justify-center mx-auto mb-4">
@@ -259,20 +280,72 @@ export function AnimalList() {
             <p className="text-texto-suave text-sm mb-5">
               {t("herd.emptyHelp")}
             </p>
-            <button
-              onClick={() => navigate("/animais/novo")}
-              className="inline-flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
-            >
-              <Plus size={18} /> {t("herd.addFirst")}
+            <button type="button" onClick={() => open("/animais/novo")} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {t("herd.addFirst")}
             </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center text-texto-suave mt-8">
-            <p>{t("herd.noMatch")}</p>
+            <p className="mb-3">{t("herd.noMatch")}</p>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => setParams(buildParams({ sort }, DEFAULTS), { replace: true })}
+                className={buttonClass("secondary")}
+              >
+                {t("herd.clearFilters")}
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-card border border-borda rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Celular: um cartão por animal (a tabela larga não cabe) */}
+            <ul className="md:hidden divide-y divide-borda">
+              {pageItems.map((animal) => (
+                <li key={animal.id} className="flex items-center gap-3 px-4 py-3">
+                  <Link
+                    to={`/animais/${animal.id}`}
+                    state={originState}
+                    className="flex-1 min-w-0 flex items-center gap-3"
+                  >
+                    <span className="flex items-center justify-center w-9 h-9 rounded-full bg-verde-claro shrink-0">
+                      <Tag size={15} className="text-verde" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-medium text-texto">{animal.tag}</span>
+                      <span className="block text-xs text-texto-suave truncate">
+                        {[labelOf(animal.category, animal.sex), sexLabel[animal.sex], animal.breed]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                      <span className="block text-xs text-texto-leve">
+                        {animal.currentWeightKg != null
+                          ? t("herd.weightKg", { value: formatNumber(animal.currentWeightKg) })
+                          : t("herd.noWeighing")}
+                      </span>
+                    </span>
+                  </Link>
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${statusStyle[animal.status]}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusDotStyle[animal.status]}`} />
+                    {statusLabel[animal.status]}
+                  </span>
+                  <AnimalActionsMenu
+                    onEdit={() => open(`/animais/${animal.id}/editar`)}
+                    onDelete={() => setDeleting(animal)}
+                    onSell={
+                      animal.status === "ACTIVE"
+                        ? () => open(`/negociacoes/nova?tipo=venda&animal=${animal.id}`)
+                        : undefined
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+
+            {/* Computador: tabela */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full min-w-[900px] text-sm">
                 <thead>
                   <tr className="text-left text-texto-suave border-b border-borda">
@@ -289,7 +362,7 @@ export function AnimalList() {
                   {pageItems.map((animal) => (
                     <tr
                       key={animal.id}
-                      onClick={() => navigate(`/animais/${animal.id}`)}
+                      onClick={() => open(`/animais/${animal.id}`)}
                       className="border-b border-borda last:border-0 hover:bg-bege/60 cursor-pointer"
                     >
                       {/* Brinco */}
@@ -298,9 +371,15 @@ export function AnimalList() {
                           <span className="flex items-center justify-center w-9 h-9 rounded-full bg-verde-claro shrink-0">
                             <Tag size={15} className="text-verde" />
                           </span>
-                          <span className="font-medium text-texto">
+                          {/* Link de verdade: abre pelo teclado e em nova aba */}
+                          <Link
+                            to={`/animais/${animal.id}`}
+                            state={originState}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-medium text-texto hover:text-verde"
+                          >
                             {animal.tag}
-                          </span>
+                          </Link>
                         </div>
                       </td>
 
@@ -370,13 +449,11 @@ export function AnimalList() {
                       <td className="px-5 py-4">
                         <div className="flex justify-end">
                           <AnimalActionsMenu
-                            onEdit={() =>
-                              navigate(`/animais/${animal.id}/editar`)
-                            }
+                            onEdit={() => open(`/animais/${animal.id}/editar`)}
                             onDelete={() => setDeleting(animal)}
                             onSell={
                               animal.status === "ACTIVE"
-                                ? () => navigate(`/negociacoes/nova?tipo=venda&animal=${animal.id}`)
+                                ? () => open(`/negociacoes/nova?tipo=venda&animal=${animal.id}`)
                                 : undefined
                             }
                           />
@@ -399,18 +476,26 @@ export function AnimalList() {
               </span>
               <div className="flex items-center gap-1.5">
                 <button
+                  type="button"
                   disabled={currentPage === 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => setPage(currentPage - 1)}
                   aria-label={t("herd.prevPage")}
                   className="p-1.5 rounded-lg border border-borda-chip text-texto-suave cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                {pageWindow(currentPage, totalPages).map((p, index) =>
+                  p === null ? (
+                    <span key={`gap-${index}`} className="px-1 text-texto-leve" aria-hidden="true">
+                      …
+                    </span>
+                  ) : (
                   <button
                     key={p}
+                    type="button"
                     onClick={() => setPage(p)}
                     aria-label={t("herd.page", { page: p })}
+                    aria-current={p === currentPage ? "page" : undefined}
                     className={`min-w-8 h-8 px-2 rounded-lg text-sm cursor-pointer ${
                       p === currentPage
                         ? "bg-verde text-white"
@@ -419,10 +504,12 @@ export function AnimalList() {
                   >
                     {p}
                   </button>
-                ))}
+                  ),
+                )}
                 <button
+                  type="button"
                   disabled={currentPage === totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => setPage(currentPage + 1)}
                   aria-label={t("herd.nextPage")}
                   className="p-1.5 rounded-lg border border-borda-chip text-texto-suave cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useOriginState } from "../navigation/hooks.js";
 import { ChevronRight, Plus } from "lucide-react";
 import type { Animal } from "../types/animal.js";
 import type { AnimalResult, TradeSide } from "../types/trade.js";
@@ -30,6 +31,7 @@ function Row({
   emptyText: string;
   action: { to: string; label: string } | null;
 }) {
+  const originState = useOriginState();
   return (
     <div className="flex items-center justify-between gap-3 py-3">
       <div className="min-w-0">
@@ -39,6 +41,7 @@ function Row({
       {side ? (
         <Link
           to={`/negociacoes/${side.tradeId}`}
+          state={originState}
           className="flex items-center gap-1 font-medium text-texto hover:text-verde shrink-0"
           title={t("animalTrades.openTrade")}
         >
@@ -50,6 +53,7 @@ function Row({
         action && (
           <Link
             to={action.to}
+            state={originState}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege shrink-0"
           >
             <Plus size={15} aria-hidden="true" /> {action.label}

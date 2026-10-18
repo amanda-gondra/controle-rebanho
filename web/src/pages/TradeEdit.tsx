@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar.js";
 import { useAuth } from "../components/AuthProvider.js";
 import { useToast } from "../components/ToastProvider.js";
@@ -14,6 +13,11 @@ import { formatDate, todayInTimeZone } from "../types/format.js";
 import { tradeTypeLabel } from "../types/tradeLabels.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin } from "../navigation/hooks.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 // Corrigir uma negociação (G5 — F-NEG-04/05): data, forma de preço, preços,
 // pesos, comprador/vendedor, observações — e o peso de carcaça que chegou
@@ -22,7 +26,8 @@ import { errorMessage } from "../i18n/errors.js";
 
 export function TradeEdit() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  // Sem origem (link direto): voltar/cancelar/salvar levam ao detalhe
+  const { goBack } = useOrigin(`/negociacoes/${id}`);
   const showToast = useToast();
   const { account } = useAuth();
   const today = todayInTimeZone(account?.farm.timezone ?? "America/Sao_Paulo");
@@ -40,22 +45,34 @@ export function TradeEdit() {
   const [showProblems, setShowProblems] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [notFound, setNotFound] = useState(false);
 
-  useEffect(() => {
+  // Alterações não salvas: o formulário comparado com o que veio do servidor
+  const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  const snapshot = JSON.stringify([deal, rows, groupBy, groupPrices]);
+  const dirty = initialSnapshot !== null && snapshot !== initialSnapshot;
+  const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
+
+  const load = useCallback(() => {
     if (!id) return;
+    setLoadError("");
     getTrade(id)
       .then((data) => {
         const start = startEdit(data, farmFactor);
+        setInitialSnapshot(JSON.stringify([start.deal, start.rows, start.groupBy, start.groupPrices]));
         setTrade(data);
         setDeal(start.deal);
         setRows(start.rows);
         setGroupBy(start.groupBy);
         setGroupPrices(start.groupPrices);
       })
-      .catch((err) =>
-        setLoadError(err?.status === 404 ? t("tradeDetail.notFound") : errorMessage(err, "trade.loadFailed")),
-      );
+      .catch((err) => {
+        setNotFound(err?.status === 404);
+        setLoadError(err?.status === 404 ? t("tradeDetail.notFound") : errorMessage(err, "trade.loadFailed"));
+      });
   }, [id, farmFactor]);
+
+  useEffect(load, [load]);
 
   const type = trade?.type ?? "SALE";
   const priceUnit = deal?.priceUnit ?? "PER_KG";
@@ -93,7 +110,8 @@ export function TradeEdit() {
       const replaced = updated.replacedWeighings ?? 0;
       const message = t("tradeEdit.saved");
       showToast(replaced > 0 ? `${message} ${t("trade.replacedWeighings", { count: replaced })}` : message);
-      navigate(`/negociacoes/${trade.id}`);
+      allowLeave();
+      goBack();
     } catch (err) {
       setSaving(false);
       const split = splitApiErrors(err, rows.map((row) => row.key));
@@ -112,37 +130,30 @@ export function TradeEdit() {
       <Sidebar />
       <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
         {!trade || !deal ? (
-          loadError ? (
+          notFound ? (
             <div className="bg-card border border-borda rounded-xl p-8 text-center max-w-lg">
               <p role="alert" className="text-texto font-medium mb-3">
                 {loadError}
               </p>
-              <Link to="/negociacoes" className="text-verde font-medium">
+              <Link to="/negociacoes" className={buttonClass("primary")}>
                 {t("tradeDetail.backToList")}
               </Link>
             </div>
+          ) : loadError ? (
+            <>
+              <PageHeader title={t("tradeEdit.title")} backFallback={`/negociacoes/${id}`} />
+              <LoadError message={loadError} onRetry={load} />
+            </>
           ) : (
-            <p className="text-texto-suave">{t("common.loading")}</p>
+            <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
           )
         ) : (
           <div className="max-w-4xl">
-            <div className="flex items-center gap-3 mb-6">
-              <button
-                type="button"
-                onClick={() => navigate(`/negociacoes/${trade.id}`)}
-                title={t("common.back")}
-                aria-label={t("common.back")}
-                className="text-texto-suave hover:text-texto cursor-pointer"
-              >
-                <ArrowLeft size={22} />
-              </button>
-              <div>
-                <h1 className="text-2xl font-medium text-texto">{t("tradeEdit.title")}</h1>
-                <p className="text-texto-suave">
-                  {t("tradeDetail.title", { type: tradeTypeLabel(trade.type), date: formatDate(trade.date) })}
-                </p>
-              </div>
-            </div>
+            <PageHeader
+              title={t("tradeEdit.title")}
+              subtitle={t("tradeDetail.title", { type: tradeTypeLabel(trade.type), date: formatDate(trade.date) })}
+              backFallback={`/negociacoes/${trade.id}`}
+            />
 
             <section className="bg-card border border-borda rounded-xl p-4 md:p-6 mb-6">
               <TradeDealFields
@@ -185,24 +196,16 @@ export function TradeEdit() {
             )}
 
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => navigate(`/negociacoes/${trade.id}`)}
-                className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-              >
+              <button type="button" onClick={goBack} className={buttonClass("secondary")}>
                 {t("common.cancel")}
               </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving}
-                className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
-              >
+              <button type="button" onClick={save} disabled={saving} className={buttonClass("primary")}>
                 {saving ? t("common.saving") : t("tradeEdit.save")}
               </button>
             </div>
           </div>
         )}
+        {unsavedDialog}
       </main>
     </div>
   );

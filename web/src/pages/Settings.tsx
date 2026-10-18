@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
+import { createContext, useCallback, useContext, useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Bell, Handshake, Home, Mars, PawPrint, RotateCcw, Venus } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
@@ -52,9 +56,24 @@ const displayName = (type: "region" | "currency", code: string) => {
   }
 };
 
+// Cartões com alteração ainda não salva avisam a página (para o aviso
+// "Descartar as alterações?" ao sair)
+const ReportDirty = createContext<(card: string, dirty: boolean) => void>(() => {});
+
 export function Settings() {
   const [farm, setFarm] = useState<FarmWithDefaults | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [dirtyCards, setDirtyCards] = useState<ReadonlySet<string>>(new Set());
+  const reportDirty = useCallback((card: string, dirty: boolean) => {
+    setDirtyCards((prev) => {
+      if (prev.has(card) === dirty) return prev;
+      const next = new Set(prev);
+      if (dirty) next.add(card);
+      else next.delete(card);
+      return next;
+    });
+  }, []);
+  const { dialog: unsavedDialog } = useUnsavedChanges(dirtyCards.size > 0);
 
   const load = useCallback(() => {
     getFarm()
@@ -73,34 +92,25 @@ export function Settings() {
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-medium text-texto">{t("settings.title")}</h1>
-          <p className="text-texto-suave">
-            {t("settings.subtitle")}
-          </p>
-        </div>
+        <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
 
         {loadFailed ? (
-          <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
-            <p className="text-texto mb-4">{t("settings.loadFailed")}</p>
-            <button
-              type="button"
-              onClick={retry}
-              className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
-            >
-              {t("common.retry")}
-            </button>
+          <div className="max-w-2xl">
+            <LoadError message={t("settings.loadFailed")} onRetry={retry} />
           </div>
         ) : !farm ? (
           <SkeletonCards />
         ) : (
-          <div className="flex flex-col gap-6 max-w-2xl">
-            <FarmCard farm={farm} onSaved={setFarm} />
-            <SanitaryCard farm={farm} onSaved={setFarm} />
-            <AnimalsCard farm={farm} onSaved={setFarm} />
-            <TradesCard farm={farm} onSaved={setFarm} />
-          </div>
+          <ReportDirty.Provider value={reportDirty}>
+            <div className="flex flex-col gap-6 max-w-2xl">
+              <FarmCard farm={farm} onSaved={setFarm} />
+              <SanitaryCard farm={farm} onSaved={setFarm} />
+              <AnimalsCard farm={farm} onSaved={setFarm} />
+              <TradesCard farm={farm} onSaved={setFarm} />
+            </div>
+          </ReportDirty.Provider>
         )}
+        {unsavedDialog}
       </main>
     </div>
   );
@@ -531,6 +541,11 @@ function Card(props: {
   failed: boolean;
 }) {
   const titleId = useId();
+  const reportDirty = useContext(ReportDirty);
+  useEffect(() => {
+    reportDirty(titleId, props.changed);
+    return () => reportDirty(titleId, false);
+  }, [reportDirty, titleId, props.changed]);
   return (
     <section className="bg-card border border-borda rounded-xl p-5 md:p-6" aria-labelledby={titleId}>
       <h2 id={titleId} className="flex items-center gap-2 font-medium text-texto mb-4">
@@ -547,7 +562,7 @@ function Card(props: {
         <button
           type="submit"
           disabled={props.saving || (!props.changed && !props.failed)}
-          className="bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className={buttonClass("primary")}
         >
           {props.saving ? t("common.saving") : props.failed ? t("common.retry") : t("common.save")}
         </button>

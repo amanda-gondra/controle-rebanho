@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Syringe, Pill, Pencil, Trash2, Bell } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { Syringe, Pill, Pencil, Trash2, Bell } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { getApplication, deleteApplication } from "../services/sanitary.js";
 import { EditApplicationModal } from "../components/EditApplicationModal.js";
@@ -12,10 +12,16 @@ import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
 import { RichText } from "../i18n/RichText.js";
 import { useToast } from "../components/ToastProvider.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin, useOriginState } from "../navigation/hooks.js";
 
 export function ApplicationDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const { goBack } = useOrigin("/manejo");
+  const originState = useOriginState();
   const showToast = useToast();
   const { labelOf } = useCategoryLabels();
   const [application, setApplication] = useState<Application | null>(null);
@@ -24,22 +30,27 @@ export function ApplicationDetail() {
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
-  function loadData() {
+  const loadData = useCallback(() => {
     if (!id) return;
     getApplication(id)
-      .then((data) => setApplication(data))
+      .then((data) => {
+        setApplication(data);
+        setLoadError("");
+      })
       .catch((err) => {
         if (err?.status === 404) setNotFound(true);
-        else console.error(err);
+        else setLoadError(errorMessage(err, "applicationDetail.loadFailed"));
       })
       .finally(() => setLoading(false));
-  }
+  }, [id]);
 
   useEffect(() => {
     setLoading(true);
+    setNotFound(false);
     loadData();
-  }, [id]);
+  }, [loadData]);
 
   async function handleDelete() {
     if (!id) return;
@@ -47,7 +58,7 @@ export function ApplicationDetail() {
     try {
       await deleteApplication(id);
       showToast(t("applicationDetail.deleted"));
-      navigate("/manejo");
+      goBack();
     } catch (err) {
       // antes o erro só ia para o console: agora a pessoa fica sabendo
       showToast(errorMessage(err, "applicationDetail.deleteFailed"));
@@ -60,7 +71,25 @@ export function ApplicationDetail() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (loadError && !application) {
+    return (
+      <div className="min-h-screen bg-bege flex">
+        <Sidebar />
+        <main className="flex-1 p-4 pb-24 md:p-8">
+          <PageHeader title={t("applicationDetail.title")} backFallback="/manejo" backLabel={t("applicationDetail.backToSanitary")} />
+          <LoadError
+            message={loadError}
+            onRetry={() => {
+              setLoading(true);
+              loadData();
+            }}
+          />
         </main>
       </div>
     );
@@ -75,12 +104,9 @@ export function ApplicationDetail() {
             <h2 className="text-xl font-medium text-texto mb-2">
               {t("applicationDetail.notFound")}
             </h2>
-            <button
-              onClick={() => navigate("/manejo")}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
-            >
+            <Link to="/manejo" className={buttonClass("primary")}>
               {t("applicationDetail.backToSanitary")}
-            </button>
+            </Link>
           </div>
         </main>
       </div>
@@ -95,53 +121,49 @@ export function ApplicationDetail() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate("/manejo")}
-            title={t("applicationDetail.backToSanitary")}
-            aria-label={t("applicationDetail.backToSanitary")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div className="flex items-center gap-3 flex-1">
-            <span
-              className={`flex items-center justify-center w-11 h-11 rounded-full ${
-                isVaccine ? "bg-verde-claro text-verde" : "bg-bege text-couro"
-              }`}
-            >
-              {isVaccine ? <Syringe size={20} /> : <Pill size={20} />}
+        <PageHeader
+          title={
+            <span className="flex items-center gap-3">
+              <span
+                aria-hidden="true"
+                className={`flex items-center justify-center w-11 h-11 rounded-full shrink-0 ${
+                  isVaccine ? "bg-verde-claro text-verde" : "bg-bege text-couro"
+                }`}
+              >
+                {isVaccine ? <Syringe size={20} /> : <Pill size={20} />}
+              </span>
+              {application.product.name}
             </span>
-            <div>
-              <h1 className="text-2xl font-medium text-texto">
-                {application.product.name}
-              </h1>
-              <p className="text-texto-suave">
-                {t(`product.type.${application.product.type}`)} ·{" "}
-                {formatDate(application.date)}
-                {application.notes ? ` · ${application.notes}` : ""}
-              </p>
-            </div>
-          </div>
-
-          {/* Botões de ação */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowEdit(true)}
-              title={t("applicationDetail.editLabel")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Pencil size={16} /> {t("common.edit")}
-            </button>
-            <button
-              onClick={() => setShowDelete(true)}
-              title={t("applicationDetail.deleteLabel")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Trash2 size={16} /> {t("common.delete")}
-            </button>
-          </div>
-        </div>
+          }
+          subtitle={
+            <>
+              {t(`product.type.${application.product.type}`)} · {formatDate(application.date)}
+              {application.notes ? ` · ${application.notes}` : ""}
+            </>
+          }
+          backFallback="/manejo"
+          backLabel={t("applicationDetail.backToSanitary")}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => setShowEdit(true)}
+                title={t("applicationDetail.editLabel")}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <Pencil size={16} aria-hidden="true" /> {t("common.edit")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDelete(true)}
+                title={t("applicationDetail.deleteLabel")}
+                className={buttonClass("dangerOutline", "text-sm px-3 py-2")}
+              >
+                <Trash2 size={16} aria-hidden="true" /> {t("common.delete")}
+              </button>
+            </>
+          }
+        />
 
         {/* Aviso de reaplicação, se houver */}
         {application.reapplyDate && (
@@ -164,25 +186,25 @@ export function ApplicationDetail() {
             </span>
           </p>
           <div className="flex flex-col divide-y divide-borda">
-            {animals.map((link) => (
-              <div
-                key={link.id}
-                onClick={() =>
-                  link.animal && navigate(`/animais/${link.animal.id}`)
-                }
-                className="flex items-center gap-4 py-3 cursor-pointer hover:bg-bege -mx-2 px-2 rounded-lg"
-              >
-                <span className="font-medium text-texto w-16">
-                  {link.animal?.tag ?? "—"}
-                </span>
-                {link.animal && (
+            {animals.map((link) =>
+              link.animal ? (
+                <Link
+                  key={link.id}
+                  to={`/animais/${link.animal.id}`}
+                  state={originState}
+                  className="flex items-center gap-4 py-3 hover:bg-bege -mx-2 px-2 rounded-lg"
+                >
+                  <span className="font-medium text-texto w-16">{link.animal.tag}</span>
                   <span className="text-sm text-texto-suave">
-                    {labelOf(link.animal.category, link.animal.sex)} ·{" "}
-                    {sexLabel[link.animal.sex]}
+                    {labelOf(link.animal.category, link.animal.sex)} · {sexLabel[link.animal.sex]}
                   </span>
-                )}
-              </div>
-            ))}
+                </Link>
+              ) : (
+                <div key={link.id} className="flex items-center gap-4 py-3 -mx-2 px-2">
+                  <span className="font-medium text-texto w-16">—</span>
+                </div>
+              ),
+            )}
           </div>
         </div>
 
@@ -201,40 +223,20 @@ export function ApplicationDetail() {
 
         {/* Confirmação de excluir aplicação */}
         {showDelete && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-            onClick={() => setShowDelete(false)}
+          <ConfirmDialog
+            title={t("applicationDetail.deleteTitle")}
+            confirmLabel={t("common.delete")}
+            busyLabel={t("common.deleting")}
+            busy={deleting}
+            danger
+            onConfirm={handleDelete}
+            onClose={() => setShowDelete(false)}
           >
-            <div
-              className="bg-card rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-medium text-texto mb-1">
-                {t("applicationDetail.deleteTitle")}
-              </h2>
-              <p className="text-sm text-texto-suave mb-5">
-                {t("applicationDetail.deleteBody", {
-                  product: application.product.name,
-                  animals: t("common.animalsCount", { count: animals.length }),
-                })}
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowDelete(false)}
-                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-                >
-                  {deleting ? t("common.deleting") : t("common.delete")}
-                </button>
-              </div>
-            </div>
-          </div>
+            {t("applicationDetail.deleteBody", {
+              product: application.product.name,
+              animals: t("common.animalsCount", { count: animals.length }),
+            })}
+          </ConfirmDialog>
         )}
       </main>
     </div>

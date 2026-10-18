@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthField, AuthLayout, inputClass } from "../components/AuthLayout.js";
 import { PasswordInput } from "../components/PasswordInput.js";
+import { originFrom, type OriginState } from "../navigation/origin.js";
 import { useAuth } from "../components/AuthProvider.js";
 import type { ApiError } from "../services/api.js";
 import { t } from "../i18n/index.js";
@@ -13,7 +14,8 @@ export function Login() {
   const { login, sessionExpired } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? "/";
+  // Volta para onde a pessoa queria ir — só se for um endereço deste sistema
+  const from = originFrom(location.state as OriginState) ?? "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,7 +44,7 @@ export function Login() {
 
   return (
     <AuthLayout>
-      <h1 className="text-2xl font-medium text-texto mb-1">{t("auth.login.title")}</h1>
+      <h1 className="text-2xl font-semibold text-texto mb-1">{t("auth.login.title")}</h1>
       <p className="text-texto-suave mb-6">{t("auth.login.subtitle")}</p>
 
       {sessionExpired && (

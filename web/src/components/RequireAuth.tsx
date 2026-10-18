@@ -17,7 +17,8 @@ export function RequireAuth() {
   }
 
   if (!account) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // Guarda o endereço COMPLETO (com ?filtros) para voltar exatamente para lá
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   return <Outlet />;

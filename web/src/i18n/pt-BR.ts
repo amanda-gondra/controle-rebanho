@@ -542,6 +542,7 @@ export const ptBR = {
     noAnimals: "Nenhum animal encontrado.",
     creating: "Registrando...",
     create: "Registrar aplicação",
+    productsLoadFailed: "Não foi possível carregar os produtos.",
   },
   sanitary: {
     title: "Manejo sanitário",
@@ -558,6 +559,9 @@ export const ptBR = {
     empty: "Nenhuma aplicação registrada",
     emptyHelp: "Registre a primeira vacina ou vermífugo do seu rebanho.",
     filterALL: "Todos",
+    loadFailed: "Não foi possível carregar as aplicações.",
+    alertsLoadFailed: "Não foi possível carregar os avisos de reaplicação.",
+    noMatch: "Nenhuma aplicação deste tipo.",
   },
   products: {
     title: "Produtos",
@@ -573,6 +577,7 @@ export const ptBR = {
     dewormers: "Vermífugos",
     noVaccines: "Nenhuma vacina cadastrada.",
     noDewormers: "Nenhum vermífugo cadastrado.",
+    loadFailed: "Não foi possível carregar os produtos.",
   },
   applicationDetail: {
     deleted: "Aplicação excluída.",
@@ -586,6 +591,8 @@ export const ptBR = {
     deleteTitle: "Excluir aplicação?",
     deleteBody: "Isso apaga o registro desta aplicação de {product} ({animals}) e não dá para desfazer. O histórico sanitário desses animais será atualizado.",
     deleteFailed: "Não foi possível excluir a aplicação. Tente de novo.",
+    title: "Aplicação",
+    loadFailed: "Não foi possível carregar a aplicação.",
   },
   herd: {
     title: "Rebanho",
@@ -626,6 +633,9 @@ export const ptBR = {
     nextPage: "Próxima página",
     page: "Página {page}",
     deleted: "Animal excluído.",
+    loadFailed: "Não foi possível carregar os animais.",
+    clearFilters: "Limpar filtros",
+    statusLabel: "Situação",
   },
   animalDetail: {
     weighingDeleted: "Pesagem excluída.",
@@ -673,6 +683,10 @@ export const ptBR = {
     certaintyLowerCONFIRMED: "confirmada",
     certaintyLowerSUSPECTED: "suspeita",
     certaintyLowerNOT_INFORMED: "não informada",
+    title: "Animal",
+    loadFailed: "Não foi possível carregar o animal.",
+    weighingsLoadFailed: "Não foi possível carregar as pesagens.",
+    applicationsLoadFailed: "Não foi possível carregar o manejo sanitário.",
   },
   tradeList: {
     title: "Negociações",
@@ -741,5 +755,16 @@ export const ptBR = {
     currencyMismatch: "Compra e venda em moedas diferentes: a diferença não é calculada.",
     saleOnly: "Só a venda está registrada (sem compra).",
     help: "Registre a compra e a venda deste animal para ver a diferença venda − compra (sem custos).",
+  },
+  unsaved: {
+    title: "Descartar as alterações?",
+    body: "Você tem alterações que ainda não foram salvas. Se sair agora, elas serão perdidas.",
+    discard: "Descartar",
+    stay: "Continuar editando",
+  },
+  notFound: {
+    title: "Página não encontrada",
+    help: "O endereço pode estar errado ou o registro não existe mais.",
+    toHerd: "Ir para o rebanho",
   },
 } as const;

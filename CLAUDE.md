@@ -63,6 +63,15 @@ npm run dev:claim-initial-farm  # cria login para a "Fazenda inicial" (dados ant
   em `web/` acusa texto fixo. Para conferir: abrir o app com `?lang=test`.
 - **Erro de campo na API** sempre com `code` (+ `params`): `fieldError(campo, código, texto)`;
   em `refine`, `{ message, params: { code } }`.
+- **Navegação e telas (auditoria de interface, 2026-10-18 — detalhes em `docs/architecture.md`):**
+  abrir outra tela por dentro do sistema sempre com `useOpen()` ou `<Link state={useOriginState()}>`
+  (a tela aberta sabe de onde veio); "voltar", "cancelar" e "depois de salvar" usam
+  `useOrigin(destinoSeguro)` — nunca `navigate(-1)` direto nem destino fixo. Cabeçalho com
+  `PageHeader` (título + `backFallback`), botões com `buttonClass(...)`, janelas com `ModalFrame`
+  (ou `ConfirmDialog`), falha de carga com `LoadError` (nunca só `console.error`). Formulário
+  usa `useUnsavedChanges(dirty)` e chama `allowLeave()` antes de sair depois de salvar.
+  Filtros, busca e página de lista ficam no endereço (`navigation/listParams.ts`). Todo rótulo
+  ligado ao campo (`htmlFor`/`id`).
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
@@ -103,7 +112,7 @@ Frontend (web/):
   src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
                                 AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
                                 TradeList, TradeCreate (assistente), TradeDetail, TradeEdit (Negociações — G5b),
-                                Settings (Configurações da fazenda)
+                                Settings (Configurações da fazenda), NotFound (endereço desconhecido)
   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
@@ -111,6 +120,11 @@ Frontend (web/):
                                 TradeDealFields + TradePricesEditor (assistente de negociação), AnimalTradesCard,
                                 NewAnimalsEditor (linhas de animais novos na compra em lote — G5c),
                                 CategoryPicker (categoria pelo sexo + castrado)
+  src/navigation/               origin.ts (de onde a tela veio; destino seguro), hooks.ts (useOpen,
+                                useOrigin, useOriginState), useUnsavedChanges.tsx (aviso de
+                                alterações não salvas), listParams.ts (filtros/página no endereço)
+  src/components/ (compartilhados) PageHeader + BackButton, ModalFrame, ConfirmDialog, LoadError,
+                                buttonStyles.ts (buttonClass)
   src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
   src/i18n/                     index.ts (t()), pt-BR.ts (TODOS os textos), errors.ts (erro da
                                 API → frase), RichText (frase com <b>), i18n.test.ts

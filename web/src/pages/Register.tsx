@@ -71,7 +71,7 @@ export function Register() {
   return (
     <AuthLayout>
       <p className="text-sm text-texto-leve mb-2">{t("auth.register.step", { step })}</p>
-      <h1 className="text-2xl font-medium text-texto mb-1">{t("auth.register.title")}</h1>
+      <h1 className="text-2xl font-semibold text-texto mb-1">{t("auth.register.title")}</h1>
 
       {step === 1 ? (
         <form onSubmit={handleContinue} noValidate>

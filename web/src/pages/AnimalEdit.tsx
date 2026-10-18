@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState, useId } from "react";
+import { useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar.js";
 import { getAnimal, updateAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
@@ -12,14 +11,21 @@ import { t } from "../i18n/index.js";
 import { errorMessage, fieldErrorsOf } from "../i18n/errors.js";
 import { monthNames } from "../types/format.js";
 import { sexLabel } from "../types/labels.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin } from "../navigation/hooks.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
 const sexOptions: Sex[] = ["MALE", "FEMALE"];
 
 export function AnimalEdit() {
+  const formId = useId(); // liga cada rótulo ao seu campo (leitor de tela, clique no rótulo)
   const { id } = useParams();
-  const navigate = useNavigate();
+  // Sem origem (link direto), voltar/cancelar/salvar levam à ficha do animal
+  const { goBack } = useOrigin(`/animais/${id}`);
   const showToast = useToast();
   const { account } = useAuth();
   const defaultCastrated = account?.farm.settings.defaultCastrated ?? false;
@@ -38,10 +44,26 @@ export function AnimalEdit() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  // Retrato do formulário logo depois de carregar: diferente dele = alterações não salvas
+  const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  const snapshot = JSON.stringify([sex, category, castrated, breed, birthKnowledge, birthDate, birthMonth, birthYear, notes]);
+  const dirty = initialSnapshot !== null && snapshot !== initialSnapshot;
+  const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
+
+  // O retrato é tirado depois que os campos carregados chegam à tela
+  const [captureSnapshot, setCaptureSnapshot] = useState(false);
+  useEffect(() => {
+    if (!captureSnapshot) return;
+    setInitialSnapshot(snapshot);
+    setCaptureSnapshot(false);
+  }, [captureSnapshot, snapshot]);
 
   // Busca o animal e preenche o formulário
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!id) return;
+    setLoading(true);
+    setLoadError("");
     getAnimal(id)
       .then((animal) => {
         setTag(animal.tag);
@@ -60,10 +82,13 @@ export function AnimalEdit() {
         } else {
           setBirthKnowledge("UNKNOWN");
         }
+        setCaptureSnapshot(true);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadError(errorMessage(err, "animalDetail.loadFailed")))
       .finally(() => setLoading(false));
   }, [id, defaultCastrated]);
+
+  useEffect(load, [load]);
 
   // Corrigir o sexo apaga a categoria se ela deixar de combinar: a pessoa
   // precisa escolher de novo antes de salvar (Espec — Animais, critério 15)
@@ -106,7 +131,8 @@ export function AnimalEdit() {
         notes: notes.trim() || undefined,
       });
       showToast(t("animal.form.saved"));
-      navigate(`/animais/${id}`);
+      allowLeave();
+      goBack();
     } catch (err) {
       setErrors(fieldErrorsOf(err) ?? { geral: errorMessage(err) });
       setSaving(false);
@@ -118,7 +144,19 @@ export function AnimalEdit() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-bege flex">
+        <Sidebar />
+        <main className="flex-1 p-4 pb-24 md:p-8">
+          <PageHeader title={t("animal.form.editTitle")} backFallback={`/animais/${id}`} backLabel={t("animal.form.backToAnimal")} />
+          <LoadError message={loadError} onRetry={load} />
         </main>
       </div>
     );
@@ -127,27 +165,19 @@ export function AnimalEdit() {
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-      <main className="flex-1 p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate(`/animais/${id}`)}
-            title={t("animal.form.backToAnimal")}
-            aria-label={t("animal.form.backToAnimal")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-medium text-texto">{t("animal.form.editTitle")}</h1>
-            <p className="text-texto-suave">{t("animal.form.editSubtitle")}</p>
-          </div>
-        </div>
+      <main className="flex-1 p-4 pb-24 md:p-8">
+        <PageHeader
+          title={t("animal.form.editTitle")}
+          subtitle={t("animal.form.editSubtitle")}
+          backFallback={`/animais/${id}`}
+          backLabel={t("animal.form.backToAnimal")}
+        />
 
         <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
           {/* Brinco (somente leitura) */}
           <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">{t("animal.form.tag")}</label>
-            <input
+            <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">{t("animal.form.tag")}</label>
+            <input id={`${formId}-1`}
               value={tag}
               disabled
               className="w-full border border-borda rounded-lg px-3 py-2 bg-bege text-texto-suave cursor-not-allowed"
@@ -193,11 +223,11 @@ export function AnimalEdit() {
 
           {/* Raça */}
           <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
+            <label htmlFor={`${formId}-2`} className="block font-medium text-texto mb-1">
               {t("animal.form.breed")}{" "}
               <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
-            <input
+            <input id={`${formId}-2`}
               value={breed}
               onChange={(e) => setBreed(e.target.value)}
               placeholder={t("animal.form.breedPlaceholder")}
@@ -273,11 +303,11 @@ export function AnimalEdit() {
 
           {/* Observações */}
           <div className="mb-6">
-            <label className="block font-medium text-texto mb-1">
+            <label htmlFor={`${formId}-3`} className="block font-medium text-texto mb-1">
               {t("animal.form.notes")}{" "}
               <span className="text-texto-leve font-normal">{t("common.optional")}</span>
             </label>
-            <textarea
+            <textarea id={`${formId}-3`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("animal.form.notesPlaceholder")}
@@ -286,26 +316,18 @@ export function AnimalEdit() {
             />
           </div>
 
-          {errors.geral && <p className="text-sm text-alerta mb-4">{errors.geral}</p>}
+          {errors.geral && <p role="alert" className="text-sm text-alerta mb-4">{errors.geral}</p>}
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(`/animais/${id}`)}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-            >
+            <button type="button" onClick={goBack} className={buttonClass("secondary")}>
               {t("common.cancel")}
             </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={saving}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
-            >
+            <button type="button" onClick={handleSubmit} disabled={saving} className={buttonClass("primary")}>
               {saving ? t("common.saving") : t("animal.form.saveChanges")}
             </button>
           </div>
         </div>
+        {unsavedDialog}
       </main>
     </div>
   );

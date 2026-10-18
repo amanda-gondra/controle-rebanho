@@ -1,61 +1,79 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Syringe, Pill, Package, Bell, AlertCircle } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { listApplications, listAlerts } from "../services/sanitary.js";
 import type { Application, ProductType } from "../types/animal.js";
 import { formatDate } from "../types/format.js";
 import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOpen, useOriginState } from "../navigation/hooks.js";
+import { buildParams, readChoice } from "../navigation/listParams.js";
 
 type TypeFilter = ProductType | "ALL";
+const TYPE_VALUES: TypeFilter[] = ["ALL", "VACCINE", "DEWORMER"];
 
 export function Sanitary() {
-  const navigate = useNavigate();
+  const open = useOpen();
+  const originState = useOriginState();
   const [applications, setApplications] = useState<Application[]>([]);
   const [alerts, setAlerts] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
+  const [loadError, setLoadError] = useState("");
+  const [alertsError, setAlertsError] = useState(false);
+  // O filtro de tipo fica no endereço (volta igual depois de abrir uma aplicação)
+  const [params, setParams] = useSearchParams();
+  const typeFilter = readChoice(params, "type", TYPE_VALUES, "ALL");
+  const setTypeFilter = (value: TypeFilter) =>
+    setParams(buildParams({ type: value }, { type: "ALL" }), { replace: true });
 
-  useEffect(() => {
+  const loadApplications = useCallback(() => {
     setLoading(true);
+    setLoadError("");
     listApplications(typeFilter === "ALL" ? undefined : typeFilter)
       .then((data) => setApplications(data))
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadError(errorMessage(err, "sanitary.loadFailed")))
       .finally(() => setLoading(false));
   }, [typeFilter]);
+  useEffect(loadApplications, [loadApplications]);
 
   // os alertas não dependem do filtro de tipo — carrega uma vez
-  useEffect(() => {
+  const loadAlerts = useCallback(() => {
+    setAlertsError(false);
     listAlerts()
       .then((data) => setAlerts(data))
-      .catch((err) => console.error(err));
+      .catch(() => setAlertsError(true));
   }, []);
+  useEffect(loadAlerts, [loadAlerts]);
 
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-medium text-texto">{t("sanitary.title")}</h1>
-            <p className="text-texto-suave">{t("sanitary.subtitle")}</p>
+        <PageHeader
+          title={t("sanitary.title")}
+          subtitle={t("sanitary.subtitle")}
+          actions={
+            <>
+              <button type="button" onClick={() => open("/produtos")} className={buttonClass("secondary")}>
+                <Package size={18} aria-hidden="true" /> {t("sanitary.products")}
+              </button>
+              <button type="button" onClick={() => open("/aplicacoes/nova")} className={buttonClass("primary")}>
+                <Plus size={18} aria-hidden="true" /> {t("sanitary.newApplication")}
+              </button>
+            </>
+          }
+        />
+
+        {alertsError && (
+          <div className="mb-6 max-w-2xl">
+            <LoadError compact message={t("sanitary.alertsLoadFailed")} onRetry={loadAlerts} />
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("/produtos")}
-              className="flex items-center gap-2 bg-card border border-borda-chip text-texto-suave font-medium px-4 py-2.5 rounded-xl cursor-pointer hover:bg-bege"
-            >
-              <Package size={18} /> {t("sanitary.products")}
-            </button>
-            <button
-              onClick={() => navigate("/aplicacoes/nova")}
-              className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
-            >
-              <Plus size={18} /> {t("sanitary.newApplication")}
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Alertas de reaplicação */}
         {alerts.length > 0 && (
@@ -66,10 +84,11 @@ export function Sanitary() {
             </div>
             <div className="flex flex-col gap-2">
               {alerts.map((app) => (
-                <div
+                <Link
                   key={app.id}
-                  onClick={() => navigate(`/aplicacoes/${app.id}`)}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer ${
+                  to={`/aplicacoes/${app.id}`}
+                  state={originState}
+                  className={`flex items-center justify-between px-4 py-3 rounded-lg border ${
                     app.overdue
                       ? "bg-[#FBEEEA] border-[#E7C3B8]"
                       : "bg-bege border-borda-chip"
@@ -101,7 +120,7 @@ export function Sanitary() {
                   >
                     {app.overdue ? t("sanitary.overdue") : t("sanitary.soon")}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -112,6 +131,8 @@ export function Sanitary() {
           {(["ALL", "VACCINE", "DEWORMER"] as const).map((value) => (
             <button
               key={value}
+              type="button"
+              aria-pressed={typeFilter === value}
               onClick={() => setTypeFilter(value)}
               className={`px-3.5 py-1.5 rounded-full text-sm border cursor-pointer ${
                 typeFilter === value
@@ -126,25 +147,34 @@ export function Sanitary() {
 
         {/* Lista de aplicações (histórico por evento) */}
         {loading ? (
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        ) : loadError ? (
+          <div className="max-w-2xl">
+            <LoadError message={loadError} onRetry={loadApplications} />
+          </div>
+        ) : applications.length === 0 && typeFilter !== "ALL" ? (
+          <div className="bg-card border border-borda rounded-xl p-10 text-center max-w-xl">
+            <p className="text-texto-suave mb-3">{t("sanitary.noMatch")}</p>
+            <button type="button" onClick={() => setTypeFilter("ALL")} className={buttonClass("secondary")}>
+              {t("herd.clearFilters")}
+            </button>
+          </div>
         ) : applications.length === 0 ? (
           <div className="bg-card border border-borda rounded-xl p-10 text-center max-w-xl">
             <p className="text-texto font-medium mb-1">{t("sanitary.empty")}</p>
             <p className="text-texto-suave text-sm mb-4">{t("sanitary.emptyHelp")}</p>
-            <button
-              onClick={() => navigate("/aplicacoes/nova")}
-              className="inline-flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer"
-            >
-              <Plus size={18} /> {t("sanitary.newApplication")}
+            <button type="button" onClick={() => open("/aplicacoes/nova")} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {t("sanitary.newApplication")}
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-3 max-w-2xl">
             {applications.map((app) => (
-              <div
+              <Link
                 key={app.id}
-                onClick={() => navigate(`/aplicacoes/${app.id}`)}
-                className="bg-card border border-borda rounded-xl px-5 py-4 flex items-center justify-between cursor-pointer hover:border-verde-nevoa"
+                to={`/aplicacoes/${app.id}`}
+                state={originState}
+                className="bg-card border border-borda rounded-xl px-5 py-4 flex items-center justify-between gap-3 hover:border-verde-nevoa"
               >
                 <div className="flex items-center gap-4">
                   <span
@@ -171,7 +201,7 @@ export function Sanitary() {
                 <span className="text-sm text-texto-suave">
                   {t("common.animalsCount", { count: app._count?.animals ?? 0 })}
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         )}

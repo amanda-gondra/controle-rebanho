@@ -1,28 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 import { Plus, Syringe, Pill } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { listProducts, createProduct } from "../services/sanitary.js";
 import type { Product, ProductType } from "../types/animal.js";
 import { useToast } from "../components/ToastProvider.js";
 import { t } from "../i18n/index.js";
-import { singleErrorMessage } from "../i18n/errors.js";
+import { errorMessage, singleErrorMessage } from "../i18n/errors.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 export function Products() {
+  const formId = useId(); // liga cada rótulo ao seu campo (leitor de tela, clique no rótulo)
   const showToast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // formulário
   const [name, setName] = useState("");
   const [type, setType] = useState<ProductType>("VACCINE");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Nome digitado e ainda não cadastrado
+  const { dialog: unsavedDialog } = useUnsavedChanges(name.trim() !== "" && !saving);
 
   function loadProducts() {
     setLoading(true);
+    setLoadError("");
     listProducts()
       .then((data) => setProducts(data))
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadError(errorMessage(err, "products.loadFailed")))
       .finally(() => setLoading(false));
   }
 
@@ -55,21 +64,21 @@ export function Products() {
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-medium text-texto">{t("products.title")}</h1>
-          <p className="text-texto-suave">
-            {t("products.subtitle")}
-          </p>
-        </div>
+        <PageHeader
+          title={t("products.title")}
+          subtitle={t("products.subtitle")}
+          backFallback="/manejo"
+          backLabel={t("application.back")}
+        />
 
         {/* Formulário de cadastro */}
         <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl mb-8">
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="block font-medium text-texto mb-1">
+              <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">
                 {t("products.name")} <span className="text-alerta">*</span>
               </label>
-              <input
+              <input id={`${formId}-1`}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t("products.namePlaceholder")}
@@ -85,6 +94,7 @@ export function Products() {
                   <button
                     key={value}
                     type="button"
+                    aria-pressed={type === value}
                     onClick={() => setType(value)}
                     className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
                       type === value
@@ -98,21 +108,21 @@ export function Products() {
               </div>
             </div>
 
-            {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+            {error && <p role="alert" className="text-sm text-alerta mb-4">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-60"
-            >
-              <Plus size={18} /> {saving ? t("products.creating") : t("products.create")}
+            <button type="submit" disabled={saving} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {saving ? t("products.creating") : t("products.create")}
             </button>
           </form>
         </div>
 
         {/* Listas de produtos */}
         {loading ? (
-          <p className="text-texto-suave">{t("common.loading")}</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        ) : loadError ? (
+          <div className="max-w-2xl">
+            <LoadError message={loadError} onRetry={loadProducts} />
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
             {/* Vacinas */}
@@ -164,6 +174,7 @@ export function Products() {
             </div>
           </div>
         )}
+        {unsavedDialog}
       </main>
     </div>
   );

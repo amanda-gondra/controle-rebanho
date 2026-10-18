@@ -1,5 +1,6 @@
+import { ModalFrame } from "./ModalFrame.js";
+import { buttonClass } from "./buttonStyles.js";
 import { useState } from "react";
-import { X } from "lucide-react";
 import { deleteAnimal } from "../services/animals.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
@@ -29,51 +30,28 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card rounded-2xl p-6 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">{t("animal.delete.title")}</h2>
+    <ModalFrame title={t("animal.delete.title")} subtitle={t("animal.delete.body", { tag: animalTag })} onClose={onClose} busy={deleting}>
+
+      <form onSubmit={handleDelete}>
+        {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+
+        <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            title={t("common.close")}
-            aria-label={t("common.close")}
-            className="text-texto-leve hover:text-texto cursor-pointer"
+            className={buttonClass("secondary")}
           >
-            <X size={20} />
+            {t("common.cancel")}
+          </button>
+          <button
+            type="submit"
+            disabled={deleting}
+            className={buttonClass("danger")}
+          >
+            {deleting ? t("common.deleting") : t("common.delete")}
           </button>
         </div>
-        <p className="text-sm text-texto-suave mb-5">
-          {t("animal.delete.body", { tag: animalTag })}
-        </p>
-
-        <form onSubmit={handleDelete}>
-          {error && <p className="text-sm text-alerta mb-4">{error}</p>}
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="submit"
-              disabled={deleting}
-              className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-            >
-              {deleting ? t("common.deleting") : t("common.delete")}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </ModalFrame>
   );
 }

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOrigin } from "../navigation/hooks.js";
+import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
+import { Check, Search } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { useAuth } from "../components/AuthProvider.js";
 import { useToast } from "../components/ToastProvider.js";
@@ -47,7 +51,6 @@ const isNewKey = (key: string) => key.startsWith("new-");
 const STEPS: Step[] = [1, 2, 3];
 
 export function TradeCreate() {
-  const navigate = useNavigate();
   const showToast = useToast();
   const [params] = useSearchParams();
   const { account } = useAuth();
@@ -56,6 +59,8 @@ export function TradeCreate() {
   const type: TradeType = params.get("tipo") === "compra" ? "PURCHASE" : "SALE";
   const isSale = type === "SALE";
   const preselected = params.get("animal");
+  // Sem origem (link direto): volta para o animal escolhido ou para a lista
+  const { goBack, replaceWith } = useOrigin(preselected ? `/animais/${preselected}` : "/negociacoes");
   const settings = account?.farm.settings;
   const today = todayInTimeZone(account?.farm.timezone ?? "America/Sao_Paulo");
 
@@ -107,6 +112,18 @@ export function TradeCreate() {
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  // Alterações não salvas: qualquer coisa além do que a tela já abre preenchida
+  const dirty =
+    step > 1 ||
+    selected.size !== (preselected ? 1 : 0) ||
+    newRows.some((row) => row.tag.trim() !== "" || row.group !== "" || row.breed.trim() !== "") ||
+    newRows.length > (type === "PURCHASE" && !preselected ? 1 : 0) ||
+    Object.keys(typed).length > 0 ||
+    deal.counterparty.trim() !== "" ||
+    deal.notes.trim() !== "" ||
+    deal.date !== today;
+  const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
 
   // Todos os animais (uma busca); filtros e busca no navegador
   useEffect(() => {
@@ -276,7 +293,9 @@ export function TradeCreate() {
           : t(isSale ? "trade.savedSale" : "trade.savedPurchase", { count: trade.animalCount });
       const replaced = trade.replacedWeighings ?? 0;
       showToast(replaced > 0 ? `${message} ${t("trade.replacedWeighings", { count: replaced })}` : message);
-      navigate(`/negociacoes/${trade.id}`);
+      allowLeave();
+      // O formulário dá lugar ao detalhe; o "voltar" do detalhe vai para quem abriu o formulário
+      replaceWith(`/negociacoes/${trade.id}`);
     } catch (err) {
       setSaving(false);
       setConfirming(false);
@@ -304,21 +323,11 @@ export function TradeCreate() {
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
       <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            title={t("common.back")}
-            aria-label={t("common.back")}
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-medium text-texto">{t(isSale ? "trade.newSaleTitle" : "trade.newPurchaseTitle")}</h1>
-            <p className="text-texto-suave">{t(isSale ? "trade.newSaleSubtitle" : "trade.newPurchaseSubtitle")}</p>
-          </div>
-        </div>
+        <PageHeader
+          title={t(isSale ? "trade.newSaleTitle" : "trade.newPurchaseTitle")}
+          subtitle={t(isSale ? "trade.newSaleSubtitle" : "trade.newPurchaseSubtitle")}
+          backFallback={preselected ? `/animais/${preselected}` : "/negociacoes"}
+        />
 
         {/* Passos */}
         <ol className="flex flex-wrap gap-2 mb-6 max-w-4xl" aria-label={t("trade.stepsLabel")}>
@@ -532,8 +541,8 @@ export function TradeCreate() {
           <div className="flex flex-wrap justify-between gap-3 mt-6">
             <button
               type="button"
-              onClick={() => (step === 1 ? navigate(-1) : setStep((step - 1) as Step))}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
+              onClick={() => (step === 1 ? goBack() : setStep((step - 1) as Step))}
+              className={buttonClass("secondary")}
             >
               {step === 1 ? t("common.cancel") : t("trade.previous")}
             </button>
@@ -541,7 +550,7 @@ export function TradeCreate() {
               <button
                 type="button"
                 onClick={() => goToStep((step + 1) as Step)}
-                className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
+                className={buttonClass("primary")}
               >
                 {t("trade.next")}
               </button>
@@ -550,7 +559,7 @@ export function TradeCreate() {
                 type="button"
                 onClick={askToSave}
                 disabled={saving}
-                className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer disabled:opacity-60"
+                className={buttonClass("primary")}
               >
                 {t(isSale ? "trade.registerSale" : "trade.registerPurchase")}
               </button>
@@ -587,6 +596,7 @@ export function TradeCreate() {
             )}
           </ConfirmDialog>
         )}
+        {unsavedDialog}
       </main>
     </div>
   );

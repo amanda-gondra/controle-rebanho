@@ -1,6 +1,7 @@
+import { ModalFrame } from "./ModalFrame.js";
+import { buttonClass } from "./buttonStyles.js";
 import { useId, useState } from "react";
 import type { FormEvent } from "react";
-import { X } from "lucide-react";
 import { updateStatus } from "../services/animals.js";
 import type { Animal, DeathCauseCertainty, Status } from "../types/animal.js";
 import { t } from "../i18n/index.js";
@@ -84,171 +85,155 @@ export function StatusModal({ animal, hasSale, onClose, onSaved }: Props) {
         ? t(current === "SOLD" ? "animal.exit.saveSold" : "animal.exit.markSold")
         : t("animal.exit.backToActive");
 
+  const dirty =
+    action !== (current === "ACTIVE" ? null : current) ||
+    exitDate !== (animal.exitDate ? animal.exitDate.slice(0, 10) : today) ||
+    deathCause !== (animal.deathCause ?? "") ||
+    certainty !== (animal.deathCauseCertainty ?? "NOT_INFORMED");
+
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="status-modal-title"
-        className="bg-card rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-1">
-          <h2 id="status-modal-title" className="text-lg font-medium text-texto">
-            {t("animal.statusModal.title")}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            title={t("common.close")}
-            aria-label={t("common.close")}
-            className="text-texto-leve hover:text-texto cursor-pointer"
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <ModalFrame title={t("animal.statusModal.title")} onClose={onClose} dirty={dirty} busy={saving}>
 
-        {hasSale ? (
-          // Com venda registrada, a saída é a da venda (D-06)
-          <>
-            <p className="text-sm text-texto-suave mb-5">{t("animal.exit.hasSale")}</p>
-            <div className="flex justify-end">
+      {hasSale ? (
+        // Com venda registrada, a saída é a da venda (D-06)
+        <>
+          <p className="text-sm text-texto-suave mb-5">{t("animal.exit.hasSale")}</p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
+            >
+              {t("common.close")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <form onSubmit={handleSave} noValidate>
+          <p className="text-sm text-texto-suave mb-4">
+            {t("animal.statusModal.question", { tag: animal.tag })}
+          </p>
+
+          <div role="radiogroup" aria-label={t("animal.statusModal.title")} className="flex flex-col gap-2 mb-5">
+            {actions.map((value) => (
               <button
+                key={value}
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
-              >
-                {t("common.close")}
-              </button>
-            </div>
-          </>
-        ) : (
-          <form onSubmit={handleSave} noValidate>
-            <p className="text-sm text-texto-suave mb-4">
-              {t("animal.statusModal.question", { tag: animal.tag })}
-            </p>
-
-            <div role="radiogroup" aria-label={t("animal.statusModal.title")} className="flex flex-col gap-2 mb-5">
-              {actions.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={action === value}
-                  onClick={() => setAction(value)}
-                  className={`py-2.5 px-3 rounded-lg border font-medium text-left cursor-pointer ${
-                    action === value
-                      ? "bg-verde-claro border-verde text-verde-escuro"
-                      : "bg-card border-borda-chip text-texto-suave"
-                  }`}
-                >
-                  {actionLabel(value, current)}
-                </button>
-              ))}
-            </div>
-
-            {(action === "DEAD" || action === "SOLD") && (
-              <div className="mb-4">
-                <label htmlFor={dateId} className="block font-medium text-texto mb-1">
-                  {t(action === "DEAD" ? "animal.exit.deathDate" : "animal.exit.exitDate")}{" "}
-                  <span className="text-alerta">*</span>
-                </label>
-                <input
-                  id={dateId}
-                  type="date"
-                  value={exitDate}
-                  max={today}
-                  onChange={(e) => setExitDate(e.target.value)}
-                  aria-invalid={!!errors.exitDate}
-                  className={`border rounded-lg px-3 py-2 text-texto ${errors.exitDate ? "border-alerta" : "border-borda"}`}
-                />
-                {errors.exitDate && (
-                  <p role="alert" className="text-sm text-alerta mt-1">
-                    {errors.exitDate}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {action === "DEAD" && (
-              <>
-                <div className="mb-4">
-                  <label htmlFor={causeId} className="block font-medium text-texto mb-1">
-                    {t("animal.exit.cause")}{" "}
-                    <span className="text-texto-leve font-normal">{t("common.optional")}</span>
-                  </label>
-                  <input
-                    id={causeId}
-                    value={deathCause}
-                    maxLength={200}
-                    onChange={(e) => setDeathCause(e.target.value)}
-                    placeholder={t("animal.exit.causePlaceholder")}
-                    className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
-                  />
-                  {errors.deathCause && <p className="text-sm text-alerta mt-1">{errors.deathCause}</p>}
-                </div>
-                <fieldset className="mb-5">
-                  <legend className="block font-medium text-texto mb-1">{t("animal.exit.certainty")}</legend>
-                  <div className="flex flex-wrap gap-2">
-                    {CERTAINTIES.map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        role="radio"
-                        aria-checked={certainty === value}
-                        onClick={() => setCertainty(value)}
-                        className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${
-                          certainty === value
-                            ? "bg-verde-claro border-verde text-verde-escuro"
-                            : "bg-card border-borda-chip text-texto-suave"
-                        }`}
-                      >
-                        {t(`animal.exit.certainty${value}`)}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-texto-leve mt-1">{t("animal.exit.noDiagnosis")}</p>
-                </fieldset>
-              </>
-            )}
-
-            {action === "SOLD" && current === "ACTIVE" && (
-              <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-4">
-                {t("animal.exit.useSaleHint")}
-              </p>
-            )}
-
-            {action === "ACTIVE" && (
-              <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-4">
-                {t("animal.exit.backToActiveHint", {
-                  date: animal.exitDate ? formatDate(animal.exitDate) : t("animal.exit.noDate"),
-                })}
-              </p>
-            )}
-
-            {errors.geral && <p className="text-sm text-alerta mb-4">{errors.geral}</p>}
-
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="submit"
-                disabled={saving || !action}
-                className={`px-4 py-2.5 rounded-xl text-white font-medium cursor-pointer disabled:opacity-60 ${
-                  action === "DEAD" ? "bg-alerta" : "bg-verde"
+                role="radio"
+                aria-checked={action === value}
+                onClick={() => setAction(value)}
+                className={`py-2.5 px-3 rounded-lg border font-medium text-left cursor-pointer ${
+                  action === value
+                    ? "bg-verde-claro border-verde text-verde-escuro"
+                    : "bg-card border-borda-chip text-texto-suave"
                 }`}
               >
-                {saving ? t("common.saving") : action ? confirmLabel : t("common.confirm")}
+                {actionLabel(value, current)}
               </button>
+            ))}
+          </div>
+
+          {(action === "DEAD" || action === "SOLD") && (
+            <div className="mb-4">
+              <label htmlFor={dateId} className="block font-medium text-texto mb-1">
+                {t(action === "DEAD" ? "animal.exit.deathDate" : "animal.exit.exitDate")}{" "}
+                <span className="text-alerta">*</span>
+              </label>
+              <input
+                id={dateId}
+                type="date"
+                value={exitDate}
+                max={today}
+                onChange={(e) => setExitDate(e.target.value)}
+                aria-invalid={!!errors.exitDate}
+                className={`border rounded-lg px-3 py-2 text-texto ${errors.exitDate ? "border-alerta" : "border-borda"}`}
+              />
+              {errors.exitDate && (
+                <p role="alert" className="text-sm text-alerta mt-1">
+                  {errors.exitDate}
+                </p>
+              )}
             </div>
-          </form>
-        )}
-      </div>
-    </div>
+          )}
+
+          {action === "DEAD" && (
+            <>
+              <div className="mb-4">
+                <label htmlFor={causeId} className="block font-medium text-texto mb-1">
+                  {t("animal.exit.cause")}{" "}
+                  <span className="text-texto-leve font-normal">{t("common.optional")}</span>
+                </label>
+                <input
+                  id={causeId}
+                  value={deathCause}
+                  maxLength={200}
+                  onChange={(e) => setDeathCause(e.target.value)}
+                  placeholder={t("animal.exit.causePlaceholder")}
+                  className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
+                />
+                {errors.deathCause && <p className="text-sm text-alerta mt-1">{errors.deathCause}</p>}
+              </div>
+              <fieldset className="mb-5">
+                <legend className="block font-medium text-texto mb-1">{t("animal.exit.certainty")}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {CERTAINTIES.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={certainty === value}
+                      onClick={() => setCertainty(value)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${
+                        certainty === value
+                          ? "bg-verde-claro border-verde text-verde-escuro"
+                          : "bg-card border-borda-chip text-texto-suave"
+                      }`}
+                    >
+                      {t(`animal.exit.certainty${value}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-texto-leve mt-1">{t("animal.exit.noDiagnosis")}</p>
+              </fieldset>
+            </>
+          )}
+
+          {action === "SOLD" && current === "ACTIVE" && (
+            <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-4">
+              {t("animal.exit.useSaleHint")}
+            </p>
+          )}
+
+          {action === "ACTIVE" && (
+            <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-4">
+              {t("animal.exit.backToActiveHint", {
+                date: animal.exitDate ? formatDate(animal.exitDate) : t("animal.exit.noDate"),
+              })}
+            </p>
+          )}
+
+          {errors.geral && <p className="text-sm text-alerta mb-4">{errors.geral}</p>}
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className={buttonClass("secondary")}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !action}
+              className={`px-4 py-2.5 rounded-xl text-white font-medium cursor-pointer disabled:opacity-60 ${
+                action === "DEAD" ? "bg-alerta" : "bg-verde"
+              }`}
+            >
+              {saving ? t("common.saving") : action ? confirmLabel : t("common.confirm")}
+            </button>
+          </div>
+        </form>
+      )}
+    </ModalFrame>
   );
 }
