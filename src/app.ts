@@ -22,6 +22,8 @@ import { sanitaryRoutes } from "./routes/sanitary.routes.js";
 import { financeRoutes } from "./routes/finance.routes.js";
 import { tradeRoutes } from "./routes/trades.routes.js";
 import { farmRoutes } from "./routes/farm.routes.js";
+import { lotRoutes } from "./routes/lots.routes.js";
+import { dashboardRoutes } from "./routes/dashboard.routes.js";
 
 // Monta a aplicação SEM subir o servidor. Assim os testes conseguem criar a
 // API, fazer requisições com app.inject() e fechar, sem abrir porta de rede.
@@ -115,6 +117,8 @@ export async function buildApp(config: AppConfig) {
     await protectedApp.register(financeRoutes);
     await protectedApp.register(tradeRoutes);
     await protectedApp.register(farmRoutes);
+    await protectedApp.register(lotRoutes);
+    await protectedApp.register(dashboardRoutes);
   });
 
   return app;

@@ -87,3 +87,10 @@ export function todayInTimeZone(timeZone: string): string {
     day: "2-digit",
   }).format(new Date()); // en-CA só para sair no formato AAAA-MM-DD
 }
+
+// Soma dias a uma data de calendário ("2026-09-10" + 30 → "2026-10-10")
+export function addDaysTo(calendarDate: string, days: number): string {
+  const date = new Date(`${calendarDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

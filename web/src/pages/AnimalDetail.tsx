@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Plus, Pencil, RefreshCw, Trash2, Syringe, Pill } from "lucide-react";
+import { Plus, Pencil, RefreshCw, Trash2, Tag } from "lucide-react";
+import { ProductTypeIcon } from "../components/ProductTypeIcon.js";
 import {
   LineChart,
   Line,
@@ -46,6 +47,10 @@ import { LoadError } from "../components/LoadError.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { buttonClass } from "../components/buttonStyles.js";
 import { useOpen, useOrigin, useOriginState } from "../navigation/hooks.js";
+import { TagChangeModal } from "../components/TagChangeModal.js";
+import { AnimalHistoryCard } from "../components/AnimalHistoryCard.js";
+import { LotMoveModal } from "../components/LotMoveModal.js";
+import { originText } from "../types/history.js";
 
 export function AnimalDetail() {
   const { id } = useParams(); // pega o :id do endereço
@@ -74,9 +79,14 @@ export function AnimalDetail() {
   const [editingWeighing, setEditingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [showLotModal, setShowLotModal] = useState(false);
+  // Muda a cada recarga da ficha: a linha do tempo recarrega junto
+  const [historyKey, setHistoryKey] = useState(0);
   // Busca (ou rebusca) todos os dados do animal.
   const loadData = useCallback(() => {
     if (!id) return;
+    setHistoryKey((key) => key + 1);
     getAnimal(id)
       .then((data) => {
         setAnimal(data);
@@ -220,7 +230,7 @@ export function AnimalDetail() {
         {/* Cabeçalho */}
         <PageHeader
           title={
-            <span className="flex items-center gap-3">
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="whitespace-nowrap">{animal.tag}</span>
               <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}>
                 {statusLabel[animal.status]}
@@ -248,6 +258,13 @@ export function AnimalDetail() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowTagModal(true)}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <Tag size={16} aria-hidden="true" /> {t("tagChange.action")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowStatusModal(true)}
                 title={t("animalDetail.statusLabel")}
                 className={buttonClass("secondary", "text-sm px-3 py-2")}
@@ -265,7 +282,39 @@ export function AnimalDetail() {
             </>
           }
         >
+          {animal.previousTag && (
+            <p className="text-sm text-texto-suave">{t("tagChange.before", { tag: animal.previousTag })}</p>
+          )}
           <p className="text-sm text-texto-leve">{birthText}</p>
+          <p className="text-sm text-texto-leve">
+            {t("animalDetail.originLine", { origin: originText(animal.origin, animal.entryDate) })}
+          </p>
+          {/* Lote atual (D-49) */}
+          <p className="text-sm text-texto-leve">
+            {animal.lot ? (
+              <>
+                {t("animalDetail.lotLabel")}{" "}
+                <Link to={`/lotes/${animal.lot.id}`} state={originState} className="text-verde font-medium hover:underline">
+                  {animal.lot.name}
+                </Link>
+                {animal.lot.since && ` · ${t("lots.since", { date: formatDate(animal.lot.since) })}`}
+              </>
+            ) : (
+              t("animalDetail.noLot")
+            )}
+            {animal.status === "ACTIVE" && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setShowLotModal(true)}
+                  className="text-verde font-medium underline cursor-pointer"
+                >
+                  {t(animal.lot ? "animalDetail.changeLot" : "animalDetail.putInLot")}
+                </button>
+              </>
+            )}
+          </p>
           {/* Faixa de saída (D-27): quando e por quê o animal saiu */}
           {animal.status !== "ACTIVE" && (
             <p role="status" className="mt-2 inline-block text-sm rounded-lg bg-card border border-borda text-texto px-3 py-1.5">
@@ -420,7 +469,18 @@ export function AnimalDetail() {
 
         {/* Manejo sanitário (vacinas e vermífugos deste animal) */}
         <div className="bg-card border border-borda rounded-xl p-6">
-          <p className="font-medium text-texto mb-4">{t("animalDetail.sanitary")}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <p className="font-medium text-texto">{t("animalDetail.sanitary")}</p>
+            <button
+              type="button"
+              onClick={() => open(`/aplicacoes/nova?animal=${animal.id}`)}
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.applicationDisabled") : undefined}
+              className={buttonClass("secondary", "text-sm px-3 py-2")}
+            >
+              <Plus size={16} aria-hidden="true" /> {t("application.create")}
+            </button>
+          </div>
           {applicationsError ? (
             <LoadError compact message={t("animalDetail.applicationsLoadFailed")} onRetry={loadData} />
           ) : applications.length === 0 ? (
@@ -430,7 +490,6 @@ export function AnimalDetail() {
           ) : (
             <div className="flex flex-col divide-y divide-borda">
               {applications.map((app) => {
-                const isVaccine = app.product.type === "VACCINE";
                 return (
                   <Link
                     key={app.id}
@@ -438,16 +497,8 @@ export function AnimalDetail() {
                     state={originState}
                     className="flex items-center gap-3 py-3 hover:bg-bege -mx-2 px-2 rounded-lg"
                   >
-                    <span
-                      className={`flex items-center justify-center w-9 h-9 rounded-full ${
-                        isVaccine
-                          ? "bg-verde-claro text-verde"
-                          : "bg-bege text-couro"
-                      }`}
-                    >
-                      {isVaccine ? <Syringe size={16} /> : <Pill size={16} />}
-                    </span>
-                    <div className="flex-1">
+                    <ProductTypeIcon type={app.product.type} />
+                    <div className="flex-1 min-w-0">
                       <p className="font-medium text-texto text-sm">
                         {app.product.name}
                       </p>
@@ -459,6 +510,12 @@ export function AnimalDetail() {
                         {app.notes ? ` · ${app.notes}` : ""}
                       </p>
                     </div>
+                    {/* Selo de carência (D-12): só quando ainda vale hoje */}
+                    {app.inWithdrawal && app.withdrawalEndDate && (
+                      <span className="text-xs rounded px-2 py-1 bg-[#FAEEDA] text-[#854F0B] shrink-0">
+                        {t("product.withdrawal.inWithdrawal", { date: formatDate(app.withdrawalEndDate) })}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -468,6 +525,36 @@ export function AnimalDetail() {
 
         {/* Compra e venda (G5) — resultado sem custos */}
         <AnimalTradesCard animal={animal} result={result} />
+
+        {/* Linha do tempo (D-28): o que mudou, quando e quem */}
+        <AnimalHistoryCard animal={animal} refreshKey={historyKey} />
+
+        {showLotModal && (
+          <LotMoveModal
+            animalIds={[animal.id]}
+            currentLotId={animal.lot?.id ?? null}
+            title={t(animal.lot ? "animalDetail.changeLot" : "animalDetail.putInLot")}
+            onClose={() => setShowLotModal(false)}
+            onMoved={() => {
+              setShowLotModal(false);
+              loadData();
+              showToast(t("animalDetail.lotUpdated"));
+            }}
+          />
+        )}
+
+        {showTagModal && (
+          <TagChangeModal
+            animalId={animal.id}
+            currentTag={animal.tag}
+            onClose={() => setShowTagModal(false)}
+            onSaved={(newTag) => {
+              setShowTagModal(false);
+              loadData();
+              showToast(t("tagChange.saved", { tag: newTag }));
+            }}
+          />
+        )}
 
         {/* Modal de registrar pesagem */}
         {showWeighingModal && (

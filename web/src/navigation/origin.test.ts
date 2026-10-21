@@ -53,6 +53,10 @@ describe("sectionOf — item do menu marcado", () => {
     ["/negociacoes", "trades"],
     ["/negociacoes/abc/editar", "trades"],
     ["/configuracoes", "settings"],
+    ["/pesagens", "herd"],
+    ["/painel", "dashboard"],
+    ["/lotes", "lots"],
+    ["/lotes/abc", "lots"],
   ] as const)("%s → %s", (path, section) => {
     expect(sectionOf(path)).toBe(section);
   });

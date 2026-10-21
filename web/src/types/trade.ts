@@ -39,6 +39,7 @@ export type Trade = {
   currency: string;
   counterparty: string | null;
   notes: string | null;
+  withdrawalWarningAccepted?: boolean; // venda registrada com aviso de carência aceito (D-12)
   animalCount: number;
   total: string | null; // null quando falta peso de carcaça
   knownTotal: string;

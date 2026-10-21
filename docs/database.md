@@ -41,7 +41,7 @@ também recusa apagar animal com compra ou venda.
 
 ## Migrations
 
-Onze migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
+Catorze migrations em `prisma/migrations/`. A segunda `init` recriou as tabelas (F-29) — fica
 como está: **não reescrever migrations já aplicadas**.
 
 **G1 (`20261012180000_g1_farm_user_session`)** — gerada pelo Prisma e ajustada à mão para não
@@ -83,6 +83,31 @@ pesagem existente é alterada); (5) confere que o número de registros e a soma 
 batem antes de seguir; (6) apaga as tabelas antigas e `Animal.estimatedPricePerKg` (D-09);
 (7) `CHECK`s. Testada com dados de duas fazendas (valores com centavos, pesagem manual no dia da
 compra) e com um preço zero (parou sem alterar nada).
+
+**Histórico (`20261018120000_core_history`)** — só acrescenta: (1) **para sem mudar nada** se
+houver brincos que só diferem por maiúscula na mesma fazenda e diz quais; (2) `Animal.origin`,
+`entryDate`, `createdById` (+ `CHECK` entrada entre nascimento e saída); animais com compra
+registrada ficam "comprado" com a data da compra; (3) índice único `Animal_farmId_lower_tag_key`;
+(4) `createdById` em pesagem e aplicação; (5) tabelas `AnimalEvent` (linha do tempo) e `AuditLog`
+(trilha; gatilho `AuditLog_no_update` recusa alteração).
+
+**Sanitário (`20261018130000_sanitary_complete`)** — (1) **para sem mudar nada** se houver produtos
+com o mesmo nome sem diferenciar maiúsculas; (2) tipos de produto novos, `DoseUnit`; (3) produto:
+carência, para que serve, fabricante, observações, arquivado; índice `Product_farmId_lower_name_key`;
+(4) aplicação: dose, partida, carência copiada + fim (`CHECK` fim = data + dias), dispensa do
+lembrete, reaplicação a partir de outra, `idempotencyKey` único por fazenda; (5)
+`Trade.withdrawalWarningAccepted`.
+
+**Lotes (`20261018140000_lots`)** — `Lot` e `LotMembership` com índice único parcial
+`LotMembership_one_open_per_animal_key` (um período aberto por animal), `CHECK` fim ≥ início e
+gatilho `LotMembership_same_farm`.
+
+> ⚠️ **Guardas fora do schema.** Os índices por expressão (`lower(...)`), o índice parcial e os
+> gatilhos acima **não aparecem no `schema.prisma`** (o Prisma 6 não os descreve). Se um
+> `prisma migrate dev` futuro propuser `DROP INDEX`/`DROP TRIGGER` de algum deles, **apague essas
+> linhas da migration gerada** antes de aplicar. O teste `tests/integration/database-guards.test.ts`
+> falha se algum deles sumir. O passo `migrate diff --exit-code` do CI vai mostrar se o Prisma os
+> considera divergência — conferir no primeiro PR depois destas migrations.
 
 Procedimento:
 

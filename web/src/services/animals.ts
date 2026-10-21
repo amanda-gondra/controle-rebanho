@@ -8,21 +8,43 @@ import type {
   BirthPrecision,
   Weighing,
   WeightGain,
+  AnimalOrigin,
+  AnimalHistory,
+  DeleteImpact,
+  TagChangeReason,
+  AnimalPage,
 } from "../types/animal.js";
 
-export function listAnimals(filters?: {
+// Lista do rebanho, paginada e filtrada NO SERVIDOR (F-16). `q` busca por
+// brinco (atual ou antigo), raça e nome da categoria; `tag` é o brinco exato.
+export type AnimalFilters = {
+  q?: string;
+  tag?: string;
   status?: Status;
   category?: Category;
+  sex?: Sex;
+  lotId?: string; // id do lote ou "none" (sem lote)
   sortBy?: "tag" | "createdAt";
   order?: "asc" | "desc";
-}): Promise<Animal[]> {
+  page?: number;
+  pageSize?: number;
+};
+
+export function listAnimals(filters: AnimalFilters = {}): Promise<AnimalPage> {
   const params = new URLSearchParams();
-  if (filters?.status) params.set("status", filters.status);
-  if (filters?.category) params.set("category", filters.category);
-  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
-  if (filters?.order) params.set("order", filters.order);
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
   const query = params.toString();
-  return request<Animal[]>(`/animals${query ? `?${query}` : ""}`);
+  return request<AnimalPage>(`/animals${query ? `?${query}` : ""}`);
+}
+
+// Para as telas de SELEÇÃO (aplicação, negociação, lote): todos os animais do
+// filtro de uma vez (até o limite técnico da API)
+export const MAX_PICKER_ANIMALS = 5000;
+export async function listAllAnimals(filters: Omit<AnimalFilters, "page" | "pageSize"> = {}): Promise<Animal[]> {
+  const page = await listAnimals({ ...filters, page: 1, pageSize: MAX_PICKER_ANIMALS });
+  return page.items;
 }
 
 export function getAnimal(id: string): Promise<Animal> {
@@ -37,6 +59,8 @@ export type CreateAnimalInput = {
   breed?: string;
   birthDate?: string;
   birthPrecision: BirthPrecision;
+  origin?: Exclude<AnimalOrigin, "PURCHASED">; // "comprado" só pela compra (D-52)
+  entryDate?: string;
   notes?: string;
 };
 
@@ -93,6 +117,8 @@ export type UpdateAnimalInput = {
   breed?: string;
   birthDate?: string;
   birthPrecision?: BirthPrecision;
+  origin?: Exclude<AnimalOrigin, "PURCHASED">;
+  entryDate?: string | null;
   notes?: string;
 };
 
@@ -126,4 +152,25 @@ export function deleteWeighing(
   return request<void>(`/animals/${animalId}/weighings/${weighingId}`, {
     method: "DELETE",
   });
+}
+
+// Troca de brinco (D-19): o histórico continua no mesmo animal
+export function changeTag(
+  animalId: string,
+  data: { newTag: string; reason: TagChangeReason; date: string },
+): Promise<Animal> {
+  return request<Animal>(`/animals/${animalId}/tag-changes`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// Linha do tempo (D-28), mais recente primeiro
+export function getAnimalHistory(animalId: string, page = 1, pageSize = 20): Promise<AnimalHistory> {
+  return request<AnimalHistory>(`/animals/${animalId}/history?page=${page}&pageSize=${pageSize}`);
+}
+
+// O que some junto ao excluir (F-ANI-07)
+export function getDeleteImpact(animalId: string): Promise<DeleteImpact> {
+  return request<DeleteImpact>(`/animals/${animalId}/delete-impact`);
 }

@@ -396,7 +396,7 @@ describe("compra em lote que cadastra os animais (D-36, RN-NEG-015)", () => {
     const mine = await prisma.animal.findMany({ where: { tag: "VIZ-1" }, select: { farmId: true } });
     expect(new Set(mine.map((a) => a.farmId)).size).toBe(2);
     const list = await other.inject({ url: "/animals" });
-    expect(list.json().filter((a: { tag: string }) => a.tag === "VIZ-1")).toHaveLength(1);
+    expect(list.json().items.filter((a: { tag: string }) => a.tag === "VIZ-1")).toHaveLength(1);
   });
 
   it("desfazer a compra NÃO apaga os animais criados por ela (D-10)", async () => {
@@ -684,7 +684,7 @@ describe("listar, último preço e resultado", () => {
   it("lista de animais diz quem já tem compra ou venda", async () => {
     const animal = await createAnimal(t.client);
     await buyAnimal(t.client, animal.id, "2026-01-01");
-    const [row] = (await t.client.inject({ url: "/animals" })).json();
+    const [row] = (await t.client.inject({ url: "/animals" })).json().items;
     expect(row).toMatchObject({ hasPurchase: true, hasSale: false });
   });
 });

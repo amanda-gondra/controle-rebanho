@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Plus,
   Search,
@@ -10,9 +10,15 @@ import {
   Tag,
   Mars,
   Venus,
+  Scale,
+  Download,
 } from "lucide-react";
-import { listAnimals } from "../services/animals.js";
-import type { Animal, Status, Category } from "../types/animal.js";
+import { listAllAnimals, listAnimals, MAX_PICKER_ANIMALS } from "../services/animals.js";
+import { downloadCsv, toCsv } from "../types/csv.js";
+import { originText } from "../types/history.js";
+import { listLots } from "../services/lots.js";
+import type { Animal, AnimalPage, Status, Category } from "../types/animal.js";
+import type { Lot } from "../types/lot.js";
 import {
   sexLabel,
   statusLabel,
@@ -20,7 +26,7 @@ import {
   statusDotStyle,
   sexIconStyle,
 } from "../types/labels.js";
-import { formatAge, formatDate, formatNumber } from "../types/format.js";
+import { formatAge, formatDate, formatMonthYear, formatNumber } from "../types/format.js";
 import { Sidebar } from "../components/Sidebar.js";
 import { AnimalActionsMenu } from "../components/AnimalActionsMenu.js";
 import { DeleteModal } from "../components/DeleteModal.js";
@@ -44,19 +50,28 @@ const PAGE_SIZE = 20;
 const STATUS_TABS: StatusFilter[] = ["ALL", "ACTIVE", "SOLD", "DEAD"];
 const CATEGORY_VALUES: CategoryFilter[] = ["ALL", ...CATEGORY_FILTER_ORDER];
 const SORT_VALUES: SortValue[] = ["createdAt-desc", "createdAt-asc", "tag-asc", "tag-desc"];
-const DEFAULTS = { q: "", status: "ALL", category: "ALL", sort: "createdAt-desc", page: 1 };
+const DEFAULTS = { q: "", status: "ALL", category: "ALL", lot: "", sort: "createdAt-desc", page: 1 };
+
+// Achou pelo brinco antigo? (a tela mostra qual — D-19)
+function matchedOldTag(animal: Animal, search: string) {
+  const wanted = search.trim().toLocaleLowerCase();
+  if (!wanted || animal.tag.toLocaleLowerCase().includes(wanted)) return null;
+  return animal.previousTags?.find((tag) => tag.toLocaleLowerCase().includes(wanted)) ?? null;
+}
 
 export function AnimalList() {
   const open = useOpen();
   const originState = useOriginState();
   const showToast = useToast();
 
-  // A lista completa é buscada uma vez; filtro, busca, ordenação e paginação
-  // acontecem no frontend (rebanho é pequeno → instantâneo e sem recarregar).
+  // Lista paginada, filtrada e buscada NO SERVIDOR (F-16): 20 por página,
+  // contadores do rebanho inteiro, busca também pelo brinco antigo (D-19)
   const { labelOf, filterLabelOf } = useCategoryLabels();
-  const [allAnimals, setAllAnimals] = useState<Animal[]>([]);
+  const [data, setData] = useState<AnimalPage | null>(null);
+  const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   // Busca, filtros, ordenação e página ficam no ENDEREÇO: abrir um animal e
   // voltar devolve a lista como estava (navigation/listParams.ts)
@@ -64,76 +79,142 @@ export function AnimalList() {
   const search = readText(params, "q");
   const status = readChoice(params, "status", STATUS_TABS, "ALL");
   const category = readChoice(params, "category", CATEGORY_VALUES, "ALL");
+  const lot = readText(params, "lot");
   const sort = readChoice(params, "sort", SORT_VALUES, "createdAt-desc");
   const page = readPage(params);
   const [showFilters, setShowFilters] = useState(true);
   const [deleting, setDeleting] = useState<Animal | null>(null);
+  // O campo de busca responde na hora; a busca no servidor espera a pessoa parar de digitar
+  const [searchInput, setSearchInput] = useState(search);
 
   // Mudar um filtro volta para a 1ª página; `replace` para não encher o
   // histórico a cada letra digitada
   const update = useCallback(
     (changes: Partial<typeof DEFAULTS>) => {
-      const next = { q: search, status, category, sort, page: 1, ...changes };
+      const next = { q: search, status, category, lot, sort, page: 1, ...changes };
       setParams(buildParams(next, DEFAULTS), { replace: true });
     },
-    [search, status, category, sort, setParams],
+    [search, status, category, lot, sort, setParams],
   );
   const setPage = (value: number) => update({ page: value });
-  const filtersActive = search !== "" || status !== "ALL" || category !== "ALL";
+  const filtersActive = search !== "" || status !== "ALL" || category !== "ALL" || lot !== "";
 
-  const loadAnimals = useCallback(() => {
-    setLoading(true);
-    setLoadError("");
-    listAnimals()
-      .then((data) => setAllAnimals(data))
-      .catch((err) => setLoadError(errorMessage(err, "herd.loadFailed")))
-      .finally(() => setLoading(false));
+  useEffect(() => setSearchInput(search), [search]);
+  useEffect(() => {
+    if (searchInput === search) return;
+    const timer = setTimeout(() => update({ q: searchInput }), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, search, update]);
+
+  useEffect(() => {
+    listLots()
+      .then(setLots)
+      .catch(() => setLots([]));
   }, []);
 
-  useEffect(loadAnimals, [loadAnimals]);
-
-  // Contadores do topo e das abas — sempre sobre a lista inteira.
-  const counts = useMemo(
-    () => ({
-      ALL: allAnimals.length,
-      ACTIVE: allAnimals.filter((a) => a.status === "ACTIVE").length,
-      SOLD: allAnimals.filter((a) => a.status === "SOLD").length,
-      DEAD: allAnimals.filter((a) => a.status === "DEAD").length,
-    }),
-    [allAnimals],
-  );
-
-  // Recorte visível: filtros + busca + ordenação.
-  const filtered = useMemo(() => {
-    let list = allAnimals;
-
-    if (status !== "ALL") list = list.filter((a) => a.status === status);
-    if (category !== "ALL") list = list.filter((a) => a.category === category);
-
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (a) =>
-          a.tag.toLowerCase().includes(q) ||
-          labelOf(a.category, a.sex).toLowerCase().includes(q) ||
-          (a.breed ?? "").toLowerCase().includes(q),
-      );
-    }
-
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
     const [sortBy, order] = sort.split("-") as ["tag" | "createdAt", "asc" | "desc"];
-    list = [...list].sort((a, b) => {
-      const av = sortBy === "tag" ? a.tag : a.createdAt;
-      const bv = sortBy === "tag" ? b.tag : b.createdAt;
-      return order === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-    });
+    listAnimals({
+      q: search || undefined,
+      status: status === "ALL" ? undefined : status,
+      category: category === "ALL" ? undefined : category,
+      lotId: lot || undefined,
+      sortBy,
+      order,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then((result) => !cancelled && setData(result))
+      .catch((err) => !cancelled && setLoadError(errorMessage(err, "herd.loadFailed")))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [search, status, category, lot, sort, page, attempt]);
 
-    return list;
-  }, [allAnimals, status, category, search, sort, labelOf]);
+  const reload = () => setAttempt((n) => n + 1);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Baixar a lista (D-46, parte "planilha"): os animais do filtro atual, todas
+  // as páginas, com os nomes da fazenda. Vem do servidor (só a fazenda da sessão).
+  const [exporting, setExporting] = useState(false);
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const [sortBy, order] = sort.split("-") as ["tag" | "createdAt", "asc" | "desc"];
+      const animals = await listAllAnimals({
+        q: search || undefined,
+        status: status === "ALL" ? undefined : status,
+        category: category === "ALL" ? undefined : category,
+        lotId: lot || undefined,
+        sortBy,
+        order,
+      });
+      const kg = (value: number | null | undefined) => (value == null ? "" : formatNumber(value, { useGrouping: false }));
+      const day = (value: string | null | undefined) => (value ? formatDate(value) : "");
+      const birth = (animal: Animal) =>
+        !animal.birthDate || animal.birthPrecision === "UNKNOWN"
+          ? ""
+          : animal.birthPrecision === "MONTH_YEAR"
+            ? formatMonthYear(animal.birthDate)
+            : formatDate(animal.birthDate);
+      const csv = toCsv(
+        [
+          t("herd.csv.tag"),
+          t("herd.csv.sex"),
+          t("herd.csv.category"),
+          t("herd.csv.castrated"),
+          t("herd.csv.breed"),
+          t("herd.csv.birth"),
+          t("herd.csv.status"),
+          t("herd.csv.exitDate"),
+          t("herd.csv.lot"),
+          t("herd.csv.origin"),
+          t("herd.csv.entryDate"),
+          t("herd.csv.lastWeight"),
+          t("herd.csv.lastWeighing"),
+        ],
+        animals.map((animal) => [
+          animal.tag,
+          sexLabel[animal.sex],
+          labelOf(animal.category, animal.sex),
+          animal.castrated === null ? "" : t(animal.castrated ? "herd.csv.yes" : "herd.csv.no"),
+          animal.breed,
+          birth(animal),
+          statusLabel[animal.status],
+          day(animal.exitDate),
+          animal.lot?.name ?? "",
+          originText(animal.origin),
+          day(animal.entryDate),
+          kg(animal.currentWeightKg),
+          day(animal.lastWeighingDate),
+        ]),
+      );
+      downloadCsv(t("herd.csv.fileName", { date: new Date().toISOString().slice(0, 10) }), csv);
+      showToast(
+        animals.length >= MAX_PICKER_ANIMALS
+          ? t("herd.csv.truncated", { count: animals.length })
+          : t("herd.csv.done", { count: animals.length }),
+      );
+    } catch (err) {
+      showToast(errorMessage(err, "herd.csv.failed"));
+    } finally {
+      setExporting(false);
+    }
+  }
+  const counts = data?.counts ?? { ALL: 0, ACTIVE: 0, SOLD: 0, DEAD: 0 };
+  const total = data?.total ?? 0;
+  const pageItems = data?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * PAGE_SIZE;
-  const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+  // Endereço com página que não existe mais: vai para a última
+  useEffect(() => {
+    if (data && data.items.length === 0 && data.total > 0 && page > totalPages) setPage(totalPages);
+  }, [data, page, totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-bege flex">
@@ -144,9 +225,22 @@ export function AnimalList() {
         <PageHeader
           title={t("herd.title")}
           actions={
-            <button type="button" onClick={() => open("/animais/novo")} className={buttonClass("primary")}>
-              <Plus size={18} aria-hidden="true" /> {t("herd.addAnimal")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={exportCsv}
+                disabled={exporting || total === 0}
+                className={buttonClass("secondary")}
+              >
+                <Download size={16} aria-hidden="true" /> {exporting ? t("herd.csv.exporting") : t("herd.csv.action")}
+              </button>
+              <button type="button" onClick={() => open("/pesagens")} className={buttonClass("secondary")}>
+                <Scale size={16} aria-hidden="true" /> {t("weighingSession.action")}
+              </button>
+              <button type="button" onClick={() => open("/animais/novo")} className={buttonClass("primary")}>
+                <Plus size={18} aria-hidden="true" /> {t("herd.addAnimal")}
+              </button>
+            </>
           }
         >
             <div className="flex items-center gap-4 mt-1.5 text-sm text-texto-suave flex-wrap">
@@ -177,8 +271,8 @@ export function AnimalList() {
               className="absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-leve"
             />
             <input
-              value={search}
-              onChange={(e) => update({ q: e.target.value })}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder={t("herd.searchPlaceholder")}
               aria-label={t("herd.searchPlaceholder")}
               className="w-full bg-card border border-borda rounded-xl pl-11 pr-4 py-2.5 text-texto placeholder:text-texto-leve"
@@ -247,6 +341,25 @@ export function AnimalList() {
                 </select>
               </label>
 
+              {lots.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-texto-suave">
+                  {t("herd.lot")}
+                  <select
+                    value={lot}
+                    onChange={(e) => update({ lot: e.target.value })}
+                    className="bg-card border border-borda rounded-lg px-3 py-1.5 text-sm text-texto cursor-pointer"
+                  >
+                    <option value="">{t("herd.allLots")}</option>
+                    <option value="none">{t("herd.noLot")}</option>
+                    {lots.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <label className="flex items-center gap-2 text-sm text-texto-suave">
                 {t("herd.sortBy")}
                 <select
@@ -265,11 +378,11 @@ export function AnimalList() {
         )}
 
         {/* Conteúdo */}
-        {loading ? (
+        {loading && !data ? (
           <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
         ) : loadError ? (
-          <LoadError message={loadError} onRetry={loadAnimals} />
-        ) : allAnimals.length === 0 ? (
+          <LoadError message={loadError} onRetry={reload} />
+        ) : counts.ALL === 0 ? (
           <div className="bg-card border border-borda rounded-xl p-12 text-center max-w-xl mx-auto mt-4">
             <div className="w-16 h-16 rounded-full bg-verde-claro flex items-center justify-center mx-auto mb-4">
               <img src="/logo.png" alt="" className="w-9 h-9" />
@@ -284,7 +397,7 @@ export function AnimalList() {
               <Plus size={18} aria-hidden="true" /> {t("herd.addFirst")}
             </button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : total === 0 ? (
           <div className="text-center text-texto-suave mt-8">
             <p className="mb-3">{t("herd.noMatch")}</p>
             {filtersActive && (
@@ -298,7 +411,7 @@ export function AnimalList() {
             )}
           </div>
         ) : (
-          <div className="bg-card border border-borda rounded-2xl overflow-hidden">
+          <div className={`bg-card border border-borda rounded-2xl overflow-hidden ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
             {/* Celular: um cartão por animal (a tabela larga não cabe) */}
             <ul className="md:hidden divide-y divide-borda">
               {pageItems.map((animal) => (
@@ -313,6 +426,9 @@ export function AnimalList() {
                     </span>
                     <span className="min-w-0">
                       <span className="block font-medium text-texto">{animal.tag}</span>
+                      {matchedOldTag(animal, search) && (
+                        <span className="block text-xs text-texto-suave">{t("herd.foundByOldTag", { tag: matchedOldTag(animal, search)! })}</span>
+                      )}
                       <span className="block text-xs text-texto-suave truncate">
                         {[labelOf(animal.category, animal.sex), sexLabel[animal.sex], animal.breed]
                           .filter(Boolean)
@@ -322,6 +438,7 @@ export function AnimalList() {
                         {animal.currentWeightKg != null
                           ? t("herd.weightKg", { value: formatNumber(animal.currentWeightKg) })
                           : t("herd.noWeighing")}
+                        {animal.lot ? ` · ${animal.lot.name}` : ""}
                       </span>
                     </span>
                   </Link>
@@ -381,6 +498,9 @@ export function AnimalList() {
                             {animal.tag}
                           </Link>
                         </div>
+                        {matchedOldTag(animal, search) && (
+                          <p className="text-xs text-texto-suave mt-1">{t("herd.foundByOldTag", { tag: matchedOldTag(animal, search)! })}</p>
+                        )}
                       </td>
 
                       {/* Animal: categoria + faixa de idade */}
@@ -390,6 +510,7 @@ export function AnimalList() {
                         </p>
                         <p className="text-xs text-texto-leve">
                           {formatAge(animal.birthDate, animal.birthPrecision)}
+                          {animal.lot ? ` · ${animal.lot.name}` : ""}
                         </p>
                       </td>
 
@@ -470,8 +591,8 @@ export function AnimalList() {
               <span>
                 {t("herd.showing", {
                   from: start + 1,
-                  to: Math.min(start + PAGE_SIZE, filtered.length),
-                  count: filtered.length,
+                  to: Math.min(start + PAGE_SIZE, total),
+                  count: total,
                 })}
               </span>
               <div className="flex items-center gap-1.5">
@@ -528,7 +649,7 @@ export function AnimalList() {
             onClose={() => setDeleting(null)}
             onDeleted={() => {
               setDeleting(null);
-              loadAnimals();
+              reload();
               showToast(t("herd.deleted"));
             }}
           />

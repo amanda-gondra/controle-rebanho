@@ -24,6 +24,16 @@ const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> =
   },
 };
 
+// Índices criados à mão nas migrações (sem diferenciar maiúsculas): o Prisma
+// só conhece o nome deles
+const DUPLICATE_BY_INDEX: Record<string, { code: ErrorCode; message: string }> = {
+  Animal_farmId_lower_tag_key: DUPLICATE_MESSAGES["Animal.farmId,tag"],
+  Product_farmId_lower_name_key: {
+    code: ErrorCode.DUPLICATE_PRODUCT_NAME,
+    message: "Já existe um produto com esse nome.",
+  },
+};
+
 // O Prisma informa os campos da unicidade violada em lugares diferentes,
 // conforme o motor usado. Esta função lê os dois formatos conhecidos.
 function uniqueFields(error: Prisma.PrismaClientKnownRequestError): string[] {
@@ -60,7 +70,11 @@ function prismaErrorResponse(
     case "P2002": {
       const model = String((error.meta as { modelName?: string })?.modelName ?? "");
       const key = `${model}.${uniqueFields(error).join(",")}`;
-      const known = DUPLICATE_MESSAGES[key];
+      // Índice criado na migração (D-29: brinco sem diferenciar maiúsculas):
+      // o Prisma não conhece os campos dele, só o nome
+      const known =
+        DUPLICATE_MESSAGES[key] ??
+        Object.entries(DUPLICATE_BY_INDEX).find(([index]) => JSON.stringify(error.meta ?? {}).includes(index))?.[1];
       return {
         status: 409,
         body: known ?? {

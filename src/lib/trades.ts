@@ -4,6 +4,10 @@ import { AppError, ErrorCode, type FieldError } from "./errors.js";
 import { resolveAnimalProfile } from "../services/animal.service.js";
 import type { NewAnimalInput } from "../schemas/animal.schema.js";
 import type { FarmDb } from "./tenant.js";
+import { recordAnimalChanges, snapshotOf, type Actor } from "./history.js";
+import { syncLotWithExit } from "./lots.js";
+import { diffAnimal } from "../services/animal-history.service.js";
+import { findWithdrawalConflicts } from "../services/sanitary.service.js";
 import {
   checkAnimalForTrade,
   computeItemValue,
@@ -22,7 +26,10 @@ import {
 
 // O que estas funções usam do banco: serve tanto `request.db` quanto o
 // cliente de dentro de uma transação
-export type TradeTx = Pick<FarmDb, "trade" | "tradeItem" | "weighing" | "animal" | "applicationAnimal">;
+export type TradeTx = Pick<
+  FarmDb,
+  "trade" | "tradeItem" | "weighing" | "animal" | "applicationAnimal" | "animalEvent" | "auditLog" | "lotMembership"
+>;
 
 export type Pricing = {
   priceUnit: PriceUnit;
@@ -136,7 +143,7 @@ export async function findAnimalProblems(
   const ids = animals.map((animal) => animal.id);
   const notThisTrade = ignoreTradeId ? { NOT: { tradeId: ignoreTradeId } } : {};
 
-  const [otherItems, weighings, applications] = await Promise.all([
+  const [otherItems, weighings, applications, lotMoves] = await Promise.all([
     db.tradeItem.findMany({
       where: { animalId: { in: ids }, ...notThisTrade },
       select: { animalId: true, type: true, trade: { select: { date: true } } },
@@ -154,7 +161,9 @@ export async function findAnimalProblems(
       where: { animalId: { in: ids } },
       select: { animalId: true, application: { select: { date: true } } },
     }),
+    db.lotMembership.groupBy({ by: ["animalId"], where: { animalId: { in: ids } }, _max: { startDate: true } }),
   ]);
+  const lastLotMove = new Map(lotMoves.map((row) => [row.animalId, day(row._max.startDate)]));
 
   const lastWeighing = new Map(weighings.map((row) => [row.animalId, day(row._max.date)]));
   const lastApplication = new Map<string, string>();
@@ -177,6 +186,7 @@ export async function findAnimalProblems(
       saleDate: tradeDate(animal.id, "SALE"),
       lastWeighingDate: lastWeighing.get(animal.id) ?? null,
       lastApplicationDate: lastApplication.get(animal.id) ?? null,
+      lastLotMoveDate: lastLotMove.get(animal.id) ?? null,
     });
     if (problem) problems.set(animal.id, problem);
   }
@@ -222,17 +232,19 @@ export async function planNewAnimals(
     return { animals, errors };
   }
 
+  // Brinco sem diferenciar maiúsculas (D-29): "br-1" e "BR-1" são o mesmo
+  const key = (tag: string) => tag.toLocaleLowerCase("en-US");
   const existing = await db.animal.findMany({
-    where: { tag: { in: rows.map((row) => row.animal.tag) } },
+    where: { OR: rows.map((row) => ({ tag: { equals: row.animal.tag, mode: "insensitive" as const } })) },
     select: { tag: true },
   });
-  const takenInFarm = new Set(existing.map((animal) => animal.tag));
+  const takenInFarm = new Set(existing.map((animal) => key(animal.tag)));
   const seenInList = new Map<string, number>();
-  for (const { animal } of rows) seenInList.set(animal.tag, (seenInList.get(animal.tag) ?? 0) + 1);
+  for (const { animal } of rows) seenInList.set(key(animal.tag), (seenInList.get(key(animal.tag)) ?? 0) + 1);
 
   for (const { index, animal } of rows) {
     const tagField = `items.${index}.newAnimal.tag`;
-    if (takenInFarm.has(animal.tag)) {
+    if (takenInFarm.has(key(animal.tag))) {
       errors.push({
         field: tagField,
         code: ErrorCode.DUPLICATE_TAG,
@@ -241,7 +253,7 @@ export async function planNewAnimals(
       });
       continue;
     }
-    if ((seenInList.get(animal.tag) ?? 0) > 1) {
+    if ((seenInList.get(key(animal.tag)) ?? 0) > 1) {
       errors.push({
         field: tagField,
         code: ErrorCode.DUPLICATE_TAG,
@@ -388,19 +400,97 @@ export async function syncItemWeighing(
 // por uma compra NÃO são apagados (D-10: podem ter pesagens e aplicações).
 export async function revertItems(
   tx: TradeTx,
+  actor: Actor,
+  tradeDate: string,
   items: { id: string; animalId: string; type: TradeType; weighingId: string | null }[],
 ) {
   const saleAnimals = items.filter((item) => item.type === "SALE").map((item) => item.animalId);
+  const purchaseAnimals = items.filter((item) => item.type === "PURCHASE").map((item) => item.animalId);
   const weighingIds = items.map((item) => item.weighingId).filter((id): id is string => id !== null);
 
   await tx.tradeItem.deleteMany({ where: { id: { in: items.map((item) => item.id) } } });
   if (weighingIds.length > 0) await tx.weighing.deleteMany({ where: { id: { in: weighingIds } } });
   if (saleAnimals.length > 0) {
-    await tx.animal.updateMany({
-      where: { id: { in: saleAnimals } },
-      data: { status: "ACTIVE", exitDate: null, deathCause: null, deathCauseCertainty: null },
+    await updateAnimalsWithHistory(tx, actor, saleAnimals, {
+      status: "ACTIVE",
+      exitDate: null,
+      deathCause: null,
+      deathCauseCertainty: null,
     });
   }
+  // Compra desfeita: a origem que a compra preencheu volta a "não informado"
+  // (D-52). Os animais continuam cadastrados (D-10).
+  if (purchaseAnimals.length > 0) {
+    const filled = await tx.animal.findMany({
+      where: { id: { in: purchaseAnimals }, origin: "PURCHASED", entryDate: toDbDate(tradeDate) },
+      select: { id: true },
+    });
+    if (filled.length > 0) {
+      await updateAnimalsWithHistory(tx, actor, filled.map((animal) => animal.id), { origin: "NOT_INFORMED", entryDate: null });
+    }
+  }
+}
+
+// ── Situação e origem que a negociação muda, com a linha do tempo (D-28) ──
+
+type LifeFields = {
+  status?: "ACTIVE" | "SOLD" | "DEAD";
+  exitDate?: Date | null;
+  deathCause?: string | null;
+  deathCauseCertainty?: "CONFIRMED" | "SUSPECTED" | "NOT_INFORMED" | null;
+  origin?: "BORN_ON_FARM" | "PURCHASED" | "RECEIVED" | "NOT_INFORMED";
+  entryDate?: Date | null;
+};
+
+const ANIMAL_HISTORY_SELECT = {
+  id: true,
+  tag: true,
+  sex: true,
+  category: true,
+  birthPrecision: true,
+  birthDate: true,
+  status: true,
+  exitDate: true,
+  deathCause: true,
+  deathCauseCertainty: true,
+  origin: true,
+  entryDate: true,
+} as const;
+
+// Muda vários animais de uma vez e grava um evento por animal com o antes e
+// o depois. A data do evento: saída (venda), entrada (compra) ou hoje.
+export async function updateAnimalsWithHistory(tx: TradeTx, actor: Actor, animalIds: string[], data: LifeFields) {
+  if (animalIds.length === 0) return;
+  const before = await tx.animal.findMany({ where: { id: { in: animalIds } }, select: ANIMAL_HISTORY_SELECT });
+  await tx.animal.updateMany({ where: { id: { in: animalIds } }, data });
+  for (const animal of before) {
+    const after = { ...animal, ...data };
+    // Saída mexe no lote: fecha, move o fim ou reabre o período (D-49)
+    if (data.exitDate !== undefined) {
+      await syncLotWithExit(tx, animal.id, day(animal.exitDate), day(data.exitDate));
+    }
+    const effective = data.exitDate ?? data.entryDate ?? null;
+    const changes = diffAnimal(snapshotOf(animal), snapshotOf(after)).map((change) => ({
+      ...change,
+      effectiveDate: effective ? calendarDateOf(effective) : null,
+    }));
+    await recordAnimalChanges(tx, actor, animal.id, changes);
+  }
+}
+
+// Compra registrada: quem estava sem origem passa a "comprado", com a data da
+// compra como entrada (D-52). Quem já tinha origem informada não muda.
+export async function fillPurchaseOrigin(tx: TradeTx, actor: Actor, animalIds: string[], date: string) {
+  const unknown = await tx.animal.findMany({
+    where: { id: { in: animalIds }, origin: "NOT_INFORMED" },
+    select: { id: true },
+  });
+  await updateAnimalsWithHistory(
+    tx,
+    actor,
+    unknown.map((animal) => animal.id),
+    { origin: "PURCHASED", entryDate: toDbDate(date) },
+  );
 }
 
 // ── O que a API devolve ──
@@ -427,6 +517,7 @@ export type TradeRow = {
   currency: string;
   counterparty: string | null;
   notes: string | null;
+  withdrawalWarningAccepted: boolean;
   createdAt: Date;
   updatedAt: Date;
   items: {
@@ -463,6 +554,7 @@ export function toTradeView(trade: TradeRow) {
     currency: trade.currency,
     counterparty: trade.counterparty,
     notes: trade.notes,
+    withdrawalWarningAccepted: trade.withdrawalWarningAccepted,
     createdAt: trade.createdAt,
     updatedAt: trade.updatedAt,
     animalCount: items.length,
@@ -473,4 +565,57 @@ export function toTradeView(trade: TradeRow) {
     pending: total === null,
     items,
   };
+}
+
+
+// ── Carência na venda (D-12, RN-SAN-010) ──
+// Animais com carência registrada que termina DEPOIS da data da venda. Só
+// aviso: com `acknowledgeWithdrawal` a venda grava e guarda o aceite.
+export async function findWithdrawalWarnings(
+  db: Pick<FarmDb, "applicationAnimal">,
+  saleDate: string,
+  items: { animalId: string }[],
+): Promise<FieldError[]> {
+  const indexByAnimal = new Map(items.map((item, index) => [item.animalId, index]));
+  const links = await db.applicationAnimal.findMany({
+    where: {
+      animalId: { in: [...indexByAnimal.keys()] },
+      application: { date: { lte: toDbDate(saleDate) }, withdrawalEndDate: { gt: toDbDate(saleDate) } },
+    },
+    select: {
+      animalId: true,
+      animal: { select: { tag: true } },
+      application: { select: { date: true, withdrawalEndDate: true, product: { select: { name: true } } } },
+    },
+  });
+  const conflicts = findWithdrawalConflicts(
+    saleDate,
+    links.map((link) => ({
+      animalId: link.animalId,
+      tag: link.animal.tag,
+      productName: link.application.product.name,
+      applicationDate: calendarDateOf(link.application.date),
+      withdrawalEndDate: calendarDateOf(link.application.withdrawalEndDate!),
+    })),
+  );
+  return conflicts.map((conflict) => ({
+    field: `items.${indexByAnimal.get(conflict.animalId)}.animalId`,
+    code: ErrorCode.WITHDRAWAL_WARNING,
+    params: {
+      tag: conflict.tag,
+      until: conflict.withdrawalEndDate,
+      product: conflict.productName,
+      appliedOn: conflict.applicationDate,
+    },
+    error: `Em carência registrada até ${conflict.withdrawalEndDate}.`,
+  }));
+}
+
+export function withdrawalWarning(errors: FieldError[]) {
+  return new AppError(
+    409,
+    ErrorCode.WITHDRAWAL_WARNING,
+    "Há animais em carência registrada nesta data. Confira a bula e a orientação veterinária antes de vender.",
+    errors,
+  );
 }

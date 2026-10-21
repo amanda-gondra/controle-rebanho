@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus, Syringe, Pill, Package, Bell, AlertCircle } from "lucide-react";
+import { Plus, Package, Bell, AlertCircle } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { listApplications, listAlerts } from "../services/sanitary.js";
-import type { Application, ProductType } from "../types/animal.js";
+import { PRODUCT_TYPES, type Application, type ProductType } from "../types/animal.js";
+import { ProductTypeIcon } from "../components/ProductTypeIcon.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { useAuth } from "../components/AuthProvider.js";
+import { useToast } from "../components/ToastProvider.js";
+import { dismissReminder } from "../services/sanitary.js";
 import { formatDate } from "../types/format.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
@@ -14,10 +19,16 @@ import { useOpen, useOriginState } from "../navigation/hooks.js";
 import { buildParams, readChoice } from "../navigation/listParams.js";
 
 type TypeFilter = ProductType | "ALL";
-const TYPE_VALUES: TypeFilter[] = ["ALL", "VACCINE", "DEWORMER"];
+const TYPE_VALUES: TypeFilter[] = ["ALL", ...PRODUCT_TYPES];
 
 export function Sanitary() {
   const open = useOpen();
+  const { account } = useAuth();
+  const showToast = useToast();
+  const [dismissing, setDismissing] = useState<Application | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
+  const [dismissBusy, setDismissBusy] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const originState = useOriginState();
   const [applications, setApplications] = useState<Application[]>([]);
   const [alerts, setAlerts] = useState<Application[]>([]);
@@ -75,60 +86,71 @@ export function Sanitary() {
           </div>
         )}
 
-        {/* Alertas de reaplicação */}
-        {alerts.length > 0 && (
-          <div className="bg-card border border-borda rounded-xl p-5 mb-6 max-w-2xl">
-            <div className="flex items-center gap-2 mb-3">
-              <Bell size={18} className="text-verde" />
-              <p className="font-medium text-texto">{t("sanitary.reapplications")}</p>
-            </div>
-            <div className="flex flex-col gap-2">
-              {alerts.map((app) => (
-                <Link
-                  key={app.id}
-                  to={`/aplicacoes/${app.id}`}
-                  state={originState}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg border ${
-                    app.overdue
-                      ? "bg-[#FBEEEA] border-[#E7C3B8]"
-                      : "bg-bege border-borda-chip"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <AlertCircle
-                      size={18}
-                      className={app.overdue ? "text-alerta" : "text-couro"}
-                    />
-                    <div>
-                      <p className="font-medium text-texto text-sm">
-                        {app.product.name}
-                      </p>
-                      <p className="text-xs text-texto-suave">
-                        {t(app.overdue ? "sanitary.overdueOn" : "sanitary.reapplyOn", {
-                          animals: t("common.animalsCount", { count: app._count?.animals ?? 0 }),
-                          date: app.reapplyDate ? formatDate(app.reapplyDate) : "",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      app.overdue
-                        ? "bg-[#FAEEDA] text-[#854F0B]"
-                        : "bg-verde-claro text-verde-escuro"
-                    }`}
-                  >
-                    {app.overdue ? t("sanitary.overdue") : t("sanitary.soon")}
-                  </span>
-                </Link>
-              ))}
-            </div>
+        {/* Lembretes de reaplicação (D-40): saem só ao reaplicar a partir
+            deles, ao dispensar ou sem animal ativo — nunca pelo tempo */}
+        {!alertsError && (
+        <section className="bg-card border border-borda rounded-xl p-5 mb-6 max-w-2xl" aria-labelledby="reminders-title">
+          <div className="flex items-center gap-2 mb-3">
+            <Bell size={18} className="text-verde" aria-hidden="true" />
+            <h2 id="reminders-title" className="font-medium text-texto">{t("sanitary.reapplications")}</h2>
           </div>
+          {alerts.length === 0 ? (
+            <p className="text-sm text-texto-suave">
+              {t("sanitary.noReminders", { count: account?.farm.settings.reapplyAlertDays ?? 7 })}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {alerts.map((app) => (
+                <li
+                  key={app.id}
+                  className={`px-4 py-3 rounded-lg border ${app.overdue ? "bg-[#FBEEEA] border-[#E7C3B8]" : "bg-bege border-borda-chip"}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <Link to={`/aplicacoes/${app.id}`} state={originState} className="flex items-center gap-3 min-w-0">
+                      <AlertCircle size={18} className={app.overdue ? "text-alerta shrink-0" : "text-couro shrink-0"} aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-texto text-sm">{app.product.name}</span>
+                        <span className="block text-xs text-texto-suave">
+                          {app.reapplyDate &&
+                            t(app.overdue ? "sanitary.overdueSince" : "sanitary.dueOn", { date: formatDate(app.reapplyDate) })}
+                          {" · "}
+                          {t("sanitary.activeOfTotal", {
+                            active: app.activeAnimalsCount ?? 0,
+                            total: app._count?.animals ?? 0,
+                          })}
+                        </span>
+                      </span>
+                    </Link>
+                    <span
+                      className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                        app.overdue ? "bg-[#FAEEDA] text-[#854F0B]" : "bg-verde-claro text-verde-escuro"
+                      }`}
+                    >
+                      {app.overdue ? t("sanitary.overdue") : t("sanitary.soon")}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => open(`/aplicacoes/nova?reaplicar=${app.id}`)}
+                      className={buttonClass("primary", "text-sm px-3 py-2")}
+                    >
+                      {t("sanitary.reapply")}
+                    </button>
+                    <button type="button" onClick={() => setDismissing(app)} className={buttonClass("secondary", "text-sm px-3 py-2")}>
+                      {t("sanitary.dismiss")}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
         )}
 
         {/* Filtro por tipo */}
-        <div className="flex gap-2 mb-6">
-          {(["ALL", "VACCINE", "DEWORMER"] as const).map((value) => (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {TYPE_VALUES.map((value) => (
             <button
               key={value}
               type="button"
@@ -177,23 +199,11 @@ export function Sanitary() {
                 className="bg-card border border-borda rounded-xl px-5 py-4 flex items-center justify-between gap-3 hover:border-verde-nevoa"
               >
                 <div className="flex items-center gap-4">
-                  <span
-                    className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                      app.product.type === "VACCINE"
-                        ? "bg-verde-claro text-verde"
-                        : "bg-bege text-couro"
-                    }`}
-                  >
-                    {app.product.type === "VACCINE" ? (
-                      <Syringe size={18} />
-                    ) : (
-                      <Pill size={18} />
-                    )}
-                  </span>
+                  <ProductTypeIcon type={app.product.type} size={18} className="w-10 h-10" />
                   <div>
                     <p className="font-medium text-texto">{app.product.name}</p>
                     <p className="text-sm text-texto-suave">
-                      {formatDate(app.date)}
+                      {t(`product.type.${app.product.type}`)} · {formatDate(app.date)}
                       {app.notes ? ` · ${app.notes}` : ""}
                     </p>
                   </div>
@@ -204,6 +214,53 @@ export function Sanitary() {
               </Link>
             ))}
           </div>
+        )}
+        {dismissing && (
+          <ConfirmDialog
+            title={t("sanitary.dismissTitle")}
+            confirmLabel={t("sanitary.dismiss")}
+            busyLabel={t("sanitary.dismissing")}
+            busy={dismissBusy}
+            error={dismissError}
+            onClose={() => {
+              setDismissing(null);
+              setDismissReason("");
+              setDismissError("");
+            }}
+            onConfirm={async () => {
+              setDismissBusy(true);
+              setDismissError("");
+              try {
+                await dismissReminder(dismissing.id, dismissReason.trim() || undefined);
+                showToast(t("sanitary.dismissed"));
+                setDismissing(null);
+                setDismissReason("");
+                loadAlerts();
+              } catch (err) {
+                setDismissError(errorMessage(err, "sanitary.dismissFailed"));
+              } finally {
+                setDismissBusy(false);
+              }
+            }}
+          >
+            <p>
+              {t("sanitary.dismissBody", {
+                product: dismissing.product.name,
+                date: dismissing.reapplyDate ? formatDate(dismissing.reapplyDate) : "",
+              })}
+            </p>
+            <label htmlFor="dismiss-reason" className="block text-sm text-texto-suave mt-2">
+              {t("sanitary.dismissReason")} <span className="text-texto-leve">{t("common.optional")}</span>
+            </label>
+            <input
+              id="dismiss-reason"
+              value={dismissReason}
+              maxLength={200}
+              onChange={(e) => setDismissReason(e.target.value)}
+              placeholder={t("sanitary.dismissReasonPlaceholder")}
+              className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
+            />
+          </ConfirmDialog>
         )}
       </main>
     </div>

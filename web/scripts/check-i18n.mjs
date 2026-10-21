@@ -41,7 +41,7 @@ function looksHuman(text) {
 }
 
 const ALLOWED_CALLS = new Set(["t", "tOptional", "errorMessage", "useState", "Error", "console.error", "console.log"]);
-const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "aria-current", "aria-live", "path", "value", "dataKey", "backFallback"]);
+const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "aria-current", "aria-live", "path", "value", "dataKey", "backFallback", "autoCapitalize", "autoCorrect", "size", "enterKeyHint", "tone"]);
 
 const problems = [];
 

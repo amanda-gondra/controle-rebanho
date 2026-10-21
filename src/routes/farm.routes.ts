@@ -1,3 +1,4 @@
+import { AuditAction } from "../lib/history.js";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { prisma } from "../lib/prisma.js";
@@ -63,10 +64,25 @@ export async function farmRoutes(app: FastifyInstance) {
         categoryLabels = overrides;
       }
 
-      const farm = await prisma.farm.update({
-        where: { id: request.auth.farm.id },
-        data: { ...rest, ...(categoryLabels ? { categoryLabels } : {}) },
-        select: FARM_SELECT,
+      // Configuração muda o que vem marcado em compras, vendas e lembretes:
+      // fica na trilha (D-51) com os campos alterados
+      const farm = await prisma.$transaction(async (tx) => {
+        const updated = await tx.farm.update({
+          where: { id: request.auth.farm.id },
+          data: { ...rest, ...(categoryLabels ? { categoryLabels } : {}) },
+          select: FARM_SELECT,
+        });
+        await tx.auditLog.create({
+          data: {
+            farmId: request.auth.farm.id,
+            userId: request.auth.user.id,
+            action: AuditAction.FARM_SETTINGS_CHANGED,
+            entityType: "Farm",
+            entityId: request.auth.farm.id,
+            details: { fields: Object.keys(request.body) },
+          },
+        });
+        return updated;
       });
 
       return { ...toFarmView(farm), defaults: FARM_DEFAULTS.settings };

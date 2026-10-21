@@ -10,7 +10,7 @@ type Props = {
   animalId: string;
   weighing: Weighing;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updated?: Weighing) => void;
 };
 
 export function EditWeighingModal({
@@ -36,11 +36,11 @@ export function EditWeighingModal({
 
     setSaving(true);
     try {
-      await updateWeighing(animalId, weighing.id, {
+      const updated = await updateWeighing(animalId, weighing.id, {
         date,
         weightKg: weightNumber,
       });
-      onSaved();
+      onSaved(updated);
     } catch (err) {
       setError(singleErrorMessage(err));
       setSaving(false);

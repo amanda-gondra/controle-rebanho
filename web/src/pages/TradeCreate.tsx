@@ -12,7 +12,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { TradeDealFields, type DealDraft } from "../components/TradeDealFields.js";
 import { TradePricesEditor } from "../components/TradePricesEditor.js";
 import { NewAnimalsEditor } from "../components/NewAnimalsEditor.js";
-import { listAnimals } from "../services/animals.js";
+import { listAllAnimals } from "../services/animals.js";
 import { createTrade, getLastPrices } from "../services/trades.js";
 import type { Animal, Category, Status } from "../types/animal.js";
 import type { LastPrices, TradeType } from "../types/trade.js";
@@ -28,7 +28,8 @@ import {
 } from "../types/tradeForm.js";
 import { CATEGORY_FILTER_ORDER } from "../types/categories.js";
 import { sexLabel, statusLabel } from "../types/labels.js";
-import { formatMoney, formatNumber, todayInTimeZone } from "../types/format.js";
+import { formatDate, formatMoney, formatNumber, todayInTimeZone } from "../types/format.js";
+import type { ApiError } from "../services/api.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
@@ -110,6 +111,8 @@ export function TradeCreate() {
   const [showProblems, setShowProblems] = useState(false);
 
   const [confirming, setConfirming] = useState(false);
+  // Aviso de carência (D-12): a API lista os animais; a pessoa decide
+  const [withdrawal, setWithdrawal] = useState<{ tag: string; until: string; product: string; appliedOn: string }[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -127,7 +130,7 @@ export function TradeCreate() {
 
   // Todos os animais (uma busca); filtros e busca no navegador
   useEffect(() => {
-    listAnimals({ sortBy: "tag", order: "asc" })
+    listAllAnimals({ sortBy: "tag", order: "asc" })
       .then(setAnimals)
       .catch(() => setSelectionError(t("trade.loadAnimalsFailed")));
   }, []);
@@ -265,7 +268,7 @@ export function TradeCreate() {
     setConfirming(true);
   }
 
-  async function save() {
+  async function save(acknowledgeWithdrawal = false) {
     if (!pricing || !rowsCheck) return;
     setSaving(true);
     setSaveError("");
@@ -273,6 +276,7 @@ export function TradeCreate() {
       const trade = await createTrade({
         type,
         date: deal.date,
+        ...(acknowledgeWithdrawal ? { acknowledgeWithdrawal: true } : {}),
         priceUnit: pricing.priceUnit,
         ...(pricing.arrobaBasis ? { arrobaBasis: pricing.arrobaBasis } : {}),
         ...(pricing.arrobaFactorKg ? { arrobaFactorKg: Number(pricing.arrobaFactorKg) } : {}),
@@ -299,6 +303,19 @@ export function TradeCreate() {
     } catch (err) {
       setSaving(false);
       setConfirming(false);
+      const apiError = err as ApiError;
+      if (apiError?.code === "WITHDRAWAL_WARNING") {
+        setWithdrawal(
+          (apiError.errors ?? []).map((item) => ({
+            tag: String(item.params?.tag ?? ""),
+            until: String(item.params?.until ?? ""),
+            product: String(item.params?.product ?? ""),
+            appliedOn: String(item.params?.appliedOn ?? ""),
+          })),
+        );
+        return;
+      }
+      setWithdrawal(null);
       const split = splitApiErrors(err, rows.map((row) => row.key));
       setRowErrors(split.rows);
       setDealErrors(split.deal);
@@ -573,7 +590,7 @@ export function TradeCreate() {
             confirmLabel={t(isSale ? "trade.registerSale" : "trade.registerPurchase")}
             busyLabel={t(isSale ? "trade.savingSale" : "trade.savingPurchase")}
             busy={saving}
-            onConfirm={save}
+            onConfirm={() => save()}
             onClose={() => setConfirming(false)}
           >
             <p>
@@ -594,6 +611,35 @@ export function TradeCreate() {
             {!isSale && rows.some((row) => isNewKey(row.key)) && (
               <p>{t("trade.confirmNewAnimals", { count: rows.filter((row) => isNewKey(row.key)).length })}</p>
             )}
+          </ConfirmDialog>
+        )}
+        {withdrawal && (
+          <ConfirmDialog
+            title={t("trade.withdrawalTitle")}
+            confirmLabel={t("trade.withdrawalConfirm")}
+            cancelLabel={t("trade.withdrawalBack")}
+            busyLabel={t("trade.savingSale")}
+            busy={saving}
+            onConfirm={() => save(true)}
+            onClose={() => {
+              setWithdrawal(null);
+              setStep(1);
+            }}
+          >
+            <p>{t("trade.withdrawalBody", { count: withdrawal.length })}</p>
+            <ul className="list-disc pl-5">
+              {withdrawal.map((item) => (
+                <li key={item.tag}>
+                  {t("trade.withdrawalLine", {
+                    tag: item.tag,
+                    until: item.until ? formatDate(item.until) : "",
+                    product: item.product,
+                    appliedOn: item.appliedOn ? formatDate(item.appliedOn) : "",
+                  })}
+                </li>
+              ))}
+            </ul>
+            <p>{t("trade.withdrawalCheck")}</p>
           </ConfirmDialog>
         )}
         {unsavedDialog}

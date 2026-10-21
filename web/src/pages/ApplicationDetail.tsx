@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Syringe, Pill, Pencil, Trash2, Bell } from "lucide-react";
+import { Pencil, Trash2, Bell } from "lucide-react";
+import { ProductTypeIcon } from "../components/ProductTypeIcon.js";
 import { Sidebar } from "../components/Sidebar.js";
 import { getApplication, deleteApplication } from "../services/sanitary.js";
 import { EditApplicationModal } from "../components/EditApplicationModal.js";
 import type { Application } from "../types/animal.js";
 import { sexLabel } from "../types/labels.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
-import { formatDate } from "../types/format.js";
+import { formatDate, formatNumber } from "../types/format.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
 import { RichText } from "../i18n/RichText.js";
@@ -113,7 +114,19 @@ export function ApplicationDetail() {
     );
   }
 
-  const isVaccine = application.product.type === "VACCINE";
+  // Detalhes do lançamento: dose, partida, carência, reaplicação (D-12, D-40)
+  const details = [
+    application.doseAmount && application.doseUnit
+      ? t("applicationDetail.dose", {
+          dose: `${formatNumber(Number(application.doseAmount))} ${t(`product.doseUnit.${application.doseUnit}`)}`,
+        })
+      : null,
+    application.batchNumber ? t("applicationDetail.batch", { batch: application.batchNumber }) : null,
+    application.withdrawalEndDate
+      ? t("product.withdrawal.until", { date: formatDate(application.withdrawalEndDate) })
+      : t("product.withdrawal.notInformed"),
+  ].filter(Boolean);
+  const reapplied = application.reappliedBy?.[0];
   const animals = application.animals ?? [];
 
   return (
@@ -124,15 +137,11 @@ export function ApplicationDetail() {
         <PageHeader
           title={
             <span className="flex items-center gap-3">
-              <span
-                aria-hidden="true"
-                className={`flex items-center justify-center w-11 h-11 rounded-full shrink-0 ${
-                  isVaccine ? "bg-verde-claro text-verde" : "bg-bege text-couro"
-                }`}
-              >
-                {isVaccine ? <Syringe size={20} /> : <Pill size={20} />}
-              </span>
+              <ProductTypeIcon type={application.product.type} size={20} className="w-11 h-11" />
               {application.product.name}
+              {application.product.archivedAt && (
+                <span className="text-sm font-normal text-texto-leve">{t("applicationDetail.archivedProduct")}</span>
+              )}
             </span>
           }
           subtitle={
@@ -165,7 +174,9 @@ export function ApplicationDetail() {
           }
         />
 
-        {/* Aviso de reaplicação, se houver */}
+        <p className="text-sm text-texto-suave mb-4 max-w-2xl">{details.join(" · ")}</p>
+
+        {/* Aviso de reaplicação: marcada, reaplicada ou lembrete dispensado */}
         {application.reapplyDate && (
           <div className="bg-verde-claro border border-verde-nevoa rounded-xl px-5 py-3 mb-6 max-w-2xl flex items-center gap-2">
             <Bell size={18} className="text-verde" />
@@ -173,6 +184,25 @@ export function ApplicationDetail() {
               <RichText
                 text={t("applicationDetail.reapplyScheduled", { date: formatDate(application.reapplyDate) })}
               />
+              {reapplied && (
+                <>
+                  {" · "}
+                  <Link to={`/aplicacoes/${reapplied.id}`} state={originState} className="text-verde font-medium underline">
+                    {t("applicationDetail.reappliedOn", { date: formatDate(reapplied.date) })}
+                  </Link>
+                </>
+              )}
+              {!reapplied && application.reminderDismissedAt && (
+                <>
+                  {" · "}
+                  {application.reminderDismissReason
+                    ? t("applicationDetail.dismissedWithReason", {
+                        date: formatDate(application.reminderDismissedAt),
+                        reason: application.reminderDismissReason,
+                      })
+                    : t("applicationDetail.dismissedOn", { date: formatDate(application.reminderDismissedAt) })}
+                </>
+              )}
             </p>
           </div>
         )}

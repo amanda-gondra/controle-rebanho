@@ -112,7 +112,8 @@ Frontend (web/):
   src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
                                 AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
                                 TradeList, TradeCreate (assistente), TradeDetail, TradeEdit (Negociações — G5b),
-                                Settings (Configurações da fazenda), NotFound (endereço desconhecido)
+                                Settings (Configurações da fazenda), NotFound (endereço desconhecido),
+                                Dashboard (painel), LotList, LotDetail, WeighingSession (pesagem em sequência)
   src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
                                 Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
@@ -184,8 +185,11 @@ Conta:      POST /auth/register · POST /auth/login · POST /auth/logout   (púb
 Fazenda:    GET /farm · PATCH /farm   (sem id: sempre a fazenda da sessão; G2)
             → TODAS as rotas abaixo exigem login (401 UNAUTHENTICATED / SESSION_EXPIRED)
               e só enxergam a fazenda da sessão (outra fazenda → 404)
-Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
-            devolve currentWeightKg + lastWeighingDate da última pesagem)
+Animais:    POST /animals · GET /animals (PAGINADA no servidor: q (brinco atual/antigo, raça,
+            categoria), tag, status, category, sex, lotId|none, sortBy, order, page, pageSize ≤ 5000;
+            devolve { items, total, page, pageSize, counts } com peso/data da última pesagem e lote)
+            POST /animals/:id/tag-changes (troca de brinco — D-19) · GET /animals/:id/history (linha do tempo — D-28)
+            GET /animals/:id/delete-impact (o que vai junto ao excluir)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
             PATCH /animals/:id/status   (saída: exitDate obrigatória p/ DEAD/SOLD; causa+certeza só DEAD — G5a)
             DELETE: 409 ANIMAL_HAS_TRANSACTIONS se houver compra/venda (D-10)
@@ -196,7 +200,9 @@ Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
             GET /animals/:id/weight-gain   (422 INSUFFICIENT_WEIGHINGS | SAME_DAY_WEIGHINGS)
             Uma pesagem por animal por dia (409 DUPLICATE_WEIGHING_DATE); nada depois da saída
             (422 WEIGHING_DATE_OUT_OF_RANGE); só source=MANUAL edita/apaga (409 WEIGHING_FROM_TRADE)
-Sanitário:  POST /products · GET /products (filtro type)
+Sanitário:  POST /products · GET /products (type, includeArchived) · PUT /products/:id ·
+            PATCH /products/:id/archive|unarchive · DELETE /products/:id (só nunca usado)
+            POST /applications/:id/dismiss-reminder (dispensar lembrete — D-40)
             POST /applications · GET /applications (filtro type) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
             (422 ANIMALS_NOT_IN_HERD_ON_DATE se algum animal já tinha saído na data)
@@ -211,6 +217,10 @@ Negociações (G5b): POST /trades (compra/venda de 1 ou muitos animais; idempote
             PATCH /trades/:id (corrige; recalcula; peso de carcaça pendente) ·
             DELETE /trades/:id/items/:itemId (tira um animal) · DELETE /trades/:id (desfaz)
             GET /animals/:id/result   (kind: DIFFERENCE | INVESTED | SALE_ONLY | PENDING | CURRENCY_MISMATCH)
+Lotes:      POST /lots · GET /lots (includeArchived) · GET /lots/:id · PUT /lots/:id ·
+            POST /lots/:id/animals (entrar/trocar na data) · POST /lots/:id/remove (sair na data) ·
+            PATCH /lots/:id/archive|unarchive · DELETE /lots/:id (só nunca usado) — D-49
+Painel:     GET /dashboard?from&to (regras em docs/architecture.md "Painel") — D-50
 Saúde:      GET /health (processo) · GET /ready (banco)
 ```
 
@@ -219,6 +229,14 @@ Saúde:      GET /health (processo) · GET /ready (banco)
 individual (ficha) e por evento (lote). Replicar esse tipo de raciocínio nas próximas versões.
 
 ---
+
+**Núcleo (2026-10-18 a 2026-10-21, decisões D-49 a D-58 aprovadas pela Amanda):** brinco sem
+maiúsculas e troca de brinco com histórico; linha do tempo do animal; autor e trilha de ações
+sensíveis (`AuditLog`, não editável); origem e data de entrada; sanitário v1.0 (4 tipos de
+produto, editar/arquivar, dose, carência + aviso na venda, dispensar/reaplicar lembrete,
+idempotência); GMD com período e ganho desde a anterior; pesagem em sequência (`/pesagens`);
+lista do rebanho paginada no servidor; lotes simples; painel mínimo (`/painel`); CSV da lista.
+Índices por expressão/parciais e gatilhos ficam fora do `schema.prisma` — ver docs/database.md.
 
 ## Próximos passos
 

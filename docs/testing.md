@@ -34,6 +34,24 @@
 - Plataforma: configuração inválida (sem vazar valores), CORS por lista, 429, `/docs` desligado,
   cabeçalhos de segurança, proteção do banco de teste.
 
+## Histórico, lotes, sanitário, painel (2026-10-18 a 2026-10-21)
+
+- Regras puras: `animal-history.service.test.ts` (o que vira evento), `lot.service.test.ts`
+  (quando mover é recusado), `sanitary.service.test.ts` (carência, lembrete aberto),
+  `weighing.service.test.ts` (período do GMD, ganho desde a anterior), `dashboard.service.test.ts`
+  (período e GMD médio), `web/src/types/csv.test.ts` (planilha e injeção de fórmula),
+  `web/src/types/dashboard.test.ts` (atalhos de período), `web/src/types/history.test.ts`.
+- Integração: `history.test.ts` (brinco sem maiúsculas, troca, linha do tempo, autor, trilha que
+  não se edita), `sanitary-complete.test.ts`, `lots-and-list.test.ts`, `dashboard.test.ts` (cada
+  número confere com a regra), `database-guards.test.ts` (índices e gatilhos fora do schema), e
+  `tenancy.test.ts` ampliado (lotes, painel, histórico, troca de brinco, produtos, lembretes).
+- Ponta a ponta (navegador real, banco de teste, scripts fora do repositório): pesagem em
+  sequência (3 animais, brinco minúsculo, repetida, inexistente), troca de brinco e busca pelo
+  antigo, lotes (colocar, mudança recusada antes da entrada, transferência, histórico, filtro,
+  arquivar desligado), painel (números = API, período no endereço, voltar mantém o período), CSV
+  (cabeçalho, lote, peso "395,5"), sanitário (produto com carência, dose, aviso de carência na
+  venda, dispensar lembrete, arquivar), celular 360 px nas telas novas.
+
 ## Navegação e interface (auditoria — 2026-10-18)
 
 - `web/src/navigation/origin.test.ts`: origem aceita/recusada (externa, `//`, `\`, login,

@@ -39,6 +39,7 @@ export type NewTrade = {
   counterparty?: string;
   notes?: string;
   idempotencyKey: string; // mesmo valor ao tentar de novo = sem negociação duplicada
+  acknowledgeWithdrawal?: boolean; // venda: viu o aviso de carência e decidiu registrar (D-12)
   items: NewTradeItem[];
 };
 

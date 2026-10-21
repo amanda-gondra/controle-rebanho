@@ -148,6 +148,9 @@ export function TradeDetail() {
               }
             >
               {trade.notes && <p className="text-sm text-texto-leve mt-1 whitespace-pre-line">{trade.notes}</p>}
+              {trade.withdrawalWarningAccepted && (
+                <p className="text-sm text-texto-suave mt-1">{t("trade.withdrawalAccepted")}</p>
+              )}
             </PageHeader>
 
             {/* Total */}

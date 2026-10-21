@@ -147,6 +147,7 @@ export type AnimalTradeFacts = {
   saleDate: string | null; // venda em OUTRA negociação
   lastWeighingDate: string | null; // sem contar as pesagens criadas por esta negociação
   lastApplicationDate: string | null;
+  lastLotMoveDate?: string | null;
 };
 
 export type TradeAnimalProblem =
@@ -174,6 +175,7 @@ export function checkAnimalForTrade(
       purchaseDate: facts.purchaseDate,
       lastWeighingDate: facts.lastWeighingDate,
       lastApplicationDate: facts.lastApplicationDate,
+      lastLotMoveDate: facts.lastLotMoveDate,
     });
     return blocker ? { code: "EXIT_DATE_CONFLICT", ...blocker } : null;
   }

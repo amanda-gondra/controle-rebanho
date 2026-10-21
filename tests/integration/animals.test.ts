@@ -86,8 +86,8 @@ describe("GET /animals e GET /animals/:id", () => {
     const response = await t.client.inject({ url: "/animals?category=COW" });
     expect(response.statusCode).toBe(200);
     const list = response.json();
-    expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ tag: "A-1", currentWeightKg: 420.5 });
+    expect(list).toMatchObject({ total: 1, page: 1, pageSize: 20, counts: { ALL: 2, ACTIVE: 2 } });
+    expect(list.items[0]).toMatchObject({ tag: "A-1", currentWeightKg: 420.5 });
   });
 
   it("filtro inválido → 400", async () => {

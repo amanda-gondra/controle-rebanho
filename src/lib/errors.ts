@@ -32,6 +32,9 @@ export const ErrorCode = {
   WEIGHING_NOT_FOUND: "WEIGHING_NOT_FOUND",
   INSUFFICIENT_WEIGHINGS: "INSUFFICIENT_WEIGHINGS",
   SAME_DAY_WEIGHINGS: "SAME_DAY_WEIGHINGS",
+  SAME_TAG: "SAME_TAG", // troca de brinco para o mesmo brinco (D-19)
+  ORIGIN_FROM_PURCHASE: "ORIGIN_FROM_PURCHASE", // origem vem da compra registrada (D-52)
+  ENTRY_DATE_OUT_OF_RANGE: "ENTRY_DATE_OUT_OF_RANGE", // entrada antes do nascimento/depois da saída
 
   // saída do animal e pesagens (G5 — entrega 1)
   EXIT_DATE_CONFLICT: "EXIT_DATE_CONFLICT",
@@ -50,6 +53,12 @@ export const ErrorCode = {
   PRODUCT_NOT_FOUND: "PRODUCT_NOT_FOUND",
   APPLICATION_NOT_FOUND: "APPLICATION_NOT_FOUND",
   ANIMALS_NOT_FOUND: "ANIMALS_NOT_FOUND",
+  DUPLICATE_PRODUCT_NAME: "DUPLICATE_PRODUCT_NAME", // RN-SAN-005
+  PRODUCT_ARCHIVED: "PRODUCT_ARCHIVED", // produto arquivado não entra em aplicação nova
+  PRODUCT_IN_USE: "PRODUCT_IN_USE", // produto usado não se exclui: arquiva
+  NO_REMINDER: "NO_REMINDER", // aplicação sem reaplicação marcada
+  REAPPLY_SOURCE_INVALID: "REAPPLY_SOURCE_INVALID", // lembrete de origem não serve
+  WITHDRAWAL_WARNING: "WITHDRAWAL_WARNING", // venda com animal em carência registrada (aviso)
 
   // compra e venda (G5 — negociações)
   TRADE_NOT_FOUND: "TRADE_NOT_FOUND",
@@ -60,6 +69,14 @@ export const ErrorCode = {
   DEAD_ANIMAL_CANNOT_BE_SOLD: "DEAD_ANIMAL_CANNOT_BE_SOLD",
   SALE_BEFORE_PURCHASE: "SALE_BEFORE_PURCHASE",
   TRADE_DATE_OUT_OF_RANGE: "TRADE_DATE_OUT_OF_RANGE",
+
+  // lotes (D-49)
+  LOT_NOT_FOUND: "LOT_NOT_FOUND",
+  DUPLICATE_LOT_NAME: "DUPLICATE_LOT_NAME",
+  LOT_ARCHIVED: "LOT_ARCHIVED", // lote arquivado não recebe animais
+  LOT_NOT_EMPTY: "LOT_NOT_EMPTY", // só lote vazio é arquivado
+  LOT_IN_USE: "LOT_IN_USE", // lote com histórico não se exclui: arquiva
+  LOT_MOVE_ERRORS: "LOT_MOVE_ERRORS", // um ou mais animais não podem ser movidos (lista por animal)
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

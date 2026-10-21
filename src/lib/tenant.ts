@@ -22,6 +22,10 @@ const TENANT_MODELS = new Set<string>([
   "ApplicationAnimal",
   "Trade",
   "TradeItem",
+  "AnimalEvent",
+  "AuditLog",
+  "Lot",
+  "LotMembership",
 ]);
 
 const WHERE_OPERATIONS = new Set([

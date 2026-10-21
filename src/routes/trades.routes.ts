@@ -1,3 +1,4 @@
+import { AuditAction, actorOf, recordAudit } from "../lib/history.js";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { assertNotInFuture, calendarDateOf, toDbDate } from "../lib/dates.js";
@@ -15,6 +16,10 @@ import {
   problemToFieldError,
   resolvePricing,
   revertItems,
+  updateAnimalsWithHistory,
+  fillPurchaseOrigin,
+  findWithdrawalWarnings,
+  withdrawalWarning,
   syncItemWeighing,
   toTradeView,
   tradeItemErrors,
@@ -140,27 +145,40 @@ export async function tradeRoutes(app: FastifyInstance) {
         throw tradeItemErrors(errors);
       }
 
+      // Carência (D-12): aviso antes de gravar; reenviado com o aceite, grava
+      // e guarda que o aviso foi mostrado e aceito
+      const warnings = body.type === "SALE" ? await findWithdrawalWarnings(request.db, body.date, items) : [];
+      if (warnings.length > 0 && !body.acknowledgeWithdrawal) throw withdrawalWarning(warnings);
+
       try {
         const { trade, replaced } = await request.db.$transaction(async (tx) => {
           // Primeiro os animais novos, depois a compra que aponta para eles
+          // (origem "comprado" com a data da compra como entrada — D-52)
           if (plannedNew.animals.size > 0) {
             await tx.animal.createMany({
-              data: [...plannedNew.animals.values()].map((animal) => ({ ...animal, farmId: farm.id })),
+              data: [...plannedNew.animals.values()].map((animal) => ({
+                ...animal,
+                farmId: farm.id,
+                origin: "PURCHASED" as const,
+                entryDate: toDbDate(body.date),
+                createdById: request.auth.user.id,
+              })),
             });
           }
           const plan = await createTradeWeighings(tx, farm.id, body.type, body.date, items);
+          const actor = actorOf(request.auth);
+          const existingInTrade = items.filter((item) => !item.isNew).map((item) => item.animalId);
 
-          // Venda = saída: vendido, com a data da venda (RN-NEG-006)
+          // Venda = saída: vendido, com a data da venda (RN-NEG-006), na linha do tempo
           if (body.type === "SALE") {
-            await tx.animal.updateMany({
-              where: { id: { in: items.map((item) => item.animalId) } },
-              data: {
-                status: "SOLD",
-                exitDate: toDbDate(body.date),
-                deathCause: null,
-                deathCauseCertainty: null,
-              },
+            await updateAnimalsWithHistory(tx, actor, existingInTrade, {
+              status: "SOLD",
+              exitDate: toDbDate(body.date),
+              deathCause: null,
+              deathCauseCertainty: null,
             });
+          } else {
+            await fillPurchaseOrigin(tx, actor, existingInTrade, body.date);
           }
 
           const created = await tx.trade.create({
@@ -175,6 +193,7 @@ export async function tradeRoutes(app: FastifyInstance) {
               counterparty: body.counterparty || null,
               notes: body.notes || null,
               idempotencyKey: body.idempotencyKey ?? null,
+              withdrawalWarningAccepted: warnings.length > 0,
               createdById: request.auth.user.id,
               items: {
                 create: items.map((item) => ({
@@ -464,12 +483,20 @@ export async function tradeRoutes(app: FastifyInstance) {
           });
         }
 
-        // Venda com nova data: a saída dos animais acompanha
-        if (trade.type === "SALE" && date !== oldDate) {
-          await tx.animal.updateMany({
-            where: { id: { in: trade.items.map((item) => item.animalId) } },
-            data: { exitDate: toDbDate(date) },
-          });
+        // Venda com nova data: a saída dos animais acompanha. Compra com nova
+        // data: a entrada que a compra preencheu acompanha (D-52)
+        if (date !== oldDate) {
+          const actor = actorOf(request.auth);
+          const animalIds = trade.items.map((item) => item.animalId);
+          if (trade.type === "SALE") {
+            await updateAnimalsWithHistory(tx, actor, animalIds, { exitDate: toDbDate(date) });
+          } else {
+            const filled = await tx.animal.findMany({
+              where: { id: { in: animalIds }, origin: "PURCHASED", entryDate: toDbDate(oldDate) },
+              select: { id: true },
+            });
+            await updateAnimalsWithHistory(tx, actor, filled.map((animal) => animal.id), { entryDate: toDbDate(date) });
+          }
         }
 
         const fresh = await tx.trade.findUniqueOrThrow({ where: { id: trade.id }, include: TRADE_DETAIL_INCLUDE });
@@ -496,7 +523,14 @@ export async function tradeRoutes(app: FastifyInstance) {
       const { id, itemId } = request.params;
       const item = await request.db.tradeItem.findFirst({
         where: { id: itemId, tradeId: id },
-        select: { id: true, animalId: true, type: true, weighingId: true },
+        select: {
+          id: true,
+          animalId: true,
+          type: true,
+          weighingId: true,
+          animal: { select: { tag: true } },
+          trade: { select: { date: true } },
+        },
       });
       if (!item) {
         const trade = await request.db.trade.findUnique({ where: { id }, select: { id: true } });
@@ -504,10 +538,18 @@ export async function tradeRoutes(app: FastifyInstance) {
         throw notFound(ErrorCode.TRADE_ITEM_NOT_FOUND, "Este animal não está nesta negociação.");
       }
 
+      const actor = actorOf(request.auth);
       const tradeDeleted = await request.db.$transaction(async (tx) => {
-        await revertItems(tx, [item]);
+        await revertItems(tx, actor, calendarDateOf(item.trade.date), [item]);
         const remaining = await tx.tradeItem.count({ where: { tradeId: id } });
         if (remaining === 0) await tx.trade.deleteMany({ where: { id } });
+        // Trilha (D-51): animal tirado da negociação
+        await recordAudit(tx, actor, {
+          action: remaining === 0 ? AuditAction.TRADE_UNDONE : AuditAction.TRADE_ITEM_REMOVED,
+          entityType: "Trade",
+          entityId: id,
+          details: { type: item.type, date: calendarDateOf(item.trade.date), tags: [item.animal.tag] },
+        });
         return remaining === 0;
       }, TRANSACTION_OPTIONS);
 
@@ -527,14 +569,28 @@ export async function tradeRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params;
+      const actor = actorOf(request.auth);
       const found = await request.db.$transaction(async (tx) => {
         const trade = await tx.trade.findUnique({
           where: { id },
-          select: { items: { select: { id: true, animalId: true, type: true, weighingId: true } } },
+          select: {
+            type: true,
+            date: true,
+            items: {
+              select: { id: true, animalId: true, type: true, weighingId: true, animal: { select: { tag: true } } },
+            },
+          },
         });
         if (!trade) return false;
-        await revertItems(tx, trade.items);
+        await revertItems(tx, actor, calendarDateOf(trade.date), trade.items);
         await tx.trade.deleteMany({ where: { id } });
+        // Trilha (D-51): negociação desfeita
+        await recordAudit(tx, actor, {
+          action: AuditAction.TRADE_UNDONE,
+          entityType: "Trade",
+          entityId: id,
+          details: { type: trade.type, date: calendarDateOf(trade.date), tags: trade.items.map((item) => item.animal.tag) },
+        });
         return true;
       }, TRANSACTION_OPTIONS);
 

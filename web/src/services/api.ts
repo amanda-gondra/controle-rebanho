@@ -7,7 +7,7 @@ export type ApiError = {
   status: number;
   code?: string; // código estável do erro (ex.: DUPLICATE_TAG)
   message: string;
-  errors?: { field: string; error: string }[];
+  errors?: { field: string; code?: string; params?: Record<string, string | number>; error: string }[];
 };
 
 // Avisado quando a sessão some no meio do uso (expirou ou saiu em outra aba).

@@ -4,6 +4,10 @@ import { prisma } from "../../src/lib/prisma.js";
 // (nunca vem de fora), então pode ir direto no SQL.
 const TABLES = [
   "Session",
+  "AuditLog",
+  "AnimalEvent",
+  "LotMembership",
+  "Lot",
   "User",
   "ApplicationAnimal",
   "Application",

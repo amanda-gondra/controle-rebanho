@@ -63,6 +63,18 @@ export function categoryLabelKey(category: Category, sex: Sex): CategoryLabelKey
   return category;
 }
 
+// Combinações (categoria, sexo) cujo nome contém o texto buscado — a busca do
+// rebanho acha "vaca" ou o nome que a fazenda escolheu ("novilho")
+export function categoriesMatching(text: string, labels: CategoryLabels): { category: Category; sex: Sex }[] {
+  const wanted = text.trim().toLocaleLowerCase("pt-BR");
+  if (!wanted) return [];
+  return CATEGORIES.flatMap((category) =>
+    CATEGORY_SEXES[category]
+      .filter((sex) => labels[categoryLabelKey(category, sex)].toLocaleLowerCase("pt-BR").includes(wanted))
+      .map((sex) => ({ category, sex })),
+  );
+}
+
 // Compara nomes sem diferenciar maiúsculas e espaços nas pontas
 export const normalizeLabel = (label: string) => label.trim().toLocaleLowerCase("pt-BR");
 

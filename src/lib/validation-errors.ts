@@ -22,6 +22,8 @@ export const FieldErrorCode = {
   TOO_MANY: "TOO_MANY", // lista com itens demais { max }
   NOT_INTEGER: "NOT_INTEGER",
   MAX_2_DECIMALS: "MAX_2_DECIMALS",
+  MAX_3_DECIMALS: "MAX_3_DECIMALS", // dose aplicada
+  DOSE_INCOMPLETE: "DOSE_INCOMPLETE", // dose: quantidade e unidade juntas
   INVALID_FORMAT: "INVALID_FORMAT", // { format: "date" | "email" | "uuid" ... }
   INVALID_OPTION: "INVALID_OPTION",
   UNKNOWN_FIELD: "UNKNOWN_FIELD",

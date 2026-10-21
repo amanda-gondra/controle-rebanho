@@ -21,6 +21,7 @@ let b: {
   soldAnimalId: string;
   tradeId: string;
   tradeItemId: string;
+  lotId: string;
 };
 
 beforeEach(async () => {
@@ -40,7 +41,11 @@ beforeEach(async () => {
   const sold = await createAnimal(farmB, { tag: "B-002" });
   const sale = await sellAnimal(farmB, sold.id, "2026-01-10", 400, 11);
 
+  const lot = (await farmB.inject({ method: "POST", url: "/lots", payload: { name: "Lote B" } })).json();
+  await farmB.inject({ method: "POST", url: `/lots/${lot.id}/animals`, payload: { animalIds: [animal.id], date: "2026-01-02" } });
+
   b = {
+    lotId: lot.id,
     animalId: animal.id,
     weighingId: weighing.id,
     productId: product.id,
@@ -63,6 +68,10 @@ async function snapshotFarmB() {
       prisma.applicationAnimal.findMany({ where, orderBy: { id: "asc" } }),
       prisma.trade.findMany({ where, orderBy: { id: "asc" } }),
       prisma.tradeItem.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.animalEvent.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.lot.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.lotMembership.findMany({ where, orderBy: { id: "asc" } }),
+      prisma.auditLog.findMany({ where, orderBy: { id: "asc" } }),
       prisma.farm.findUnique({ where: { id: farmB.farm.id } }),
     ]),
   );
@@ -71,26 +80,41 @@ async function snapshotFarmB() {
 describe("isolamento entre fazendas", () => {
   it("listas da fazenda A não mostram nada da fazenda B", async () => {
     await createAnimal(farmA, { tag: "A-001" });
-    for (const url of ["/animals", "/products", "/applications", "/alerts", "/trades"]) {
+    for (const url of ["/animals", "/products", "/applications", "/alerts", "/trades", "/lots"]) {
       const response = await farmA.inject({ url });
       expect(response.statusCode, url).toBe(200);
       expect(JSON.stringify(response.json()), url).not.toMatch(/B-00|Vacina B/);
     }
     const animals = (await farmA.inject({ url: "/animals" })).json();
-    expect(animals.map((a: { tag: string }) => a.tag)).toEqual(["A-001"]);
+    expect(animals.items.map((a: { tag: string }) => a.tag)).toEqual(["A-001"]);
+    expect(animals.counts.ALL).toBe(1);
+  });
+
+  it("o painel da fazenda A não conta nada da fazenda B", async () => {
+    const dashboard = (await farmA.inject({ url: "/dashboard?from=2025-01-01&to=2026-06-30" })).json();
+    expect(dashboard.herd).toEqual({ active: 0, byCategory: [], byLot: [], withoutLot: 0 });
+    expect(dashboard.weighings).toEqual({ inPeriod: 0, animalsWeighed: 0, recent: [] });
+    expect(dashboard.movements.entriesTotal).toBe(0);
+    expect(dashboard.reminders).toMatchObject({ overdue: 0, upcoming: 0 });
+    const own = (await farmB.inject({ url: "/dashboard?from=2025-01-01&to=2026-06-30" })).json();
+    expect(own.herd.active).toBe(1);
+    expect(own.weighings.recent.length).toBeGreaterThan(0);
   });
 
   it("a fazenda B continua vendo os próprios dados", async () => {
     const animals = (await farmB.inject({ url: "/animals" })).json();
-    expect(animals).toHaveLength(2);
+    expect(animals.items).toHaveLength(2);
   });
 
   it("toda rota com id da fazenda B responde 404 para a fazenda A, e nada de B muda", async () => {
     const before = await snapshotFarmB();
-    const { animalId, weighingId, productId, applicationId, tradeId, tradeItemId } = b;
+    const { animalId, weighingId, productId, applicationId, tradeId, tradeItemId, lotId } = b;
 
     const attempts: [string, string, unknown?][] = [
       ["GET", `/animals/${animalId}`],
+      ["GET", `/animals/${animalId}/history`],
+      ["GET", `/animals/${animalId}/delete-impact`],
+      ["POST", `/animals/${animalId}/tag-changes`, { newTag: "INVADIDO", reason: "LOST", date: "2026-01-02" }],
       ["PUT", `/animals/${animalId}`, { breed: "Invadida" }],
       ["PATCH", `/animals/${animalId}/status`, { status: "DEAD" }],
       ["DELETE", `/animals/${animalId}`],
@@ -109,6 +133,16 @@ describe("isolamento entre fazendas", () => {
       ["PATCH", `/trades/${tradeId}`, { items: [{ id: tradeItemId, unitPrice: 1 }] }],
       ["DELETE", `/trades/${tradeId}/items/${tradeItemId}`],
       ["DELETE", `/trades/${tradeId}`],
+      ["GET", `/lots/${lotId}`],
+      ["PUT", `/lots/${lotId}`, { name: "Invadido" }],
+      ["POST", `/lots/${lotId}/animals`, { animalIds: [animalId], date: "2026-01-03" }],
+      ["POST", `/lots/${lotId}/remove`, { animalIds: [animalId], date: "2026-01-03" }],
+      ["PATCH", `/lots/${lotId}/archive`],
+      ["DELETE", `/lots/${lotId}`],
+      ["PUT", `/products/${productId}`, { name: "Invadido" }],
+      ["PATCH", `/products/${productId}/archive`],
+      ["DELETE", `/products/${productId}`],
+      ["POST", `/applications/${applicationId}/dismiss-reminder`, {}],
     ];
 
     for (const [method, url, payload] of attempts) {
@@ -117,6 +151,30 @@ describe("isolamento entre fazendas", () => {
     }
 
     expect(await snapshotFarmB()).toBe(before);
+  });
+
+  it("a fazenda A NÃO coloca animal da fazenda B no próprio lote, nem o seu no lote de B", async () => {
+    const lotA = (await farmA.inject({ method: "POST", url: "/lots", payload: { name: "Lote A" } })).json();
+    const mine = await createAnimal(farmA, { tag: "A-9" });
+    const foreignAnimal = await farmA.inject({
+      method: "POST",
+      url: `/lots/${lotA.id}/animals`,
+      payload: { animalIds: [b.animalId], date: "2026-01-03" },
+    });
+    expect(foreignAnimal.statusCode).toBe(400);
+    const foreignLot = await farmA.inject({
+      method: "POST",
+      url: `/lots/${b.lotId}/animals`,
+      payload: { animalIds: [mine.id], date: "2026-01-03" },
+    });
+    expect(foreignLot.statusCode).toBe(404);
+    expect(await prisma.lotMembership.count({ where: { farmId: farmA.farm.id } })).toBe(0);
+    // Nem pelo banco: o gatilho recusa período com lote de outra fazenda
+    await expect(
+      prisma.lotMembership.create({
+        data: { farmId: farmA.farm.id, lotId: b.lotId, animalId: mine.id, startDate: new Date("2026-01-03") },
+      }),
+    ).rejects.toThrow();
   });
 
   it("a fazenda A NÃO usa animal nem produto da fazenda B numa aplicação", async () => {

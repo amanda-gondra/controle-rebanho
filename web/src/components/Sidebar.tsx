@@ -1,4 +1,4 @@
-import { List, PlusCircle, Syringe, LogOut, Settings, Handshake } from "lucide-react";
+import { List, PlusCircle, Syringe, LogOut, Settings, Handshake, LayoutDashboard, Layers } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { sectionOf, type Section } from "../navigation/origin.js";
 import { useAuth } from "./AuthProvider.js";
@@ -12,12 +12,16 @@ function initialsOf(name: string) {
   return (first + last).toUpperCase();
 }
 
+// `mobile: false` = fica só no menu do computador (a barra do celular tem
+// espaço para poucos itens; "Cadastrar animal" está no topo da lista)
 const NAV_ITEMS = [
-  { section: "herd", to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List },
-  { section: "addAnimal", to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle },
-  { section: "sanitary", to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe },
-  { section: "trades", to: "/negociacoes", end: false, label: "nav.trades", short: "nav.tradesShort", Icon: Handshake },
-] satisfies { section: Section; to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown }[];
+  { section: "dashboard", to: "/painel", end: false, label: "nav.dashboard", short: "nav.dashboardShort", Icon: LayoutDashboard, mobile: true },
+  { section: "herd", to: "/", end: true, label: "nav.herd", short: "nav.herdShort", Icon: List, mobile: true },
+  { section: "addAnimal", to: "/animais/novo", end: false, label: "nav.addAnimal", short: "nav.addAnimalShort", Icon: PlusCircle, mobile: false },
+  { section: "lots", to: "/lotes", end: false, label: "nav.lots", short: "nav.lotsShort", Icon: Layers, mobile: true },
+  { section: "sanitary", to: "/manejo", end: false, label: "nav.sanitary", short: "nav.sanitaryShort", Icon: Syringe, mobile: true },
+  { section: "trades", to: "/negociacoes", end: false, label: "nav.trades", short: "nav.tradesShort", Icon: Handshake, mobile: true },
+] satisfies { section: Section; to: string; end: boolean; label: MessageKey; short: MessageKey; Icon: unknown; mobile: boolean }[];
 
 // Configurações (G2): fica separada, logo acima do usuário (desktop); no
 // celular entra como mais um botão da barra inferior.
@@ -148,14 +152,14 @@ export function Sidebar() {
 
       {/* BARRA INFERIOR — só no mobile (some no md pra cima) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar flex justify-around items-center h-16 z-40">
-        {[...NAV_ITEMS, SETTINGS_ITEM].map(({ section, to, end, short, Icon }) => (
+        {[...NAV_ITEMS.filter((item) => item.mobile), SETTINGS_ITEM].map(({ section, to, end, short, Icon }) => (
           <NavLink
             aria-current={active === section ? "page" : undefined}
             key={to}
             to={to}
             end={end}
             className={() =>
-              `flex flex-col items-center gap-1 text-xs ${
+              `flex flex-col items-center gap-1 text-[11px] min-w-0 px-0.5 ${
                 active === section ? "text-white font-medium" : "text-white/60"
               }`
             }

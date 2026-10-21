@@ -15,6 +15,10 @@ import { TradeList } from "./pages/TradeList.js";
 import { TradeCreate } from "./pages/TradeCreate.js";
 import { TradeDetail } from "./pages/TradeDetail.js";
 import { TradeEdit } from "./pages/TradeEdit.js";
+import { LotList } from "./pages/LotList.js";
+import { LotDetail } from "./pages/LotDetail.js";
+import { WeighingSession } from "./pages/WeighingSession.js";
+import { Dashboard } from "./pages/Dashboard.js";
 import { ToastProvider } from "./components/ToastProvider.js";
 import { AuthProvider } from "./components/AuthProvider.js";
 import { RedirectIfLoggedIn, RequireAuth } from "./components/RequireAuth.js";
@@ -33,6 +37,10 @@ const router = createBrowserRouter(
       {/* Todo o resto exige login */}
       <Route element={<RequireAuth />}>
         <Route path="/" element={<AnimalList />} />
+        <Route path="/painel" element={<Dashboard />} />
+        <Route path="/pesagens" element={<WeighingSession />} />
+        <Route path="/lotes" element={<LotList />} />
+        <Route path="/lotes/:id" element={<LotDetail />} />
         <Route path="/animais/novo" element={<AnimalCreate />} />
         <Route path="/animais/:id" element={<AnimalDetail />} />
         <Route path="/animais/:id/editar" element={<AnimalEdit />} />

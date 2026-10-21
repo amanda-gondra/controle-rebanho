@@ -16,6 +16,9 @@ import { LoadError } from "../components/LoadError.js";
 import { buttonClass } from "../components/buttonStyles.js";
 import { useOrigin } from "../navigation/hooks.js";
 import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
+import { OriginFields, type EditableOrigin } from "../components/OriginFields.js";
+import { todayInTimeZone } from "../types/format.js";
+import type { AnimalOrigin } from "../types/animal.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
 
@@ -40,6 +43,9 @@ export function AnimalEdit() {
   const [birthMonth, setBirthMonth] = useState("");
   const [birthYear, setBirthYear] = useState("");
   const [notes, setNotes] = useState("");
+  const [origin, setOrigin] = useState<AnimalOrigin>("NOT_INFORMED");
+  const [entryDate, setEntryDate] = useState("");
+  const today = todayInTimeZone(account?.farm.timezone ?? "America/Sao_Paulo");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -47,7 +53,7 @@ export function AnimalEdit() {
   const [loadError, setLoadError] = useState("");
   // Retrato do formulário logo depois de carregar: diferente dele = alterações não salvas
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
-  const snapshot = JSON.stringify([sex, category, castrated, breed, birthKnowledge, birthDate, birthMonth, birthYear, notes]);
+  const snapshot = JSON.stringify([sex, category, castrated, breed, birthKnowledge, birthDate, birthMonth, birthYear, notes, origin, entryDate]);
   const dirty = initialSnapshot !== null && snapshot !== initialSnapshot;
   const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
 
@@ -72,6 +78,8 @@ export function AnimalEdit() {
         setCastrated(animal.castrated ?? defaultCastrated);
         setBreed(animal.breed ?? "");
         setNotes(animal.notes ?? "");
+        setOrigin(animal.origin);
+        setEntryDate(animal.entryDate ? animal.entryDate.slice(0, 10) : "");
         if (animal.birthPrecision === "DAY_MONTH_YEAR" && animal.birthDate) {
           setBirthKnowledge("DAY");
           setBirthDate(animal.birthDate.slice(0, 10));
@@ -129,6 +137,8 @@ export function AnimalEdit() {
         birthPrecision,
         birthDate: finalBirthDate,
         notes: notes.trim() || undefined,
+        // Com compra registrada, origem e entrada vêm da compra (não vão)
+        ...(origin !== "PURCHASED" ? { origin, entryDate: entryDate || null } : {}),
       });
       showToast(t("animal.form.saved"));
       allowLeave();
@@ -300,6 +310,17 @@ export function AnimalEdit() {
               </div>
             )}
           </div>
+
+          {/* Origem e entrada (D-52) */}
+          <OriginFields
+            origin={origin}
+            entryDate={entryDate}
+            onOriginChange={(value: EditableOrigin) => setOrigin(value)}
+            onEntryDateChange={setEntryDate}
+            error={errors.entryDate ?? errors.origin}
+            max={today}
+            fromPurchase={origin === "PURCHASED" ? { entryDate: entryDate || null } : undefined}
+          />
 
           {/* Observações */}
           <div className="mb-6">

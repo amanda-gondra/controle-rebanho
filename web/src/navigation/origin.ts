@@ -28,11 +28,13 @@ export const pathWithSearch = (location: { pathname: string; search: string }) =
   `${location.pathname}${location.search}`;
 
 // Item do menu que fica marcado em cada endereço (seção do sistema)
-export type Section = "herd" | "addAnimal" | "sanitary" | "trades" | "settings";
+export type Section = "dashboard" | "herd" | "addAnimal" | "lots" | "sanitary" | "trades" | "settings";
 
 export function sectionOf(pathname: string): Section | null {
   if (pathname === "/animais/novo") return "addAnimal";
-  if (pathname === "/" || pathname.startsWith("/animais/")) return "herd";
+  if (pathname === "/" || pathname.startsWith("/animais/") || pathname === "/pesagens") return "herd";
+  if (pathname === "/painel") return "dashboard";
+  if (/^\/lotes(\/|$)/.test(pathname)) return "lots";
   if (/^\/(manejo|produtos|aplicacoes)(\/|$)/.test(pathname)) return "sanitary";
   if (/^\/negociacoes(\/|$)/.test(pathname)) return "trades";
   if (/^\/configuracoes(\/|$)/.test(pathname)) return "settings";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyReapplication } from "./sanitary.service.js";
+import { classifyReapplication, findWithdrawalConflicts, isReminderOpen, withdrawalEndDate } from "./sanitary.service.js";
 
 describe("classifyReapplication", () => {
   // um "hoje" fixo pra todos os testes, pra não depender da data real
@@ -83,5 +83,52 @@ describe("classifyReapplication", () => {
         overdue: true,
       });
     });
+  });
+});
+
+
+describe("carência (D-12)", () => {
+  it("fim = data + dias; sem dias informados = sem fim (não é zero)", () => {
+    expect(withdrawalEndDate("2026-09-10", 30)).toBe("2026-10-10");
+    expect(withdrawalEndDate("2026-09-10", 0)).toBe("2026-09-10");
+    expect(withdrawalEndDate("2026-09-10", null)).toBeNull();
+  });
+
+  const record = (tag: string, applicationDate: string, end: string, animalId = tag) => ({
+    animalId,
+    tag,
+    productName: "Ivermectina",
+    applicationDate,
+    withdrawalEndDate: end,
+  });
+
+  it("avisa quem está em carência na data da venda", () => {
+    const conflicts = findWithdrawalConflicts("2026-10-01", [
+      record("BR-2", "2026-09-10", "2026-10-10"), // em carência
+      record("BR-1", "2026-09-10", "2026-10-01"), // termina no dia: liberado
+      record("BR-3", "2026-10-05", "2026-11-05"), // aplicado depois da venda
+    ]);
+    expect(conflicts.map((c) => c.tag)).toEqual(["BR-2"]);
+  });
+
+  it("um aviso por animal, com o fim mais distante; ordenado por brinco", () => {
+    const conflicts = findWithdrawalConflicts("2026-10-01", [
+      record("BR-10", "2026-09-01", "2026-10-05", "a"),
+      record("BR-10", "2026-09-20", "2026-10-20", "a"),
+      record("BR-9", "2026-09-20", "2026-10-02", "b"),
+    ]);
+    expect(conflicts.map((c) => [c.tag, c.withdrawalEndDate])).toEqual([
+      ["BR-9", "2026-10-02"],
+      ["BR-10", "2026-10-20"],
+    ]);
+  });
+});
+
+describe("lembrete (D-40)", () => {
+  it("só sai ao reaplicar, dispensar ou sem animal ativo — nunca pelo tempo", () => {
+    expect(isReminderOpen({ dismissed: false, reapplied: false, activeAnimals: 3 })).toBe(true);
+    expect(isReminderOpen({ dismissed: true, reapplied: false, activeAnimals: 3 })).toBe(false);
+    expect(isReminderOpen({ dismissed: false, reapplied: true, activeAnimals: 3 })).toBe(false);
+    expect(isReminderOpen({ dismissed: false, reapplied: false, activeAnimals: 0 })).toBe(false);
   });
 });

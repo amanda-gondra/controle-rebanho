@@ -41,3 +41,41 @@ export function classifyReapplication(
     overdue: reapplyDay < today,
   };
 }
+
+// ── Carência (D-12, RN-SAN-009/010) ──
+
+// Fim da carência = data da aplicação + dias informados no produto. Sem dias
+// informados, não há fim (carência "não informada" — nunca zero).
+export function withdrawalEndDate(applicationDate: string, days: number | null | undefined): string | null {
+  return days === null || days === undefined ? null : addDays(applicationDate, days);
+}
+
+export type WithdrawalRecord = {
+  animalId: string;
+  tag: string;
+  productName: string;
+  applicationDate: string; // AAAA-MM-DD
+  withdrawalEndDate: string; // AAAA-MM-DD
+};
+
+// Animais em carência registrada NA DATA da venda: aplicação até a data e fim
+// da carência depois dela. Um aviso por animal — o fim mais distante.
+// Ordenado por brinco. Só aviso: quem decide é o produtor (RN-SAN-010).
+export function findWithdrawalConflicts(saleDate: string, records: WithdrawalRecord[]): WithdrawalRecord[] {
+  const latest = new Map<string, WithdrawalRecord>();
+  for (const record of records) {
+    if (record.applicationDate > saleDate || record.withdrawalEndDate <= saleDate) continue;
+    const current = latest.get(record.animalId);
+    if (!current || record.withdrawalEndDate > current.withdrawalEndDate) latest.set(record.animalId, record);
+  }
+  return [...latest.values()].sort((a, b) => a.tag.localeCompare(b.tag, "pt-BR", { numeric: true }));
+}
+
+// ── Lembrete (D-40, RN-SAN-007/008) ──
+
+// O lembrete continua aberto até: (a) a reaplicação ser registrada a partir
+// dele; (b) ser dispensado; (c) nenhum animal do grupo continuar ativo.
+// Nunca sai sozinho só porque o tempo passou.
+export function isReminderOpen(state: { dismissed: boolean; reapplied: boolean; activeAnimals: number }): boolean {
+  return !state.dismissed && !state.reapplied && state.activeAnimals > 0;
+}

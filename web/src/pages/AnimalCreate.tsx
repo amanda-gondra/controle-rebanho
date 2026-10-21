@@ -1,4 +1,5 @@
 import { useState, useId } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar.js";
 import { createAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
@@ -13,6 +14,8 @@ import { sexLabel } from "../types/labels.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { buttonClass } from "../components/buttonStyles.js";
 import { useOrigin } from "../navigation/hooks.js";
+import { OriginFields, type EditableOrigin } from "../components/OriginFields.js";
+import { todayInTimeZone } from "../types/format.js";
 import { useUnsavedChanges } from "../navigation/useUnsavedChanges.js";
 
 type BirthKnowledge = "" | "DAY" | "MONTH" | "UNKNOWN";
@@ -25,7 +28,10 @@ export function AnimalCreate() {
   const showToast = useToast();
   const { account } = useAuth();
 
-  const [tag, setTag] = useState("");
+  // Vindo da pesagem em sequência com um brinco que não existe: já preenchido
+  const [params] = useSearchParams();
+  const [initialTag] = useState(() => (params.get("brinco") ?? "").slice(0, 50));
+  const [tag, setTag] = useState(initialTag);
   const [sex, setSex] = useState<Sex | "">("");
   const [category, setCategory] = useState<Category | "">("");
   // Castrado começa com o padrão da fazenda (Configurações → Animais)
@@ -36,13 +42,17 @@ export function AnimalCreate() {
   const [birthMonth, setBirthMonth] = useState("");
   const [birthYear, setBirthYear] = useState("");
   const [notes, setNotes] = useState("");
+  const [origin, setOrigin] = useState<EditableOrigin>("NOT_INFORMED");
+  const [entryDate, setEntryDate] = useState("");
+  const today = todayInTimeZone(account?.farm.timezone ?? "America/Sao_Paulo");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const defaultCastrated = account?.farm.settings.defaultCastrated ?? false;
   const dirty =
-    tag !== "" || sex !== "" || category !== "" || castrated !== defaultCastrated || breed !== "" ||
-    birthKnowledge !== "" || birthDate !== "" || birthMonth !== "" || birthYear !== "" || notes !== "";
+    tag !== initialTag || sex !== "" || category !== "" || castrated !== defaultCastrated || breed !== "" ||
+    birthKnowledge !== "" || birthDate !== "" || birthMonth !== "" || birthYear !== "" || notes !== "" ||
+    origin !== "NOT_INFORMED" || entryDate !== "";
   const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges(dirty && !saving);
 
   // Trocar o sexo apaga a categoria escolhida se ela deixar de combinar
@@ -87,6 +97,8 @@ export function AnimalCreate() {
         birthPrecision,
         birthDate: finalBirthDate,
         notes: notes.trim() || undefined,
+        origin,
+        entryDate: entryDate || undefined,
       });
       showToast(t("animal.form.created"));
       allowLeave();
@@ -255,6 +267,16 @@ export function AnimalCreate() {
               {t("animal.form.birthHelp")}
             </p>
           </div>
+
+          {/* Origem e entrada (D-52) */}
+          <OriginFields
+            origin={origin}
+            entryDate={entryDate}
+            onOriginChange={setOrigin}
+            onEntryDateChange={setEntryDate}
+            error={errors.entryDate ?? errors.origin}
+            max={today}
+          />
 
           {/* Observações */}
           <div className="mb-6">

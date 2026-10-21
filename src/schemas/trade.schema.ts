@@ -93,6 +93,9 @@ export const createTradeSchema = z
     notes: notes.optional(),
     // Mesmo identificador enviado de novo = a mesma negociação (RN-NEG-016)
     idempotencyKey: z.uuid("Identificador da operação inválido.").optional(),
+    // Venda com animal em carência registrada: o produtor viu o aviso e
+    // decidiu registrar mesmo assim (RN-SAN-010 — aviso, não bloqueio)
+    acknowledgeWithdrawal: z.boolean().optional(),
     items: z
       .array(newItem)
       .min(1, "Inclua pelo menos um animal.")

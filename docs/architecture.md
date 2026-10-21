@@ -231,6 +231,97 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
   mesma transação da compra e das pesagens. Animal novo numa venda → `NOT_ALLOWED`
   (`reason: NEW_ANIMAL_IN_SALE`). Desfazer a compra não apaga os animais (D-10).
 
+## Histórico do animal e auditoria (D-19, D-28, D-29, D-51, D-52, D-54 — 2026-10-18)
+
+- **Brinco sem diferenciar maiúsculas (D-29):** "br-1" e "BR-1" são o mesmo brinco na fazenda —
+  na API (`mode: "insensitive"`) e no banco (índice único `Animal_farmId_lower_tag_key`).
+- **Troca de brinco (D-19):** `POST /animals/:id/tag-changes` {newTag, reason, date}. O animal é o
+  mesmo (pesagens, aplicações e negociações continuam nele); o brinco antigo fica na linha do
+  tempo e a busca da lista o encontra ("achado pelo brinco antigo").
+- **Linha do tempo (D-28):** tabela `AnimalEvent` (só acrescentada). Tipos: brinco, categoria,
+  sexo, nascimento, situação, origem e lote; cada evento guarda antes/depois em código ou JSON
+  pequeno (a tela traduz), data efetiva e autor. `GET /animals/:id/history` (paginada).
+- **Autor (D-51):** `createdById` em animal, pesagem, aplicação e pertencimento a lote; negociação
+  já tinha. **Ações sensíveis** vão para `AuditLog`, que o banco **não deixa editar** (gatilho):
+  excluir animal, pesagem, aplicação ou lote, arquivar/reativar produto, desfazer negociação ou
+  tirar animal dela, mudar configurações. Senha e token nunca entram na trilha.
+- **Exclusão (D-54):** cadastro errado continua sendo apagado de verdade (D-10); a exclusão fica
+  registrada na trilha. Antes de excluir um animal, `GET /animals/:id/delete-impact` diz o que vai junto.
+- **Origem e entrada (D-52):** `origin` = nascido na fazenda / comprado / recebido / não
+  informado, + `entryDate` opcional (entre nascimento e saída — `CHECK` no banco). A compra
+  preenche "comprado" + data da compra; desfazer a compra volta para "não informado".
+
+## Lotes (D-49 — versão simples, 2026-10-18)
+
+- `Lot` (nome único sem maiúsculas, descrição, arquivado) e `LotMembership` (animal, lote,
+  `startDate`, `endDate`). **Um período aberto por animal** (índice único parcial
+  `LotMembership_one_open_per_animal_key`); o gatilho `LotMembership_same_farm` impede misturar
+  fazendas.
+- Mover (`POST /lots/:id/animals`) fecha o período atual na data e abre o novo; tirar do lote
+  (`POST /lots/:id/remove`) só fecha. Regras em `services/lot.service.ts`: vendido/morto não muda
+  de lote; data fora da vida do animal ou antes da entrada no lote atual é recusada
+  (`LOT_MOVE_ERRORS`, um erro por animal com o brinco). Venda/morte fecha o período na data da
+  saída; desfazer a saída reabre.
+- Arquivar só lote vazio; excluir só lote que nunca teve animais (senão `LOT_IN_USE`: arquive).
+- Telas: **Lotes** (lista com animais ativos por lote), detalhe do lote (quem está agora, desde
+  quando, colocar animais, mudar marcados de lote, histórico de quem passou), ficha do animal
+  ("Lote: X · Mudar de lote") e filtro por lote na lista do rebanho. Pasto e piquete: fora.
+
+## Manejo sanitário v1.0 (D-12, D-39, D-40, D-57, F-18 — 2026-10-18)
+
+- Tipos de produto: vacina, vermífugo, antiparasitário externo, outro (remédio). Produto tem
+  para que serve, fabricante, observações e **carência em dias** escrita pelo produtor (em branco
+  = não informada, nunca zero). Editar; **arquivar** produto usado (não entra em aplicação nova,
+  `PRODUCT_ARCHIVED`); excluir só o nunca usado. Nome único sem maiúsculas.
+- Aplicação: **dose opcional** (quantidade + unidade mL/g/dose, só registro — o sistema não
+  sugere nem confere), partida do frasco, carência **copiada** do produto com o fim calculado
+  (`CHECK` no banco), `idempotencyKey` (reenvio depois de queda de internet não grava duas vezes).
+- Lembrete (D-40): sai da lista ao **registrar a reaplicação a partir dele**, ao **dispensar**
+  (motivo opcional) ou quando nenhum animal da aplicação está ativo. `src/lib/reminders.ts`.
+- **Aviso de carência na venda (D-12):** se algum animal estiver em carência registrada na data
+  da venda, a API responde `WITHDRAWAL_WARNING` com a lista; a tela mostra brinco, produto e fim e
+  só grava se a pessoa confirmar (`withdrawalWarningAccepted` fica na negociação). O sistema
+  **avisa, não bloqueia** e nunca afirma conformidade.
+
+## Pesagem em sequência e lista no servidor (D-14, RN-PES-007/008, F-15/F-16)
+
+- **Pesagem em sequência** (`/pesagens`): data uma vez; brinco (sem maiúsculas, também o antigo)
+  → peso → "Salvar e próximo". Cada pesagem é gravada na hora; sem internet, brinco e peso ficam
+  na tela para reenviar. Brinco inexistente oferece "Cadastrar este animal" (com o brinco
+  preenchido). Pesados na sessão podem ser corrigidos ou excluídos ali.
+- **GMD com período:** `GET /animals/:id/weight-gain` devolve `startDate`/`endDate`; a ficha mostra
+  "de … a … (N dias)" e o ganho desde a pesagem anterior em cada linha.
+- **Lista do rebanho paginada no servidor:** `GET /animals` devolve `{ items, total, page,
+  pageSize, counts }`; `q` busca brinco (atual e antigo), raça e nome da categoria; filtros
+  `status`, `category`, `sex`, `lotId` (`none` = sem lote). Telas de seleção pedem até 5.000 de uma vez.
+
+## Painel (D-50 — 2026-10-21)
+
+`GET /dashboard?from=&to=` (padrão: dia 1º do mês corrente até hoje, fuso da fazenda; fim no
+futuro vira hoje; período de no máximo 731 dias). Regras de cada número (testadas em
+`dashboard.service.test.ts` e `tests/integration/dashboard.test.ts`):
+
+| Número | Regra |
+|---|---|
+| Animais ativos hoje | situação ativa agora (fora vendidos e mortos) |
+| Por categoria / por lote | ativos hoje, agrupados pela categoria (com o sexo) e pelo lote aberto; "sem lote" = ativos − ativos em lote |
+| Entradas no período | animais com **data de entrada** no período, por origem. Sem data de entrada, não conta |
+| Saídas no período | vendidos e mortos com **data de saída** no período |
+| Lembretes | os mesmos de `GET /alerts`: vencidos e os que vencem dentro da antecedência da fazenda, com animal ativo |
+| Pesagens no período | pesagens com data no período e quantos animais distintos |
+| GMD médio | média simples do GMD de cada animal **ativo** que tem GMD (2+ pesagens em dias diferentes; primeira → última, a mesma conta da ficha). Sem nenhum: "—", nunca zero. Perda de peso entra negativa |
+
+Cada bloco da tela leva à lista que explica o número (rebanho filtrado, lote, manejo). O período
+fica no endereço.
+
+## Baixar a lista em planilha (parte da D-46)
+
+Na lista do rebanho, "Baixar CSV" busca no servidor **todos** os animais do filtro atual (só a
+fazenda da sessão) e gera a planilha no navegador com os nomes da fazenda: separador `;`, acentos
+(BOM UTF-8), datas e pesos no formato brasileiro. Texto que começa com `= + - @` ganha um
+apóstrofo (proteção contra **injeção de fórmula** em planilha — `web/src/types/csv.ts`). O "baixar
+meus dados" completo (todas as tabelas) e excluir a conta continuam na G6.
+
 ## Navegação e padrões de tela (auditoria de interface — 2026-10-18)
 
 O roteador é o de dados do React Router (`createBrowserRouter` em `web/src/App.tsx`), necessário

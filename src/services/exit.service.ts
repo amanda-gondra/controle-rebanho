@@ -5,7 +5,7 @@
 
 // O que pode impedir uma data de saída (RN-ANIMAL-011): ela não pode ser
 // anterior ao nascimento, à compra, nem a pesagem ou aplicação já registradas.
-export type ExitBlockerKind = "BIRTH" | "PURCHASE" | "WEIGHING" | "APPLICATION";
+export type ExitBlockerKind = "BIRTH" | "PURCHASE" | "WEIGHING" | "APPLICATION" | "LOT";
 export type ExitBlocker = { kind: ExitBlockerKind; date: string };
 
 export type ExitFacts = {
@@ -13,6 +13,7 @@ export type ExitFacts = {
   purchaseDate?: string | null;
   lastWeighingDate?: string | null;
   lastApplicationDate?: string | null;
+  lastLotMoveDate?: string | null; // última entrada/troca de lote (D-49)
 };
 
 // Devolve o registro MAIS RECENTE que impede a saída nessa data (é o que a
@@ -26,6 +27,7 @@ export function findExitConflict(exitDate: string, facts: ExitFacts): ExitBlocke
   add("PURCHASE", facts.purchaseDate);
   add("WEIGHING", facts.lastWeighingDate);
   add("APPLICATION", facts.lastApplicationDate);
+  add("LOT", facts.lastLotMoveDate);
 
   if (candidates.length === 0) return null;
   return candidates.reduce((latest, current) => (current.date > latest.date ? current : latest));
