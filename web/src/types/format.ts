@@ -78,14 +78,15 @@ export function monthNames(): string[] {
   });
 }
 
-// "Hoje" (AAAA-MM-DD) no fuso da fazenda — padrão dos campos de data
-export function todayInTimeZone(timeZone: string): string {
+// "Hoje" (AAAA-MM-DD) no fuso da fazenda — padrão dos campos de data.
+// Com `at`, o dia de calendário daquele instante no fuso (ex.: "criado em").
+export function todayInTimeZone(timeZone: string, at: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date()); // en-CA só para sair no formato AAAA-MM-DD
+  }).format(at); // en-CA só para sair no formato AAAA-MM-DD
 }
 
 // Soma dias a uma data de calendário ("2026-09-10" + 30 → "2026-10-10")
@@ -93,4 +94,17 @@ export function addDaysTo(calendarDate: string, days: number): string {
   const date = new Date(`${calendarDate}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+// Iniciais do nome para o avatar ("Amanda Gondra" → "AG")
+export function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase();
+}
+
+// Dias de calendário de `from` até `to` ("2026-10-01" → "2026-10-11" = 10)
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }

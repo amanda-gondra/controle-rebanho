@@ -23,7 +23,8 @@ import { errorMessage } from "../i18n/errors.js";
 // salvos e o 37º pode ser reenviado sem digitar de novo. Brinco sem
 // diferenciar maiúsculas e também pelo brinco antigo (D-19/D-29).
 
-type Found = { animal: Animal } | { notFound: string } | { exited: Animal } | null;
+// `query` = o brinco que foi buscado (para dizer se achou pelo brinco antigo)
+type Found = { animal: Animal; query: string } | { notFound: string } | { exited: Animal } | null;
 type Saved = { weighing: Weighing; tag: string };
 
 export function WeighingSession() {
@@ -49,6 +50,11 @@ export function WeighingSession() {
   const [busy, setBusy] = useState(false);
   const tagInput = useRef<HTMLInputElement>(null);
   const weightInput = useRef<HTMLInputElement>(null);
+  // O animal na tela agora (para a resposta de uma gravação antiga não apagar o próximo)
+  const currentAnimalId = useRef<string | null>(null);
+  useEffect(() => {
+    currentAnimalId.current = found && "animal" in found ? found.animal.id : null;
+  }, [found]);
 
   // Só o que está digitado e NÃO salvo conta como alteração
   const { allowLeave, dialog: unsavedDialog } = useUnsavedChanges((tag.trim() !== "" || weight.trim() !== "") && !saving);
@@ -70,7 +76,8 @@ export function WeighingSession() {
       if (!exact) setFound({ notFound: wanted });
       else if (exact.status !== "ACTIVE") setFound({ exited: exact });
       else {
-        setFound({ animal: exact });
+        setFound({ animal: exact, query: wanted });
+        setWeight("");
         setTimeout(() => weightInput.current?.focus(), 0);
       }
     } catch (err) {
@@ -87,13 +94,18 @@ export function WeighingSession() {
     if (!weight.trim() || !(value > 0)) return setError(t("weighing.weightRequired"));
     setError("");
     setSaving(true);
+    const savedAnimalId = found.animal.id;
     try {
       const weighing = await createWeighing(found.animal.id, { date, weightKg: value });
       setSaved((previous) => [{ weighing, tag: found.animal.tag }, ...previous]);
-      setTag("");
-      setWeight("");
-      setFound(null);
-      tagInput.current?.focus();
+      // Só limpa se a pessoa ainda não começou o próximo (digitou rápido
+      // enquanto o servidor respondia): nada do próximo animal se perde
+      setFound((current) => (current && "animal" in current && current.animal.id === savedAnimalId ? null : current));
+      setTag((current) => (current.trim().toLocaleLowerCase() === found.query.toLocaleLowerCase() ? "" : current));
+      if (currentAnimalId.current === savedAnimalId) {
+        setWeight("");
+        tagInput.current?.focus();
+      }
     } catch (err) {
       const apiError = err as ApiError;
       // Sem conexão: brinco e peso continuam na tela para tentar de novo
@@ -223,8 +235,8 @@ export function WeighingSession() {
                   {animal && (
                     <p className="text-texto">
                       <strong>{animal.tag}</strong> · {labelOf(animal.category, animal.sex)}
-                      {animal.tag.toLocaleLowerCase() !== tag.trim().toLocaleLowerCase() && (
-                        <> · {t("herd.foundByOldTag", { tag: tag.trim() })}</>
+                      {found && "animal" in found && animal.tag.toLocaleLowerCase() !== found.query.toLocaleLowerCase() && (
+                        <> · {t("herd.foundByOldTag", { tag: found.query })}</>
                       )}
                       <br />
                       <span className="text-sm text-texto-suave">

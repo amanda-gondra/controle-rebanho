@@ -90,6 +90,17 @@ describe("isolamento entre fazendas", () => {
     expect(animals.counts.ALL).toBe(1);
   });
 
+  it("resumo e busca do manejo da fazenda A não contam nada da fazenda B", async () => {
+    const summary = (await farmA.inject({ url: "/applications/summary" })).json();
+    expect(summary).toMatchObject({ applications: 0, animalsTreated: 0, activeAnimals: 0, products: 0 });
+    expect(summary.reminders.open).toBe(0);
+    const found = (await farmA.inject({ url: "/applications?q=B-00" })).json();
+    expect(found).toEqual([]);
+    const trades = (await farmA.inject({ url: "/trades/summary" })).json();
+    expect(trades).toMatchObject({ count: 0, sales: { count: 0 }, purchases: { count: 0 } });
+    expect((await farmA.inject({ url: "/trades?q=B-00" })).json().total).toBe(0);
+  });
+
   it("o painel da fazenda A não conta nada da fazenda B", async () => {
     const dashboard = (await farmA.inject({ url: "/dashboard?from=2025-01-01&to=2026-06-30" })).json();
     expect(dashboard.herd).toEqual({ active: 0, byCategory: [], byLot: [], withoutLot: 0 });
@@ -134,6 +145,8 @@ describe("isolamento entre fazendas", () => {
       ["DELETE", `/trades/${tradeId}/items/${tradeItemId}`],
       ["DELETE", `/trades/${tradeId}`],
       ["GET", `/lots/${lotId}`],
+      ["GET", `/lots/${lotId}/weighings`],
+      ["GET", `/lots/${lotId}/applications`],
       ["PUT", `/lots/${lotId}`, { name: "Invadido" }],
       ["POST", `/lots/${lotId}/animals`, { animalIds: [animalId], date: "2026-01-03" }],
       ["POST", `/lots/${lotId}/remove`, { animalIds: [animalId], date: "2026-01-03" }],

@@ -16,6 +16,7 @@ import {
   createApplicationSchema,
   updateApplicationSchema,
   listApplicationsQuerySchema,
+  applicationsSummaryQuerySchema,
   applicationIdParamSchema,
   dismissReminderSchema,
 } from "../schemas/sanitary.schema.js";
@@ -307,11 +308,17 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const { type, from, to, page, pageSize } = request.query;
-      const where = {
+      const { type, from, to, q, page, pageSize } = request.query;
+      const where: Prisma.ApplicationWhereInput = {
         ...(type ? { product: { type } } : {}),
-        ...(from || to
-          ? { date: { ...(from ? { gte: toDbDate(from) } : {}), ...(to ? { lte: toDbDate(to) } : {}) } }
+        ...dateRange(from, to),
+        ...(q
+          ? {
+              OR: [
+                { product: { name: { contains: q, mode: "insensitive" } } },
+                { animals: { some: { animal: { tag: { contains: q, mode: "insensitive" } } } } },
+              ],
+            }
           : {}),
       };
       return request.db.application.findMany({
@@ -321,8 +328,49 @@ export async function sanitaryRoutes(app: FastifyInstance) {
         include: {
           product: true,
           _count: { select: { animals: true } }, // quantos animais no evento
+          createdBy: { select: { id: true, name: true } }, // quem registrou (só o nome)
         },
       });
+    },
+  );
+
+  // GET /applications/summary — números do topo da tela (no período, se vier):
+  // aplicações, animais diferentes tratados, ativos hoje, lembretes abertos e
+  // produtos em uso. Tudo contado no banco da fazenda da sessão.
+  r.get(
+    "/applications/summary",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Resumo do manejo sanitário (aplicações, animais tratados, lembretes, produtos)",
+        querystring: applicationsSummaryQuerySchema,
+      },
+    },
+    async (request) => {
+      const { from, to } = request.query;
+      const inPeriod = dateRange(from, to);
+      const [applications, treated, activeAnimals, reminders, products] = await Promise.all([
+        request.db.application.count({ where: inPeriod }),
+        request.db.applicationAnimal.findMany({
+          where: { application: inPeriod },
+          distinct: ["animalId"],
+          select: { animalId: true },
+        }),
+        request.db.animal.count({ where: { status: "ACTIVE" } }),
+        openReminders(request.db, request.auth.farm),
+        request.db.product.count({ where: { archivedAt: null } }),
+      ]);
+      return {
+        applications,
+        animalsTreated: treated.length,
+        activeAnimals,
+        reminders: {
+          open: reminders.length,
+          overdue: reminders.filter((reminder) => reminder.overdue).length,
+          alertDays: request.auth.farm.settings.reapplyAlertDays,
+        },
+        products,
+      };
     },
   );
 
@@ -527,4 +575,10 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       }));
     },
   );
+}
+
+// Filtro de data (inclusive nas duas pontas) para aplicações
+function dateRange(from?: string, to?: string): Prisma.ApplicationWhereInput {
+  if (!from && !to) return {};
+  return { date: { ...(from ? { gte: toDbDate(from) } : {}), ...(to ? { lte: toDbDate(to) } : {}) } };
 }

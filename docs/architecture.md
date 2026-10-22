@@ -266,6 +266,15 @@ regra de negócio (`CATEGORY_INCOMPATIBLE_WITH_SEX`, `CASTRATED_ONLY_FOR_MALES`,
 - Telas: **Lotes** (lista com animais ativos por lote), detalhe do lote (quem está agora, desde
   quando, colocar animais, mudar marcados de lote, histórico de quem passou), ficha do animal
   ("Lote: X · Mudar de lote") e filtro por lote na lista do rebanho. Pasto e piquete: fora.
+- **Resumo do lote** (`GET /lots/:id` → `summary`, função pura `summarizeLot` em
+  `services/lot.service.ts`, 2026-10-21): machos e fêmeas de quem está no lote agora; **peso médio** =
+  média da última pesagem de cada animal atual (quem nunca foi pesado não entra; `weighedAnimals`
+  diz quantos entraram); **GMD médio no lote** = média do GMD de cada animal usando **só as
+  pesagens desde que ele entrou no lote** (precisa de 2 pesagens em dias diferentes nesse período;
+  `animalsWithGain`/`animalsWithoutGain`); `formedOn` = início do primeiro período do lote.
+- Abas do detalhe: `GET /lots/:id/weighings` (pesagens feitas enquanto o animal estava no lote,
+  até 200, mais recentes primeiro) e `GET /lots/:id/applications` (aplicações em que algum animal
+  estava no lote na data; `animalsInLot` de `animalsTotal`). Outra fazenda → 404.
 
 ## Manejo sanitário v1.0 (D-12, D-39, D-40, D-57, F-18 — 2026-10-18)
 
@@ -358,8 +367,9 @@ primeiro campo e volta para quem abriu, Esc e clique fora fecham — exceto com 
 (`dirty`) ou gravando (`busy`), quando só "Cancelar" ou X fecham.
 
 **Listas.** Busca, filtros, ordem e página no endereço (`listParams.ts`, com valores validados e
-`replace` ao digitar): rebanho (`q`, `status`, `category`, `sort`, `page`), manejo (`type`),
-negociações (`type`, `pending`, `page`). Página fora do intervalo vai para a última. Paginação com
+`replace` ao digitar): rebanho (`q`, `status`, `category`, `sort`, `page`), manejo (`type`, `q`, `from`, `to`),
+negociações (`type`, `status`, `q`, `from`, `to`, `page`; o antigo `pending=1` ainda funciona),
+lotes (`q`, `status`), detalhe do lote (`aba`). Página fora do intervalo vai para a última. Paginação com
 janela de páginas (`pageWindow`). Linhas abrem por link de verdade (teclado, nova aba). No celular,
 o rebanho vira cartões.
 
@@ -367,9 +377,45 @@ o rebanho vira cartões.
 "Limpar filtros", falha com `LoadError` ("Tentar de novo") — por tela e por seção. Sucesso por aviso
 (`ToastProvider`, `aria-live`).
 
-**Visual.** Cabeçalho `PageHeader` (h1 `text-2xl font-semibold`), botões `buttonClass`
+**Visual.** Cabeçalho `PageHeader` (h1 `text-[26px] md:text-[30px] font-semibold`; "← Voltar" em
+texto + sino e menu da conta à direita no computador — `TopBar`), botões `buttonClass`
 (`primary`, `secondary`, `danger`, `dangerOutline`), foco visível verde (`:focus-visible` em
 `index.css`), animações reduzidas com `prefers-reduced-motion`.
+
+## Identidade visual e kit de interface (referências visuais — 2026-10-21)
+
+- **Logo oficial CampoRico** (decisão da Amanda: só o logo muda; os textos continuam "Rebanho").
+  Arquivos em `web/public/brand/`, recortados da folha oficial sem redesenhar nem filtrar:
+  `camporico-mark.png` + `camporico-wordmark-dark.png` (menu lateral), `camporico-full-dark.png`
+  (tela de entrar/criar conta), `camporico-full-light.png` (só em fundo branco ou quase branco),
+  `favicon-32/64.png` e `apple-touch-icon.png`. O antigo `logo.png` continua só como ícone na
+  lista do rebanho. Pedir à TG Campo o logo em vetor (SVG) para trocar os PNG.
+- **Kit compartilhado** (`web/src/components/ui/`): `StatCard` (indicador: rótulo, número, detalhe,
+  regra; inteiro clicável com `to`; no celular sem ícone e dois por linha), `SectionCard`,
+  `EmptyState`, `StatusBadge` (texto sempre junto da cor), `IconCircle`, `ActionsMenu` (menu ⋮ por
+  portal, Esc volta o foco), `Pagination` ("Mostrando X de Y" + janela de páginas), `PeriodFilter`
+  (atalhos + De/Até; `null` = todo o período), `FormSection` (parte numerada de formulário),
+  `SexIcon`, `CowIcon` (desenho próprio). `TopBar`: sino → `/manejo` (ponto vermelho = vencido,
+  verde = chegando; `useReminderCount`, guardado 60 s e recarregado por `invalidateReminderCount()`
+  ao registrar/corrigir/excluir aplicação ou dispensar lembrete). `ScreenError` é o `errorElement`
+  de todas as rotas (falha da tela vira página amigável com "Recarregar").
+- **Manejo sanitário:** `GET /applications/summary?from&to` → `applications` (no período),
+  `animalsTreated` (animais diferentes), `activeAnimals` (hoje), `reminders` {`open`, `overdue`,
+  `alertDays`} (mesma regra de `/alerts`) e `products` (não arquivados). `GET /applications` ganhou
+  `q` (nome do produto ou brinco) e `createdBy` {`id`, `name`} — nunca o e-mail. "Status" da tabela
+  é sempre "Aplicada" (toda aplicação registrada foi aplicada); lembrete aberto aparece no cartão
+  de reaplicações.
+- **Negociações:** `GET /trades/summary` (mesmos filtros da lista, sem página) → `count`,
+  `pending` (aguardando romaneio), `sales`/`purchases` {`count`, `animals`, `total`} com soma exata
+  em centavos só do que já tem valor e só na moeda da fazenda (`otherCurrency` conta o resto) —
+  função pura `summarizeTrades`. `GET /trades` ganhou `q` (comprador/vendedor ou brinco) e `animal`
+  (brinco, sexo, categoria, raça) quando a negociação tem um animal só.
+- **Cadastro e edição do animal:** 4 partes numeradas (Identificação, Informações do animal,
+  Entrada na fazenda, Observações) + painel de orientação; categoria virou lista que só abre
+  depois do sexo (mesma regra da G4).
+- Fora por falta de dado real (não inventar): categoria/localização/pasto do lote, nome do animal,
+  fotos, CNPJ, setas de variação %, "Importar", Financeiro/Relatórios no menu, aba "Relatórios",
+  coluna "Lote" nas negociações.
 
 ## Textos da tela (G3 — D-01)
 

@@ -1,5 +1,5 @@
 import { request } from "./api.js";
-import type { Lot, LotDetail, LotMoveResult } from "../types/lot.js";
+import type { Lot, LotApplication, LotDetail, LotMoveResult, LotWeighing } from "../types/lot.js";
 
 export function listLots(includeArchived = false): Promise<Lot[]> {
   return request<Lot[]>(`/lots${includeArchived ? "?includeArchived=true" : ""}`);
@@ -33,4 +33,12 @@ export function setLotArchived(id: string, archived: boolean): Promise<Lot> {
 
 export function deleteLot(id: string): Promise<void> {
   return request<void>(`/lots/${id}`, { method: "DELETE" });
+}
+
+export function getLotWeighings(id: string): Promise<LotWeighing[]> {
+  return request<LotWeighing[]>(`/lots/${id}/weighings`);
+}
+
+export function getLotApplications(id: string): Promise<LotApplication[]> {
+  return request<LotApplication[]>(`/lots/${id}/applications`);
 }

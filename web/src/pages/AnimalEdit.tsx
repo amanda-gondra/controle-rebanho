@@ -5,6 +5,10 @@ import { getAnimal, updateAnimal } from "../services/animals.js";
 import type { Sex, Category, BirthPrecision } from "../types/animal.js";
 import { useToast } from "../components/ToastProvider.js";
 import { useAuth } from "../components/AuthProvider.js";
+import { Save } from "lucide-react";
+import { SexIcon } from "../components/ui/SexIcon.js";
+import { FormSection } from "../components/ui/FormSection.js";
+import { AnimalFormHelp } from "../components/AnimalFormHelp.js";
 import { CategoryPicker } from "../components/CategoryPicker.js";
 import { isCategoryCompatible } from "../types/categories.js";
 import { t } from "../i18n/index.js";
@@ -183,170 +187,188 @@ export function AnimalEdit() {
           backLabel={t("animal.form.backToAnimal")}
         />
 
-        <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl">
-          {/* Brinco (somente leitura) */}
-          <div className="mb-5">
-            <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">{t("animal.form.tag")}</label>
-            <input id={`${formId}-1`}
-              value={tag}
-              disabled
-              className="w-full border border-borda rounded-lg px-3 py-2 bg-bege text-texto-suave cursor-not-allowed"
-            />
-            <p className="text-sm text-texto-leve mt-1">
-              {t("animal.form.tagReadOnly")}
-            </p>
-          </div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] items-start max-w-6xl">
+          <div className="bg-card border border-borda rounded-xl p-6">
+            <FormSection step={1} title={t("animal.form.section.identification")} help={t("animal.form.section.identificationHelp")}>
+              <div className="grid gap-x-6 md:grid-cols-2">
+                {/* Brinco (somente leitura) */}
+                <div className="mb-5">
+                  <label htmlFor={`${formId}-1`} className="block font-medium text-texto mb-1">{t("animal.form.tag")}</label>
+                  <input id={`${formId}-1`}
+                    value={tag}
+                    disabled
+                    className="w-full border border-borda rounded-lg px-3 py-2 bg-bege text-texto-suave cursor-not-allowed"
+                  />
+                  <p className="text-sm text-texto-leve mt-1">
+                    {t("animal.form.tagReadOnly")}
+                  </p>
+                </div>
 
-          {/* Sexo */}
-          <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
-              {t("animal.form.sex")} <span className="text-alerta">*</span>
-            </label>
-            <div className="flex gap-3">
-              {sexOptions.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleSexChange(value)}
-                  className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
-                    sex === value
-                      ? "bg-verde border-verde text-white"
-                      : "bg-card border-borda-chip text-texto-suave"
-                  }`}
-                >
-                  {sexLabel[value]}
-                </button>
-              ))}
-            </div>
-            {errors.sex && <p className="text-sm text-alerta mt-1">{errors.sex}</p>}
-          </div>
+                {/* Sexo */}
+                <div className="mb-5">
+                  <label className="block font-medium text-texto mb-1">
+                    {t("animal.form.sex")} <span className="text-alerta">*</span>
+                  </label>
+                  <div className="flex gap-3">
+                    {sexOptions.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleSexChange(value)}
+                        className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium cursor-pointer ${
+                          sex === value
+                            ? "bg-verde-claro border-verde text-verde-escuro"
+                            : "bg-card border-borda-chip text-texto-suave"
+                        }`}
+                      >
+                        <SexIcon sex={value} />
+                        {sexLabel[value]}
+                      </button>
+                    ))}
+                  </div>
+                  {errors.sex && <p className="text-sm text-alerta mt-1">{errors.sex}</p>}
+                </div>
+              </div>
 
-          {/* Categoria (só as que combinam com o sexo) + castrado (só machos) — G4 */}
-          <CategoryPicker
-            sex={sex}
-            category={category}
-            onCategoryChange={setCategory}
-            castrated={castrated}
-            onCastratedChange={setCastrated}
-            error={errors.category ?? errors.castrated}
-          />
-
-          {/* Raça */}
-          <div className="mb-5">
-            <label htmlFor={`${formId}-2`} className="block font-medium text-texto mb-1">
-              {t("animal.form.breed")}{" "}
-              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
-            </label>
-            <input id={`${formId}-2`}
-              value={breed}
-              onChange={(e) => setBreed(e.target.value)}
-              placeholder={t("animal.form.breedPlaceholder")}
-              className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
-            />
-          </div>
-
-          {/* Data de nascimento */}
-          <div className="mb-5">
-            <label className="block font-medium text-texto mb-1">
-              {t("animal.form.birthDate")}{" "}
-              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
-            </label>
-            <p className="text-sm text-texto-suave mb-2">
-              {t("animal.form.birthQuestion")}
-            </p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {(
-                [
-                  ["DAY", t("animal.form.birthExact")],
-                  ["MONTH", t("animal.form.birthMonthYear")],
-                  ["UNKNOWN", t("animal.form.birthUnknown")],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setBirthKnowledge(value)}
-                  className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${
-                    birthKnowledge === value
-                      ? "bg-verde-claro border-verde text-verde-escuro"
-                      : "bg-card border-borda-chip text-texto-suave"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {birthKnowledge === "DAY" && (
-              <input
-                type="date"
-                value={birthDate}
-                onChange={(e) => setBirthDate(e.target.value)}
-                className="border border-borda rounded-lg px-3 py-2 text-texto"
+              {/* Categoria (só as que combinam com o sexo) + castrado (só machos) — G4 */}
+              <CategoryPicker
+                sex={sex}
+                category={category}
+                onCategoryChange={setCategory}
+                castrated={castrated}
+                onCastratedChange={setCastrated}
+                error={errors.category ?? errors.castrated}
               />
-            )}
 
-            {birthKnowledge === "MONTH" && (
-              <div className="flex gap-3">
-                <select
-                  value={birthMonth}
-                  onChange={(e) => setBirthMonth(e.target.value)}
-                  className="border border-borda rounded-lg px-3 py-2 text-texto cursor-pointer"
-                >
-                  <option value="">{t("animal.form.month")}</option>
-                  {monthNames().map((name, i) => (
-                    <option key={name} value={String(i + 1).padStart(2, "0")}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  value={birthYear}
-                  onChange={(e) => setBirthYear(e.target.value)}
-                  placeholder={t("animal.form.year")}
-                  className="w-28 border border-borda rounded-lg px-3 py-2 text-texto"
+            </FormSection>
+            <FormSection step={2} title={t("animal.form.section.info")} help={t("animal.form.section.infoHelp")}>
+              <div className="grid gap-x-6 md:grid-cols-2">
+                {/* Raça */}
+                <div className="mb-5">
+                  <label htmlFor={`${formId}-2`} className="block font-medium text-texto mb-1">
+                    {t("animal.form.breed")}{" "}
+                    <span className="text-texto-leve font-normal">{t("common.optional")}</span>
+                  </label>
+                  <input id={`${formId}-2`}
+                    value={breed}
+                    onChange={(e) => setBreed(e.target.value)}
+                    placeholder={t("animal.form.breedPlaceholder")}
+                    className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
+                  />
+                </div>
+
+                {/* Data de nascimento */}
+                <div className="mb-5">
+                  <label className="block font-medium text-texto mb-1">
+                    {t("animal.form.birthDate")}{" "}
+                    <span className="text-texto-leve font-normal">{t("common.optional")}</span>
+                  </label>
+                  <p className="text-sm text-texto-suave mb-2">
+                    {t("animal.form.birthQuestion")}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {(
+                      [
+                        ["DAY", t("animal.form.birthExact")],
+                        ["MONTH", t("animal.form.birthMonthYear")],
+                        ["UNKNOWN", t("animal.form.birthUnknown")],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setBirthKnowledge(value)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${
+                          birthKnowledge === value
+                            ? "bg-verde-claro border-verde text-verde-escuro"
+                            : "bg-card border-borda-chip text-texto-suave"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {birthKnowledge === "DAY" && (
+                    <input
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
+                    />
+                  )}
+
+                  {birthKnowledge === "MONTH" && (
+                    <div className="flex gap-3">
+                      <select
+                        value={birthMonth}
+                        onChange={(e) => setBirthMonth(e.target.value)}
+                        className="border border-borda rounded-lg px-3 py-2 text-texto cursor-pointer"
+                      >
+                        <option value="">{t("animal.form.month")}</option>
+                        {monthNames().map((name, i) => (
+                          <option key={name} value={String(i + 1).padStart(2, "0")}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={birthYear}
+                        onChange={(e) => setBirthYear(e.target.value)}
+                        placeholder={t("animal.form.year")}
+                        className="w-28 border border-borda rounded-lg px-3 py-2 text-texto"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </FormSection>
+            <FormSection step={3} title={t("animal.form.section.entry")} help={t("animal.form.section.entryHelp")}>
+
+              {/* Origem e entrada (D-52) */}
+              <OriginFields
+                origin={origin}
+                entryDate={entryDate}
+                onOriginChange={(value: EditableOrigin) => setOrigin(value)}
+                onEntryDateChange={setEntryDate}
+                error={errors.entryDate ?? errors.origin}
+                max={today}
+                fromPurchase={origin === "PURCHASED" ? { entryDate: entryDate || null } : undefined}
+              />
+
+            </FormSection>
+            <FormSection step={4} title={t("animal.form.section.notes")}>
+              {/* Observações */}
+              <div className="mb-6">
+                <label htmlFor={`${formId}-3`} className="block font-medium text-texto mb-1">
+                  {t("animal.form.notes")}{" "}
+                  <span className="text-texto-leve font-normal">{t("common.optional")}</span>
+                </label>
+                <textarea id={`${formId}-3`}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={t("animal.form.notesPlaceholder")}
+                  rows={3}
+                  className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
                 />
               </div>
-            )}
-          </div>
 
-          {/* Origem e entrada (D-52) */}
-          <OriginFields
-            origin={origin}
-            entryDate={entryDate}
-            onOriginChange={(value: EditableOrigin) => setOrigin(value)}
-            onEntryDateChange={setEntryDate}
-            error={errors.entryDate ?? errors.origin}
-            max={today}
-            fromPurchase={origin === "PURCHASED" ? { entryDate: entryDate || null } : undefined}
-          />
-
-          {/* Observações */}
-          <div className="mb-6">
-            <label htmlFor={`${formId}-3`} className="block font-medium text-texto mb-1">
-              {t("animal.form.notes")}{" "}
-              <span className="text-texto-leve font-normal">{t("common.optional")}</span>
-            </label>
-            <textarea id={`${formId}-3`}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("animal.form.notesPlaceholder")}
-              rows={3}
-              className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
-            />
-          </div>
+            </FormSection>
 
           {errors.geral && <p role="alert" className="text-sm text-alerta mb-4">{errors.geral}</p>}
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-between gap-3 pt-5 border-t border-borda">
             <button type="button" onClick={goBack} className={buttonClass("secondary")}>
               {t("common.cancel")}
             </button>
             <button type="button" onClick={handleSubmit} disabled={saving} className={buttonClass("primary")}>
+              <Save size={18} aria-hidden="true" />
               {saving ? t("common.saving") : t("animal.form.saveChanges")}
             </button>
           </div>
+          </div>
+          <AnimalFormHelp />
         </div>
         {unsavedDialog}
       </main>

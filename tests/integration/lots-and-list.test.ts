@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { useTestApp } from "../helpers/suite.js";
-import { addWeighing, createAnimal, daysFromToday, sellAnimal, today } from "../helpers/factories.js";
+import { addWeighing, createAnimal, createProduct, daysFromToday, sellAnimal, today } from "../helpers/factories.js";
 import { prisma } from "../../src/lib/prisma.js";
 
 // LOTES (D-49) e LISTA DO REBANHO NO SERVIDOR (F-15/F-16), 2026-10-18.
@@ -13,6 +13,38 @@ const move = (lotId: string, animalIds: string[], date: string) =>
 const list = async (query = "") => (await t.client.inject({ url: `/animals${query}` })).json();
 
 describe("lotes (D-49)", () => {
+  it("detalhe traz último peso, resumo e só o que aconteceu DENTRO do lote", async () => {
+    const lot = await createLot("Recria");
+    const macho = await createAnimal(t.client, { tag: "R-1", sex: "MALE", category: "YEARLING" });
+    const femea = await createAnimal(t.client, { tag: "R-2", sex: "FEMALE", category: "HEIFER" });
+    await addWeighing(t.client, macho.id, "2026-02-01", 180); // antes do lote
+    await move(lot.id, [macho.id, femea.id], "2026-03-01");
+    await addWeighing(t.client, macho.id, "2026-03-01", 200);
+    await addWeighing(t.client, macho.id, "2026-03-11", 210); // 1,000 kg/dia no lote
+    await addWeighing(t.client, femea.id, "2026-03-05", 250);
+    const product = await createProduct(t.client);
+    await t.client.inject({ method: "POST", url: "/applications", payload: { productId: product.id, date: "2026-02-10", animalIds: [macho.id] } }); // antes
+    await t.client.inject({ method: "POST", url: "/applications", payload: { productId: product.id, date: "2026-03-05", animalIds: [macho.id, femea.id] } });
+
+    const detail = (await t.client.inject({ url: `/lots/${lot.id}` })).json();
+    expect(detail.formedOn).toBe("2026-03-01");
+    expect(detail.animals.find((a: { tag: string }) => a.tag === "R-1")).toMatchObject({ currentWeightKg: 210, lastWeighingDate: "2026-03-11" });
+    expect(detail.summary).toEqual({
+      males: 1,
+      females: 1,
+      averageWeightKg: 230,
+      weighedAnimals: 2,
+      lastWeighingDate: "2026-03-11",
+      gain: { averageDailyGainKg: 1, animalsWithGain: 1, animalsWithoutGain: 1, from: "2026-03-01", to: "2026-03-11" },
+    });
+
+    const weighings = (await t.client.inject({ url: `/lots/${lot.id}/weighings` })).json();
+    expect(weighings.map((w: { date: string }) => w.date)).toEqual(["2026-03-11", "2026-03-05", "2026-03-01"]);
+    const applications = (await t.client.inject({ url: `/lots/${lot.id}/applications` })).json();
+    expect(applications).toHaveLength(1);
+    expect(applications[0]).toMatchObject({ date: "2026-03-05", animalsTotal: 2, animalsInLot: 2 });
+  });
+
   it("cria, nome único sem diferenciar maiúsculas, conta animais ativos", async () => {
     const lot = await createLot("Recria 1");
     const dup = await t.client.inject({ method: "POST", url: "/lots", payload: { name: "recria 1" } });

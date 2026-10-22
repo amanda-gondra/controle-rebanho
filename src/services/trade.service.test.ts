@@ -4,6 +4,7 @@ import {
   computeItemValue,
   findItemProblem,
   sumValues,
+  summarizeTrades,
   type AnimalTradeFacts,
 } from "./trade.service.js";
 
@@ -164,5 +165,35 @@ describe("checkAnimalForTrade (RN-NEG-004/005/007)", () => {
     ).toEqual({ code: "TRADE_DATE_OUT_OF_RANGE", reason: "BEFORE_BIRTH", date: "2026-04-10" });
     // compra antes de uma pesagem já registrada é normal (animal pesado e depois comprado de um sócio)
     expect(checkAnimalForTrade("PURCHASE", "2026-01-01", facts({ lastWeighingDate: "2026-02-01" }))).toBeNull();
+  });
+});
+
+describe("summarizeTrades (tela Negociações)", () => {
+  it("conta compras e vendas, animais e soma exata do que tem valor", () => {
+    const summary = summarizeTrades(
+      [
+        { type: "SALE", currency: "BRL", values: ["1000.10", "999.95"] },
+        { type: "SALE", currency: "BRL", values: ["0.05", null] }, // pendente: soma só o conhecido
+        { type: "PURCHASE", currency: "BRL", values: ["2500.00"] },
+      ],
+      "BRL",
+    );
+    expect(summary).toEqual({
+      count: 3,
+      pending: 1,
+      otherCurrency: 0,
+      sales: { count: 2, animals: 4, total: "2000.10" },
+      purchases: { count: 1, animals: 1, total: "2500.00" },
+    });
+  });
+
+  it("outra moeda não se mistura na soma", () => {
+    const summary = summarizeTrades([{ type: "PURCHASE", currency: "USD", values: ["10.00"] }], "BRL");
+    expect(summary.purchases).toEqual({ count: 1, animals: 1, total: "0.00" });
+    expect(summary.otherCurrency).toBe(1);
+  });
+
+  it("sem negociações: tudo zero", () => {
+    expect(summarizeTrades([], "BRL")).toMatchObject({ count: 0, sales: { total: "0.00" }, purchases: { total: "0.00" } });
   });
 });

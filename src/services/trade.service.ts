@@ -193,3 +193,41 @@ export function checkAnimalForTrade(
   });
   return problem ? { code: "TRADE_DATE_OUT_OF_RANGE", ...problem } : null;
 }
+
+// Resumo das negociações do período (tela Negociações): quantas compras e
+// vendas, quantos animais e a soma EXATA do que já tem valor. Item pendente
+// (sem peso de carcaça) não entra na soma — a negociação conta como pendente.
+// Só soma na moeda da fazenda; outra moeda vira `otherCurrency` (não mistura).
+export type TradeForSummary = { type: "SALE" | "PURCHASE"; currency: string; values: (string | null)[] };
+export type TradeSideSummary = { count: number; animals: number; total: string };
+export type TradesSummary = {
+  count: number;
+  pending: number;
+  otherCurrency: number;
+  purchases: TradeSideSummary;
+  sales: TradeSideSummary;
+};
+
+export function summarizeTrades(trades: TradeForSummary[], currency: string): TradesSummary {
+  const side = () => ({ count: 0, animals: 0, cents: 0n });
+  const sums = { PURCHASE: side(), SALE: side() };
+  let pending = 0;
+  let otherCurrency = 0;
+  for (const trade of trades) {
+    if (trade.values.some((value) => value === null)) pending += 1;
+    const bucket = sums[trade.type];
+    bucket.count += 1;
+    bucket.animals += trade.values.length;
+    if (trade.currency !== currency) {
+      otherCurrency += 1;
+      continue;
+    }
+    for (const value of trade.values) if (value !== null) bucket.cents += toHundredths(value);
+  }
+  const view = (bucket: ReturnType<typeof side>) => ({
+    count: bucket.count,
+    animals: bucket.animals,
+    total: centsToString(bucket.cents),
+  });
+  return { count: trades.length, pending, otherCurrency, purchases: view(sums.PURCHASE), sales: view(sums.SALE) };
+}

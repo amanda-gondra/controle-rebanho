@@ -300,3 +300,48 @@ describe("isolamento (13)", () => {
     expect(after).toMatchObject({ name: "Deles", archivedAt: null });
   });
 });
+
+describe("lista e resumo do manejo (tela Manejo sanitário)", () => {
+  it("busca por produto ou brinco, período e quem registrou", async () => {
+    const vaccine = await createProduct(t.client, { name: "Vacina Aftosa" });
+    const wormer = await createProduct(t.client, { name: "Ivomec", type: "DEWORMER" });
+    const a = await createAnimal(t.client, { tag: "BUSCA-1" });
+    const b = await createAnimal(t.client, { tag: "OUTRO-2" });
+    await apply({ productId: vaccine.id, date: daysFromToday(-40), animalIds: [a.id] });
+    await apply({ productId: wormer.id, date: daysFromToday(-2), animalIds: [b.id] });
+
+    const list = async (query: string) =>
+      ((await t.client.inject({ url: `/applications?${query}` })).json() as { product: { name: string } }[]).map(
+        (item) => item.product.name,
+      );
+    expect(await list("q=aftosa")).toEqual(["Vacina Aftosa"]);
+    expect(await list("q=busca")).toEqual(["Vacina Aftosa"]); // brinco do animal
+    expect(await list(`from=${daysFromToday(-10)}`)).toEqual(["Ivomec"]);
+
+    const [first] = (await t.client.inject({ url: "/applications" })).json();
+    expect(first.createdBy).toEqual({ id: expect.any(String), name: expect.any(String) });
+    expect(first.createdBy).not.toHaveProperty("email");
+  });
+
+  it("resumo: aplicações e animais diferentes no período, ativos, lembretes e produtos", async () => {
+    const product = await createProduct(t.client);
+    await createProduct(t.client, { name: "Arquivado" }).then((p) =>
+      t.client.inject({ method: "PATCH", url: `/products/${p.id}/archive` }),
+    );
+    const [a, b] = [await createAnimal(t.client), await createAnimal(t.client)];
+    await apply({ productId: product.id, date: daysFromToday(-3), animalIds: [a.id, b.id], reapplyDate: daysFromToday(2) });
+    await apply({ productId: product.id, date: daysFromToday(-1), animalIds: [a.id] });
+    await apply({ productId: product.id, date: daysFromToday(-60), animalIds: [b.id] });
+
+    const summary = (await t.client.inject({ url: `/applications/summary?from=${daysFromToday(-30)}&to=${today()}` })).json();
+    expect(summary).toEqual({
+      applications: 2,
+      animalsTreated: 2,
+      activeAnimals: 2,
+      reminders: { open: 1, overdue: 0, alertDays: 7 },
+      products: 1,
+    });
+    const all = (await t.client.inject({ url: "/applications/summary" })).json();
+    expect(all.applications).toBe(3);
+  });
+});

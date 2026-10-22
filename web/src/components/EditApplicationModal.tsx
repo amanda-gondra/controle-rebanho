@@ -1,3 +1,4 @@
+import { invalidateReminderCount } from "../hooks/useReminderCount.js";
 import { useEffect, useId, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { ModalFrame } from "./ModalFrame.js";
@@ -103,6 +104,7 @@ export function EditApplicationModal({ application, onClose, onSaved }: Props) {
         doseUnit: form.doseUnit || null,
         ...(animalsChanged ? { animalIds: form.animals.map((animal) => animal.id) } : {}),
       });
+      invalidateReminderCount(); // o sino do topo recalcula
       onSaved();
     } catch (err) {
       setError(singleErrorMessage(err));

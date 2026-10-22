@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Bell, ChevronRight, LogIn, LogOut, Scale, Syringe } from "lucide-react";
+import { Bell, CalendarDays, ChevronRight, Layers, LogIn, LogOut, Scale, Syringe, Tag, TrendingUp, Users } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { LoadError } from "../components/LoadError.js";
@@ -12,6 +12,11 @@ import type { AnimalOrigin } from "../types/animal.js";
 import { formatDate, formatNumber, todayInTimeZone } from "../types/format.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
 import { useOpen, useOriginState } from "../navigation/hooks.js";
+import { StatCard } from "../components/ui/StatCard.js";
+import { SectionCard } from "../components/ui/SectionCard.js";
+import { IconCircle } from "../components/ui/IconCircle.js";
+import { EmptyState } from "../components/ui/EmptyState.js";
+import { CowIcon } from "../components/ui/CowIcon.js";
 import { t } from "../i18n/index.js";
 import { errorMessage } from "../i18n/errors.js";
 
@@ -49,20 +54,22 @@ export function Dashboard() {
 
   const setPeriod = (period: { from: string; to: string }) => setParams(period, { replace: true });
   const activePreset = data ? presetOf(data.period, data.today) : null;
+  const dateInput = "w-full bg-card border border-borda rounded-lg px-3 py-2 text-sm text-texto";
 
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-      <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
+      <main className="flex-1 min-w-0 p-4 pb-24 md:px-8 md:py-6">
         <PageHeader
           title={t("dashboard.title")}
           subtitle={t("dashboard.subtitle")}
           actions={
             <>
-              <button type="button" onClick={() => open("/pesagens")} className={buttonClass("secondary")}>
+              {/* No celular, os atalhos ficam no fim da tela (o topo é dos números) */}
+              <button type="button" onClick={() => open("/pesagens")} className={buttonClass("primary", "max-sm:hidden")}>
                 <Scale size={18} aria-hidden="true" /> {t("weighingSession.action")}
               </button>
-              <button type="button" onClick={() => open("/aplicacoes/nova")} className={buttonClass("secondary")}>
+              <button type="button" onClick={() => open("/aplicacoes/nova")} className={buttonClass("secondary", "max-sm:hidden")}>
                 <Syringe size={18} aria-hidden="true" /> {t("sanitary.newApplication")}
               </button>
             </>
@@ -74,40 +81,44 @@ export function Dashboard() {
           <h2 id={`${id}-period`} className="sr-only">
             {t("dashboard.period")}
           </h2>
-          <div className="flex flex-wrap items-end gap-2">
-            {PERIOD_PRESETS.map((preset: PeriodPreset) => (
-              <button
-                key={preset}
-                type="button"
-                aria-pressed={activePreset === preset}
-                onClick={() => setPeriod(presetPeriod(preset, today))}
-                className={`px-3.5 py-1.5 rounded-full text-sm border cursor-pointer ${
-                  activePreset === preset ? "bg-verde border-verde text-white" : "bg-card border-borda-chip text-texto-suave"
-                }`}
-              >
-                {t(`dashboard.preset.${preset}`)}
-              </button>
-            ))}
-            <label className="text-sm text-texto-suave">
-              <span className="block">{t("dashboard.from")}</span>
-              <input
-                type="date"
-                value={data?.period.from ?? from ?? ""}
-                max={today}
-                onChange={(e) => e.target.value && setPeriod({ from: e.target.value, to: data?.period.to ?? today })}
-                className="bg-card border border-borda rounded-lg px-2 py-1.5 text-texto"
-              />
-            </label>
-            <label className="text-sm text-texto-suave">
-              <span className="block">{t("dashboard.to")}</span>
-              <input
-                type="date"
-                value={data?.period.to ?? to ?? ""}
-                max={today}
-                onChange={(e) => e.target.value && setPeriod({ from: data?.period.from ?? e.target.value, to: e.target.value })}
-                className="bg-card border border-borda rounded-lg px-2 py-1.5 text-texto"
-              />
-            </label>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 sm:pb-0">
+              {PERIOD_PRESETS.map((preset: PeriodPreset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  aria-pressed={activePreset === preset}
+                  onClick={() => setPeriod(presetPeriod(preset, today))}
+                  className={`px-4 py-2 rounded-full text-sm font-medium border cursor-pointer whitespace-nowrap shrink-0 ${
+                    activePreset === preset ? "bg-verde border-verde text-white" : "bg-card border-borda text-texto hover:border-borda-chip"
+                  }`}
+                >
+                  {t(`dashboard.preset.${preset}`)}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+              <label className="text-xs text-texto-suave sm:w-40">
+                <span className="block mb-1">{t("dashboard.from")}</span>
+                <input
+                  type="date"
+                  value={data?.period.from ?? from ?? ""}
+                  max={today}
+                  onChange={(e) => e.target.value && setPeriod({ from: e.target.value, to: data?.period.to ?? today })}
+                  className={dateInput}
+                />
+              </label>
+              <label className="text-xs text-texto-suave sm:w-40">
+                <span className="block mb-1">{t("dashboard.to")}</span>
+                <input
+                  type="date"
+                  value={data?.period.to ?? to ?? ""}
+                  max={today}
+                  onChange={(e) => e.target.value && setPeriod({ from: data?.period.from ?? e.target.value, to: e.target.value })}
+                  className={dateInput}
+                />
+              </label>
+            </div>
           </div>
         </section>
 
@@ -120,10 +131,15 @@ export function Dashboard() {
         ) : (
           <>
             {data.herd.active === 0 && data.movements.entriesTotal === 0 && data.movements.sold + data.movements.died === 0 && (
-              <div className="bg-card border border-borda rounded-xl p-6 mb-6 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-texto">{t("dashboard.emptyTitle")}</p>
-                  <p className="text-sm text-texto-suave">{t("dashboard.emptyHelp")}</p>
+              <div className="bg-card border border-borda rounded-xl p-5 mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <IconCircle>
+                    <CowIcon size={22} />
+                  </IconCircle>
+                  <div>
+                    <p className="font-medium text-texto">{t("dashboard.emptyTitle")}</p>
+                    <p className="text-sm text-texto-suave">{t("dashboard.emptyHelp")}</p>
+                  </div>
                 </div>
                 <button type="button" onClick={() => open("/animais/novo")} className={buttonClass("primary")}>
                   {t("herd.addAnimal")}
@@ -132,47 +148,68 @@ export function Dashboard() {
             )}
 
             {/* Números principais */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-              <Tile
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
+              <StatCard
+                icon={<CowIcon size={22} />}
                 label={t("dashboard.activeNow")}
                 value={formatNumber(data.herd.active)}
                 rule={t("dashboard.activeRule")}
                 to="/?status=ACTIVE"
                 linkLabel={t("dashboard.seeHerd")}
+                showLink
               />
-              <Tile
-                icon={<LogIn size={16} aria-hidden="true" />}
+              <StatCard
+                icon={<LogIn size={20} />}
                 label={t("dashboard.entries")}
                 value={formatNumber(data.movements.entriesTotal)}
+                detail={
+                  ORIGINS.filter((origin) => data.movements.entries[origin])
+                    .map((origin) => `${t(`animal.origin.${origin}`)}: ${data.movements.entries[origin]}`)
+                    .join(" · ") || undefined
+                }
                 rule={t("dashboard.entriesRule")}
-                detail={ORIGINS.filter((origin) => data.movements.entries[origin])
-                  .map((origin) => `${t(`animal.origin.${origin}`)}: ${data.movements.entries[origin]}`)
-                  .join(" · ")}
               />
-              <Tile
-                icon={<LogOut size={16} aria-hidden="true" />}
+              <StatCard
+                icon={<LogOut size={20} />}
                 label={t("dashboard.exits")}
                 value={formatNumber(data.movements.sold + data.movements.died)}
-                rule={t("dashboard.exitsRule")}
                 detail={t("dashboard.exitsDetail", { sold: data.movements.sold, died: data.movements.died })}
+                rule={t("dashboard.exitsRule")}
               />
-              <Tile
-                icon={<Bell size={16} aria-hidden="true" />}
+              <StatCard
+                icon={<Bell size={20} />}
                 label={t("dashboard.reminders")}
                 value={formatNumber(data.reminders.overdue + data.reminders.upcoming)}
-                rule={t("dashboard.remindersRule", { days: data.reminders.alertDays })}
                 detail={t("dashboard.remindersDetail", { overdue: data.reminders.overdue, upcoming: data.reminders.upcoming })}
+                rule={t("dashboard.remindersRule", { days: data.reminders.alertDays })}
                 tone={data.reminders.overdue > 0 ? "attention" : "normal"}
                 to="/manejo"
                 linkLabel={t("dashboard.seeReminders")}
+                showLink
               />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
               {/* Por categoria */}
-              <Panel title={t("dashboard.byCategory")} rule={t("dashboard.byCategoryRule")}>
+              <SectionCard
+                title={t("dashboard.byCategory")}
+                subtitle={t("dashboard.byCategoryRule")}
+                icon={
+                  <IconCircle size="sm">
+                    <Tag size={17} />
+                  </IconCircle>
+                }
+              >
                 {data.herd.byCategory.length === 0 ? (
-                  <p className="text-sm text-texto-suave">{t("dashboard.noActive")}</p>
+                  <EmptyState
+                    icon={<CowIcon size={24} />}
+                    title={t("dashboard.noActive")}
+                    action={
+                      <Link to="/" state={originState} className="inline-flex items-center gap-1 text-sm text-verde font-medium hover:underline">
+                        {t("dashboard.seeHerd")} <ChevronRight size={14} aria-hidden="true" />
+                      </Link>
+                    }
+                  />
                 ) : (
                   <BarList
                     items={data.herd.byCategory.map((item) => ({
@@ -185,20 +222,25 @@ export function Dashboard() {
                     originState={originState}
                   />
                 )}
-              </Panel>
+              </SectionCard>
 
               {/* Por lote */}
-              <Panel
+              <SectionCard
                 title={t("dashboard.byLot")}
-                rule={t("dashboard.byLotRule")}
+                subtitle={t("dashboard.byLotRule")}
+                icon={
+                  <IconCircle size="sm">
+                    <Users size={17} />
+                  </IconCircle>
+                }
                 action={
-                  <Link to="/lotes" state={originState} className="text-sm text-verde font-medium hover:underline">
-                    {t("dashboard.seeLots")}
+                  <Link to="/lotes" state={originState} className="inline-flex items-center gap-1 text-sm text-verde font-medium hover:underline shrink-0">
+                    {t("dashboard.seeLots")} <ChevronRight size={14} aria-hidden="true" />
                   </Link>
                 }
               >
                 {data.herd.active === 0 ? (
-                  <p className="text-sm text-texto-suave">{t("dashboard.noActive")}</p>
+                  <EmptyState icon={<Layers size={24} />} title={t("dashboard.noActive")} />
                 ) : (
                   <BarList
                     items={[
@@ -216,55 +258,87 @@ export function Dashboard() {
                     originState={originState}
                   />
                 )}
-              </Panel>
+              </SectionCard>
+            </div>
 
-              {/* Pesagens e GMD */}
-              <Panel title={t("dashboard.weighings")} rule={t("dashboard.weighingsRule")} wide>
-                <dl className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <dt className="text-sm text-texto-suave">{t("dashboard.weighingsInPeriod")}</dt>
-                    <dd className="text-2xl font-semibold text-texto">{formatNumber(data.weighings.inPeriod)}</dd>
-                    <dd className="text-xs text-texto-suave">
-                      {t("dashboard.animalsWeighed", { count: data.weighings.animalsWeighed })}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm text-texto-suave">{t("dashboard.averageGain")}</dt>
-                    <dd className="text-2xl font-semibold text-texto">
-                      {data.gain.averageDailyGainKg === null
-                        ? "—"
-                        : t("units.kgPerDay", { value: formatNumber(data.gain.averageDailyGainKg, { maximumFractionDigits: 3 }) })}
-                    </dd>
-                    <dd className="text-xs text-texto-suave">
-                      {data.gain.averageDailyGainKg === null
-                        ? t("dashboard.noGain")
-                        : t("dashboard.gainBase", { count: data.gain.animalsWithGain, without: data.gain.animalsWithoutGain })}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="text-xs text-texto-leve mb-3">{t("dashboard.gainRule")}</p>
-                <h3 className="text-sm font-medium text-texto mb-1">{t("dashboard.recentWeighings")}</h3>
-                {data.weighings.recent.length === 0 ? (
-                  <p className="text-sm text-texto-suave">{t("animalDetail.noWeighings")}</p>
-                ) : (
-                  <ul className="divide-y divide-borda">
-                    {data.weighings.recent.map((weighing) => (
-                      <li key={weighing.id}>
-                        <Link
-                          to={`/animais/${weighing.animal.id}`}
-                          state={originState}
-                          className="flex items-center gap-3 py-2 hover:bg-bege -mx-2 px-2 rounded-lg text-sm"
-                        >
-                          <span className="font-medium text-texto w-24 truncate">{weighing.animal.tag}</span>
-                          <span className="flex-1 text-texto">{t("units.kgValue", { value: formatNumber(Number(weighing.weightKg)) })}</span>
-                          <span className="text-texto-suave">{formatDate(weighing.date)}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
+            {/* Pesagens e GMD */}
+            <SectionCard
+              title={t("dashboard.weighings")}
+              subtitle={t("dashboard.weighingsRule")}
+              icon={
+                <IconCircle size="sm">
+                  <Scale size={17} />
+                </IconCircle>
+              }
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr] gap-4 items-start">
+                <MiniStat
+                  icon={<CalendarDays size={16} />}
+                  label={t("dashboard.weighingsInPeriod")}
+                  value={formatNumber(data.weighings.inPeriod)}
+                  detail={t("dashboard.animalsWeighed", { count: data.weighings.animalsWeighed })}
+                />
+                <MiniStat
+                  icon={<TrendingUp size={16} />}
+                  label={t("dashboard.averageGain")}
+                  value={
+                    data.gain.averageDailyGainKg === null
+                      ? "—"
+                      : t("units.kgPerDay", { value: formatNumber(data.gain.averageDailyGainKg, { maximumFractionDigits: 3 }) })
+                  }
+                  detail={
+                    data.gain.averageDailyGainKg === null
+                      ? t("dashboard.noGain")
+                      : t("dashboard.gainBase", { count: data.gain.animalsWithGain, without: data.gain.animalsWithoutGain })
+                  }
+                />
+                <div className="border border-borda rounded-xl p-4 md:col-span-2 xl:col-span-1">
+                  <h3 className="text-sm font-medium text-texto mb-2">{t("dashboard.recentWeighings")}</h3>
+                  {data.weighings.recent.length === 0 ? (
+                    <p className="text-sm text-texto-suave">{t("animalDetail.noWeighings")}</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-texto-suave">
+                          <th scope="col" className="font-medium pb-1">{t("dashboard.colAnimal")}</th>
+                          <th scope="col" className="font-medium pb-1">{t("dashboard.colWeight")}</th>
+                          <th scope="col" className="font-medium pb-1">{t("dashboard.colDate")}</th>
+                          <th scope="col" className="sr-only">{t("common.actions")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-borda">
+                        {data.weighings.recent.map((weighing) => (
+                          <tr key={weighing.id} className="hover:bg-bege">
+                            <td className="py-2 font-medium text-texto">{weighing.animal.tag}</td>
+                            <td className="py-2 text-texto">{t("units.kgValue", { value: formatNumber(Number(weighing.weightKg)) })}</td>
+                            <td className="py-2 text-texto-suave">{formatDate(weighing.date)}</td>
+                            <td className="py-2 text-right">
+                              <Link
+                                to={`/animais/${weighing.animal.id}`}
+                                state={originState}
+                                aria-label={t("dashboard.openAnimal", { tag: weighing.animal.tag })}
+                                className="inline-flex p-1 rounded text-texto-leve hover:text-verde"
+                              >
+                                <ChevronRight size={16} aria-hidden="true" />
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-texto-leve mt-3">{t("dashboard.gainRule")}</p>
+            </SectionCard>
 
+            <div className="flex flex-col gap-2 mt-6 sm:hidden">
+              <button type="button" onClick={() => open("/pesagens")} className={buttonClass("primary")}>
+                <Scale size={18} aria-hidden="true" /> {t("weighingSession.action")}
+              </button>
+              <button type="button" onClick={() => open("/aplicacoes/nova")} className={buttonClass("secondary")}>
+                <Syringe size={18} aria-hidden="true" /> {t("sanitary.newApplication")}
+              </button>
             </div>
 
             <p className="text-xs text-texto-leve mt-6">
@@ -277,49 +351,16 @@ export function Dashboard() {
   );
 }
 
-function Tile(props: {
-  icon?: React.ReactNode;
-  label: string;
-  value: string;
-  rule: string;
-  detail?: string;
-  tone?: "normal" | "attention";
-  to?: string;
-  linkLabel?: string;
-}) {
-  const originState = useOriginState();
+function MiniStat(props: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <div className={`bg-card border rounded-xl p-5 flex flex-col ${props.tone === "attention" ? "border-[#E7C3B8]" : "border-borda"}`}>
-      <p className="flex items-center gap-1.5 text-sm text-texto-suave">
-        {props.icon}
+    <div className="border border-borda rounded-xl p-4">
+      <p className="flex items-center gap-2 text-sm text-texto-suave">
+        <IconCircle size="sm">{props.icon}</IconCircle>
         {props.label}
       </p>
-      <p className="text-3xl font-semibold text-texto mt-1">{props.value}</p>
-      {props.detail && <p className="text-sm text-texto mt-1">{props.detail}</p>}
-      <p className="text-xs text-texto-leve mt-2 flex-1">{props.rule}</p>
-      {props.to && (
-        <Link to={props.to} state={originState} className="mt-3 inline-flex items-center gap-1 text-sm text-verde font-medium hover:underline">
-          {props.linkLabel}
-          <ChevronRight size={14} aria-hidden="true" />
-        </Link>
-      )}
+      <p className="text-2xl font-semibold text-texto mt-2">{props.value}</p>
+      <p className="text-xs text-texto-suave mt-1">{props.detail}</p>
     </div>
-  );
-}
-
-function Panel(props: { title: string; rule?: string; action?: React.ReactNode; wide?: boolean; children: React.ReactNode }) {
-  const id = useId();
-  return (
-    <section aria-labelledby={id} className={`bg-card border border-borda rounded-xl p-5 ${props.wide ? "lg:col-span-2" : ""}`}>
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h2 id={id} className="font-medium text-texto">
-          {props.title}
-        </h2>
-        {props.action}
-      </div>
-      {props.rule && <p className="text-xs text-texto-leve mb-3">{props.rule}</p>}
-      {props.children}
-    </section>
   );
 }
 

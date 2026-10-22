@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { Category, Sex } from "../types/animal.js";
 import { CATEGORIES_BY_SEX } from "../types/categories.js";
 import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
@@ -20,38 +21,38 @@ type Props = {
 
 export function CategoryPicker({ sex, category, onCategoryChange, castrated, onCastratedChange, error }: Props) {
   const { labelOf } = useCategoryLabels();
+  const selectId = useId();
 
   return (
     <>
       <div className="mb-5">
-        <p id="category-label" className="block font-medium text-texto mb-1">
+        <label htmlFor={selectId} className="block font-medium text-texto mb-1">
           {t("animal.form.category")} <span className="text-alerta">*</span>
-        </p>
-        {!sex ? (
-          <p className="text-sm text-texto-leve border border-dashed border-borda-chip rounded-lg px-3 py-3">
-            {t("animal.form.chooseSexFirst")}
-          </p>
-        ) : (
-          <div role="radiogroup" aria-labelledby="category-label" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {CATEGORIES_BY_SEX[sex].map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={category === value}
-                onClick={() => onCategoryChange(value)}
-                className={`py-2.5 px-2 rounded-lg border font-medium cursor-pointer ${
-                  category === value
-                    ? "bg-verde border-verde text-white"
-                    : "bg-card border-borda-chip text-texto-suave"
-                }`}
-              >
+        </label>
+        <select
+          id={selectId}
+          value={sex ? category : ""}
+          disabled={!sex}
+          onChange={(e) => e.target.value && onCategoryChange(e.target.value as Category)}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${selectId}-error` : undefined}
+          className={`w-full border rounded-lg px-3 py-2.5 text-texto bg-card cursor-pointer disabled:bg-bege disabled:text-texto-leve disabled:cursor-not-allowed ${
+            error ? "border-alerta" : "border-borda"
+          }`}
+        >
+          <option value="">{sex ? t("animal.form.chooseCategory") : t("animal.form.chooseSexFirst")}</option>
+          {sex &&
+            CATEGORIES_BY_SEX[sex].map((value) => (
+              <option key={value} value={value}>
                 {labelOf(value, sex)}
-              </button>
+              </option>
             ))}
-          </div>
+        </select>
+        {error && (
+          <p id={`${selectId}-error`} className="text-sm text-alerta mt-1">
+            {error}
+          </p>
         )}
-        {error && <p className="text-sm text-alerta mt-1">{error}</p>}
       </div>
 
       {sex === "MALE" && (

@@ -1,3 +1,4 @@
+import { computeWeightGain, type WeighingInput } from "./weighing.service.js";
 // Lotes (D-49) — regras puras, testadas em lot.service.test.ts.
 // Datas "AAAA-MM-DD" (comparáveis como texto).
 
@@ -23,4 +24,86 @@ export function planLotMove(input: {
   // A troca fecha o período atual na data: ela não pode ser antes da entrada
   if (input.open && input.date < input.open.startDate) return { kind: "PROBLEM", problem: "LOT_DATE_BEFORE_CURRENT" };
   return { kind: "MOVE" };
+}
+
+// ── Resumo do lote (tela do lote, 2026-10-21) ──
+// Regras (docs/architecture.md, "Lotes"):
+// - peso médio = média do ÚLTIMO peso de cada animal que está no lote agora e
+//   tem pesagem (de qualquer data); a data mostrada é a mais recente delas;
+// - GMD no lote = para cada animal, a mesma conta da ficha usando só as
+//   pesagens DESDE a entrada no lote; média dos animais que têm GMD. O período
+//   vai da primeira à última pesagem usada. Sem nenhum: nulo, nunca zero.
+
+export type LotAnimalInput = {
+  sex: "MALE" | "FEMALE";
+  since: string; // AAAA-MM-DD
+  weighings: { date: string; weightKg: number }[];
+};
+
+export type LotSummary = {
+  males: number;
+  females: number;
+  averageWeightKg: number | null;
+  weighedAnimals: number;
+  lastWeighingDate: string | null;
+  gain: {
+    averageDailyGainKg: number | null;
+    animalsWithGain: number;
+    animalsWithoutGain: number;
+    from: string | null;
+    to: string | null;
+  };
+};
+
+const toInput = (weighing: { date: string; weightKg: number }): WeighingInput => ({
+  date: new Date(`${weighing.date}T00:00:00.000Z`),
+  weightKg: weighing.weightKg,
+});
+
+export function summarizeLot(animals: LotAnimalInput[]): LotSummary {
+  let weightSum = 0;
+  let weighed = 0;
+  let lastDate: string | null = null;
+  let gainSum = 0;
+  let withGain = 0;
+  let from: string | null = null;
+  let to: string | null = null;
+
+  for (const animal of animals) {
+    const sorted = [...animal.weighings].sort((a, b) => a.date.localeCompare(b.date));
+    const last = sorted[sorted.length - 1];
+    if (last) {
+      weightSum += last.weightKg;
+      weighed += 1;
+      if (!lastDate || last.date > lastDate) lastDate = last.date;
+    }
+    const inLot = sorted.filter((weighing) => weighing.date >= animal.since);
+    const outcome = computeWeightGain(inLot.map(toInput));
+    if (outcome.ok) {
+      gainSum += outcome.value.averageDailyGainKg;
+      withGain += 1;
+      if (!from || outcome.value.startDate < from) from = outcome.value.startDate;
+      if (!to || outcome.value.endDate > to) to = outcome.value.endDate;
+    }
+  }
+
+  return {
+    males: animals.filter((animal) => animal.sex === "MALE").length,
+    females: animals.filter((animal) => animal.sex === "FEMALE").length,
+    averageWeightKg: weighed === 0 ? null : Number((weightSum / weighed).toFixed(1)),
+    weighedAnimals: weighed,
+    lastWeighingDate: lastDate,
+    gain: {
+      averageDailyGainKg: withGain === 0 ? null : Number((gainSum / withGain).toFixed(3)),
+      animalsWithGain: withGain,
+      animalsWithoutGain: animals.length - withGain,
+      from,
+      to,
+    },
+  };
+}
+
+// Uma data está dentro de um período do animal no lote? (fim aberto = até hoje)
+export function withinMembership(date: string, membership: { startDate: string; endDate: string | null }) {
+  return date >= membership.startDate && (membership.endDate === null || date <= membership.endDate);
 }

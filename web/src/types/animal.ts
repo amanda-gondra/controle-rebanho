@@ -156,7 +156,17 @@ export type Application = {
   activeAnimalIds?: string[]; // só nos lembretes: animais do grupo ainda ativos
   activeAnimalsCount?: number;
   inWithdrawal?: boolean; // só na ficha: em carência hoje
+  createdBy?: { id: string; name: string } | null; // quem registrou (só na lista)
   createdAt: string;
+};
+
+// GET /applications/summary — números do topo do Manejo sanitário
+export type ApplicationsSummary = {
+  applications: number;
+  animalsTreated: number; // animais diferentes que receberam algo no período
+  activeAnimals: number; // ativos hoje
+  reminders: { open: number; overdue: number; alertDays: number };
+  products: number; // não arquivados
 };
 
 // Compra e venda (G5): ver types/trade.ts

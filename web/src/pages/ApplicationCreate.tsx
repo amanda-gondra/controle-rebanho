@@ -1,3 +1,4 @@
+import { invalidateReminderCount } from "../hooks/useReminderCount.js";
 import { useEffect, useMemo, useState, useId } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Check, Plus } from "lucide-react";
@@ -202,6 +203,7 @@ export function ApplicationCreate() {
         ...(source ? { reappliesApplicationId: source.id } : {}),
         idempotencyKey,
       });
+      invalidateReminderCount(); // o sino do topo recalcula
       showToast(t("application.createdCount", { count: selected.size }));
       allowLeave();
       // O formulário dá lugar ao detalhe; o "voltar" do detalhe vai para quem abriu

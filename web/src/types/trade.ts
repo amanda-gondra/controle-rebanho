@@ -48,7 +48,21 @@ export type Trade = {
   replacedWeighings?: number; // só ao gravar: pesagens manuais do dia substituídas
 };
 
-export type TradeSummary = Omit<Trade, "items" | "notes" | "arrobaFactorKg" | "replacedWeighings">;
+export type TradeSummary = Omit<Trade, "items" | "notes" | "arrobaFactorKg" | "replacedWeighings"> & {
+  // só quando a negociação tem UM animal (a lista mostra qual)
+  animal?: { id: string; tag: string; sex: Sex; category: Category; castrated: boolean; breed: string | null } | null;
+};
+
+// GET /trades/summary — números do topo da tela Negociações
+export type TradeSideOverview = { count: number; animals: number; total: string };
+export type TradesOverview = {
+  currency: string;
+  count: number;
+  pending: number; // aguardando romaneio
+  otherCurrency: number; // em outra moeda: fora das somas
+  purchases: TradeSideOverview;
+  sales: TradeSideOverview;
+};
 
 export type TradePage = {
   page: number;

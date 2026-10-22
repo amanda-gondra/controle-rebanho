@@ -688,3 +688,49 @@ describe("listar, último preço e resultado", () => {
     expect(row).toMatchObject({ hasPurchase: true, hasSale: false });
   });
 });
+
+describe("lista e resumo (tela Negociações)", () => {
+  it("busca por comprador ou brinco; venda de um animal mostra qual", async () => {
+    const one = await createAnimal(t.client, { tag: "VENDE-1" });
+    const [a, b] = [await createAnimal(t.client), await createAnimal(t.client)];
+    await sale([{ animalId: one.id, unitPrice: 3000 }], { priceUnit: "PER_HEAD", counterparty: "Frigorífico Boa Carne" });
+    await sale(
+      [
+        { animalId: a.id, unitPrice: 1000 },
+        { animalId: b.id, unitPrice: 1000 },
+      ],
+      { priceUnit: "PER_HEAD", counterparty: "Fazenda Vizinha" },
+    );
+
+    const list = async (query: string) => (await t.client.inject({ url: `/trades?${query}` })).json().items;
+    expect((await list("q=boa carne")).map((x: { counterparty: string }) => x.counterparty)).toEqual(["Frigorífico Boa Carne"]);
+    const byTag = await list("q=vende");
+    expect(byTag).toHaveLength(1);
+    expect(byTag[0].animal).toMatchObject({ id: one.id, tag: "VENDE-1", sex: expect.any(String), category: expect.any(String) });
+    const many = (await list("q=vizinha"))[0];
+    expect(many.animalCount).toBe(2);
+    expect(many.animal).toBeNull();
+  });
+
+  it("resumo: compras e vendas, animais, soma exata e pendentes", async () => {
+    const [a, b, c] = [await createAnimal(t.client), await createAnimal(t.client), await createAnimal(t.client)];
+    await sale([{ animalId: a.id, unitPrice: 3000.1 }], { priceUnit: "PER_HEAD" });
+    await sale([{ animalId: b.id, liveWeightKg: 480, carcassWeightKg: null, unitPrice: 300 }], {
+      priceUnit: "PER_ARROBA",
+      arrobaBasis: "CARCASS",
+    });
+    await post({ type: "PURCHASE", date: "2026-09-01", priceUnit: "PER_HEAD", items: [{ animalId: c.id, unitPrice: 2000 }] });
+
+    const summary = (await t.client.inject({ url: "/trades/summary" })).json();
+    expect(summary).toEqual({
+      currency: "BRL",
+      count: 3,
+      pending: 1,
+      otherCurrency: 0,
+      sales: { count: 2, animals: 2, total: "3000.10" },
+      purchases: { count: 1, animals: 1, total: "2000.00" },
+    });
+    const sept = (await t.client.inject({ url: "/trades/summary?from=2026-09-01&to=2026-09-30" })).json();
+    expect(sept).toMatchObject({ count: 1, sales: { count: 0 }, purchases: { count: 1 } });
+  });
+});

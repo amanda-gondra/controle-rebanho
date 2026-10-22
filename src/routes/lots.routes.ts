@@ -5,6 +5,7 @@ import { ErrorCode, conflict, notFound } from "../lib/errors.js";
 import { AuditAction, actorOf, recordAudit } from "../lib/history.js";
 import { lotNameTaken, moveAnimalsToLot } from "../lib/lots.js";
 import type { FarmDb } from "../lib/tenant.js";
+import { summarizeLot, withinMembership } from "../services/lot.service.js";
 import {
   createLotSchema,
   listLotsQuerySchema,
@@ -38,6 +39,29 @@ async function activeCounts(db: FarmDb, lotIds: string[]) {
   return new Map(rows.map((row) => [row.lotId, row._count._all]));
 }
 
+// Períodos de cada animal no lote (404 se o lote não for desta fazenda)
+async function lotPeriods(db: FarmDb, lotId: string) {
+  const lot = await db.lot.findUnique({ where: { id: lotId }, select: { id: true } });
+  if (!lot) throw lotNotFound();
+  const memberships = await db.lotMembership.findMany({
+    where: { lotId },
+    select: { animalId: true, startDate: true, endDate: true },
+  });
+  const periods = new Map<string, { startDate: string; endDate: string | null }[]>();
+  for (const membership of memberships) {
+    const list = periods.get(membership.animalId) ?? [];
+    list.push({
+      startDate: calendarDateOf(membership.startDate),
+      endDate: membership.endDate ? calendarDateOf(membership.endDate) : null,
+    });
+    periods.set(membership.animalId, list);
+  }
+  return periods;
+}
+
+const inAnyPeriod = (periods: Map<string, { startDate: string; endDate: string | null }[]>, animalId: string, date: string) =>
+  (periods.get(animalId) ?? []).some((period) => withinMembership(date, period));
+
 export async function lotRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
@@ -65,7 +89,8 @@ export async function lotRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /lots/:id — o lote, quem está nele agora e o histórico de entradas/saídas
+  // GET /lots/:id — o lote, quem está nele agora (com o último peso), o
+  // resumo (services/lot.service.ts → summarizeLot) e o histórico
   r.get(
     "/lots/:id",
     { schema: { tags: ["Lotes"], summary: "Detalhes do lote", params: lotIdParamSchema } },
@@ -82,10 +107,39 @@ export async function lotRoutes(app: FastifyInstance) {
         },
       });
       const current = memberships.filter((membership) => membership.endDate === null && membership.animal.status === "ACTIVE");
+      const weighings = await request.db.weighing.findMany({
+        where: { animalId: { in: current.map((membership) => membership.animalId) } },
+        orderBy: { date: "asc" },
+        select: { animalId: true, date: true, weightKg: true },
+      });
+      const byAnimal = new Map<string, { date: string; weightKg: number }[]>();
+      for (const weighing of weighings) {
+        const list = byAnimal.get(weighing.animalId) ?? [];
+        list.push({ date: calendarDateOf(weighing.date), weightKg: Number(weighing.weightKg) });
+        byAnimal.set(weighing.animalId, list);
+      }
+      const animals = current.map((membership) => {
+        const list = byAnimal.get(membership.animalId) ?? [];
+        const last = list[list.length - 1];
+        return {
+          ...membership.animal,
+          since: calendarDateOf(membership.startDate),
+          currentWeightKg: last?.weightKg ?? null,
+          lastWeighingDate: last?.date ?? null,
+        };
+      });
+      const firstEntry = memberships.reduce<Date | null>(
+        (first, membership) => (!first || membership.startDate < first ? membership.startDate : first),
+        null,
+      );
       return {
         ...lot,
         activeCount: current.length,
-        animals: current.map((membership) => ({ ...membership.animal, since: calendarDateOf(membership.startDate) })),
+        formedOn: firstEntry ? calendarDateOf(firstEntry) : null,
+        summary: summarizeLot(
+          animals.map((animal) => ({ sex: animal.sex, since: animal.since, weighings: byAnimal.get(animal.id) ?? [] })),
+        ),
+        animals,
         history: memberships.map((membership) => ({
           id: membership.id,
           animal: { id: membership.animal.id, tag: membership.animal.tag },
@@ -93,6 +147,67 @@ export async function lotRoutes(app: FastifyInstance) {
           endDate: membership.endDate ? calendarDateOf(membership.endDate) : null,
         })),
       };
+    },
+  );
+
+  // GET /lots/:id/weighings — pesagens feitas enquanto cada animal estava NO
+  // lote (entre a entrada e a saída), mais recentes primeiro (até 200)
+  r.get(
+    "/lots/:id/weighings",
+    { schema: { tags: ["Lotes"], summary: "Pesagens dos animais durante a permanência no lote", params: lotIdParamSchema } },
+    async (request) => {
+      const periods = await lotPeriods(request.db, request.params.id);
+      const weighings = await request.db.weighing.findMany({
+        where: { animalId: { in: [...periods.keys()] } },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        select: { id: true, date: true, weightKg: true, source: true, animal: { select: { id: true, tag: true } } },
+      });
+      return weighings
+        .filter((weighing) => inAnyPeriod(periods, weighing.animal.id, calendarDateOf(weighing.date)))
+        .slice(0, 200)
+        .map((weighing) => ({ ...weighing, date: calendarDateOf(weighing.date), weightKg: weighing.weightKg.toString() }));
+    },
+  );
+
+  // GET /lots/:id/applications — aplicações em que algum animal estava no lote
+  // na data da aplicação (quantos do lote receberam), mais recentes primeiro
+  r.get(
+    "/lots/:id/applications",
+    { schema: { tags: ["Lotes"], summary: "Aplicações sanitárias dos animais durante a permanência no lote", params: lotIdParamSchema } },
+    async (request) => {
+      const periods = await lotPeriods(request.db, request.params.id);
+      const links = await request.db.applicationAnimal.findMany({
+        where: { animalId: { in: [...periods.keys()] } },
+        select: {
+          animalId: true,
+          application: {
+            select: {
+              id: true,
+              date: true,
+              reapplyDate: true,
+              product: { select: { id: true, name: true, type: true } },
+              _count: { select: { animals: true } },
+            },
+          },
+        },
+      });
+      const grouped = new Map<string, { application: (typeof links)[number]["application"]; inLot: number }>();
+      for (const link of links) {
+        if (!inAnyPeriod(periods, link.animalId, calendarDateOf(link.application.date))) continue;
+        const entry = grouped.get(link.application.id) ?? { application: link.application, inLot: 0 };
+        entry.inLot += 1;
+        grouped.set(link.application.id, entry);
+      }
+      return [...grouped.values()]
+        .sort((a, b) => b.application.date.getTime() - a.application.date.getTime())
+        .map(({ application, inLot }) => ({
+          id: application.id,
+          date: calendarDateOf(application.date),
+          reapplyDate: application.reapplyDate ? calendarDateOf(application.reapplyDate) : null,
+          product: application.product,
+          animalsTotal: application._count.animals,
+          animalsInLot: inLot,
+        }));
     },
   );
 

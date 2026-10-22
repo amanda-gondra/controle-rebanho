@@ -144,8 +144,18 @@ export const listApplicationsQuerySchema = z
     type: productType.optional(),
     from: calendarDate.optional(),
     to: calendarDate.optional(),
+    // busca por nome do produto ou brinco de um animal da aplicação
+    q: z.string().trim().min(1).max(60).optional(),
     page: z.coerce.number().int().min(1).max(100000).optional(),
     pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+// GET /applications/summary — números do topo do Manejo sanitário
+export const applicationsSummaryQuerySchema = z
+  .object({
+    from: calendarDate.optional(),
+    to: calendarDate.optional(),
   })
   .strict();
 

@@ -165,8 +165,21 @@ export const listTradesQuerySchema = z
     from: calendarDate.optional(),
     to: calendarDate.optional(),
     pending: booleanText.optional(), // só as que aguardam o peso de carcaça
+    // busca por comprador/vendedor ou brinco de um animal da negociação
+    q: z.string().trim().min(1).max(60).optional(),
     page: z.coerce.number().int().min(1).max(100_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+// GET /trades/summary — números do topo da tela (mesmos filtros da lista, sem página)
+export const tradesSummaryQuerySchema = z
+  .object({
+    type: tradeType.optional(),
+    from: calendarDate.optional(),
+    to: calendarDate.optional(),
+    pending: booleanText.optional(),
+    q: z.string().trim().min(1).max(60).optional(),
   })
   .strict();
 

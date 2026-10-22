@@ -1,5 +1,6 @@
 import { AuditAction, actorOf, recordAudit } from "../lib/history.js";
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { assertNotInFuture, calendarDateOf, toDbDate } from "../lib/dates.js";
 import { uniqueViolation } from "../lib/error-handler.js";
@@ -28,11 +29,12 @@ import {
   createTradeSchema,
   lastPricesQuerySchema,
   listTradesQuerySchema,
+  tradesSummaryQuerySchema,
   tradeIdParamSchema,
   tradeItemParamsSchema,
   updateTradeSchema,
 } from "../schemas/trade.schema.js";
-import { sumValues } from "../services/trade.service.js";
+import { sumValues, summarizeTrades } from "../services/trade.service.js";
 
 // Negociações — compra e venda (G5, "Espec — Compra e venda").
 // "Negocia em lote, guarda individual": uma negociação, um item por animal.
@@ -241,15 +243,8 @@ export async function tradeRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const { type, from, to, pending, page, pageSize } = request.query;
-      const where = {
-        ...(type ? { type } : {}),
-        ...(from || to
-          ? { date: { ...(from ? { gte: toDbDate(from) } : {}), ...(to ? { lte: toDbDate(to) } : {}) } }
-          : {}),
-        ...(pending === true ? { items: { some: { value: null } } } : {}),
-        ...(pending === false ? { items: { none: { value: null } } } : {}),
-      };
+      const { page, pageSize, ...filters } = request.query;
+      const where = tradeFilter(filters);
 
       const [total, trades] = await Promise.all([
         request.db.trade.count({ where }),
@@ -258,9 +253,19 @@ export async function tradeRoutes(app: FastifyInstance) {
           orderBy: [{ date: "desc" }, { createdAt: "desc" }],
           skip: (page - 1) * pageSize,
           take: pageSize,
-          include: { items: { select: { value: true } } },
+          include: { items: { select: { value: true, animalId: true } } },
         }),
       ]);
+
+      // negociação de UM animal: a lista mostra qual (brinco, sexo, categoria, raça)
+      const singleIds = trades.filter((trade) => trade.items.length === 1).map((trade) => trade.items[0].animalId);
+      const animals = singleIds.length
+        ? await request.db.animal.findMany({
+            where: { id: { in: singleIds } },
+            select: { id: true, tag: true, sex: true, category: true, castrated: true, breed: true },
+          })
+        : [];
+      const animalById = new Map(animals.map((animal) => [animal.id, animal]));
 
       return {
         page,
@@ -277,11 +282,43 @@ export async function tradeRoutes(app: FastifyInstance) {
             currency: trade.currency,
             counterparty: trade.counterparty,
             animalCount: values.length,
+            animal: values.length === 1 ? (animalById.get(trade.items[0].animalId) ?? null) : null,
             total: sumValues(values),
             knownTotal: sumValues(values.map((value) => value ?? "0.00")),
             pending: values.some((value) => value === null),
           };
         }),
+      };
+    },
+  );
+
+  // GET /trades/summary — quantas compras e vendas e quanto somam (mesmos
+  // filtros da lista). Pendente não entra na soma; só a moeda da fazenda.
+  r.get(
+    "/trades/summary",
+    {
+      schema: {
+        tags: ["Negociações"],
+        summary: "Resumo das negociações (quantidade e valores de compras e vendas)",
+        querystring: tradesSummaryQuerySchema,
+      },
+    },
+    async (request) => {
+      const trades = await request.db.trade.findMany({
+        where: tradeFilter(request.query),
+        select: { type: true, currency: true, items: { select: { value: true } } },
+      });
+      const currency = request.auth.farm.currency;
+      return {
+        currency,
+        ...summarizeTrades(
+          trades.map((trade) => ({
+            type: trade.type,
+            currency: trade.currency,
+            values: trade.items.map((item) => item.value?.toFixed(2) ?? null),
+          })),
+          currency,
+        ),
       };
     },
   );
@@ -598,4 +635,30 @@ export async function tradeRoutes(app: FastifyInstance) {
       return reply.status(204).send();
     },
   );
+}
+
+// Filtros da lista e do resumo: tipo, período, pendente e busca
+// (comprador/vendedor ou brinco de um animal)
+function tradeFilter(filters: {
+  type?: "SALE" | "PURCHASE";
+  from?: string;
+  to?: string;
+  pending?: boolean;
+  q?: string;
+}): Prisma.TradeWhereInput {
+  const { type, from, to, pending, q } = filters;
+  return {
+    ...(type ? { type } : {}),
+    ...(from || to ? { date: { ...(from ? { gte: toDbDate(from) } : {}), ...(to ? { lte: toDbDate(to) } : {}) } } : {}),
+    ...(pending === true ? { items: { some: { value: null } } } : {}),
+    ...(pending === false ? { items: { none: { value: null } } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { counterparty: { contains: q, mode: "insensitive" } },
+            { items: { some: { animal: { tag: { contains: q, mode: "insensitive" } } } } },
+          ],
+        }
+      : {}),
+  };
 }

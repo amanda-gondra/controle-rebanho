@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useOrigin } from "../navigation/hooks.js";
 import { t } from "../i18n/index.js";
+import { TopBarActions } from "./TopBar.js";
 
 // Cabeçalho padrão das telas: (voltar) + título + descrição + ações à direita.
 // O "voltar" segue o padrão do sistema (navigation/origin.ts): volta para a
@@ -12,37 +13,47 @@ type Props = {
   title: ReactNode;
   subtitle?: ReactNode;
   backFallback?: string;
-  backLabel?: string;
+  backLabel?: string; // nome completo para leitor de tela (ex.: "Voltar para os lotes")
+  backText?: string; // texto curto visível (ex.: "Lotes"); padrão "Voltar"
   actions?: ReactNode;
   children?: ReactNode; // linha extra sob o título (ex.: selo de situação)
 };
 
-export function BackButton({ fallback, label }: { fallback: string; label?: string }) {
+export function BackButton({ fallback, label, text }: { fallback: string; label?: string; text?: string }) {
   const { goBack } = useOrigin(fallback);
-  const text = label ?? t("common.back");
+  const name = label ?? t("common.back");
   return (
     <button
       type="button"
       onClick={goBack}
-      title={text}
-      aria-label={text}
-      className="text-texto-suave hover:text-texto cursor-pointer p-1 -m-1 mt-0.5 rounded-lg shrink-0"
+      title={name}
+      aria-label={name}
+      className="inline-flex items-center gap-2 text-sm font-medium text-texto hover:text-verde cursor-pointer rounded-lg py-1 -my-1"
     >
-      <ArrowLeft size={22} />
+      <ArrowLeft size={18} aria-hidden="true" />
+      {text ?? t("common.back")}
     </button>
   );
 }
 
-export function PageHeader({ title, subtitle, backFallback, backLabel, actions, children }: Props) {
+// Cabeçalho padrão: linha de cima com o "voltar" (à esquerda) e, no
+// computador, o sino de lembretes e o menu da conta (à direita); depois o
+// título, a descrição e as ações da tela.
+export function PageHeader({ title, subtitle, backFallback, backLabel, backText, actions, children }: Props) {
   return (
-    <div className="flex flex-wrap items-start gap-3 mb-6">
-      {backFallback && <BackButton fallback={backFallback} label={backLabel} />}
-      <div className="flex-1 min-w-[12rem]">
-        <h1 className="text-2xl font-semibold text-texto">{title}</h1>
-        {subtitle && <p className="text-texto-suave">{subtitle}</p>}
-        {children}
+    <header className="mb-6">
+      <div className={`flex items-center justify-between gap-3 ${backFallback ? "mb-3" : "md:mb-3"} ${backFallback ? "" : "max-md:hidden"}`}>
+        <div>{backFallback && <BackButton fallback={backFallback} label={backLabel} text={backText} />}</div>
+        <TopBarActions />
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-    </div>
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="flex-1 min-w-[12rem]">
+          <h1 className="text-[26px] md:text-[30px] leading-tight font-semibold tracking-tight text-texto">{title}</h1>
+          {subtitle && <p className="text-texto-suave mt-1">{subtitle}</p>}
+          {children}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+    </header>
   );
 }

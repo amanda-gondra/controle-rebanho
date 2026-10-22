@@ -7,6 +7,7 @@ import type {
   PriceUnit,
   Trade,
   TradePage,
+  TradesOverview,
   TradeType,
 } from "../types/trade.js";
 
@@ -66,6 +67,7 @@ export type TradeFilters = {
   from?: string;
   to?: string;
   pending?: boolean;
+  q?: string;
   page?: number;
   pageSize?: number;
 };
@@ -96,6 +98,15 @@ export function listTrades(filters: TradeFilters = {}) {
   }
   const suffix = query.size > 0 ? `?${query}` : "";
   return request<TradePage>(`/trades${suffix}`);
+}
+
+export function getTradesOverview(filters: Omit<TradeFilters, "page" | "pageSize"> = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  const suffix = query.size > 0 ? `?${query}` : "";
+  return request<TradesOverview>(`/trades/summary${suffix}`);
 }
 
 export function getTrade(id: string) {

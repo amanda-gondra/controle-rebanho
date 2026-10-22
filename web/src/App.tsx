@@ -11,6 +11,7 @@ import { Login } from "./pages/Login.js";
 import { Register } from "./pages/Register.js";
 import { Settings } from "./pages/Settings.js";
 import { NotFound } from "./pages/NotFound.js";
+import { ScreenError } from "./pages/ScreenError.js";
 import { TradeList } from "./pages/TradeList.js";
 import { TradeCreate } from "./pages/TradeCreate.js";
 import { TradeDetail } from "./pages/TradeDetail.js";
@@ -27,7 +28,7 @@ import { RedirectIfLoggedIn, RequireAuth } from "./components/RequireAuth.js";
 // de um formulário com alterações não salvas (useBlocker — navigation/).
 const router = createBrowserRouter(
   createRoutesFromElements(
-    <>
+    <Route errorElement={<ScreenError />}>
       {/* Públicas: entrar e criar conta */}
       <Route element={<RedirectIfLoggedIn />}>
         <Route path="/login" element={<Login />} />
@@ -56,7 +57,7 @@ const router = createBrowserRouter(
         {/* Endereço que não existe: tela própria, com caminho de volta */}
         <Route path="*" element={<NotFound />} />
       </Route>
-    </>,
+    </Route>,
   ),
 );
 

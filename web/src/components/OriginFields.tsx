@@ -35,7 +35,7 @@ export function OriginFields({ origin, entryDate, onOriginChange, onEntryDateCha
   }
 
   return (
-    <div className="mb-5">
+    <div className="mb-5 grid gap-x-6 gap-y-3 md:grid-cols-2">
       <fieldset>
         <legend className="block font-medium text-texto mb-1">
           {t("animal.form.origin")} <span className="text-texto-leve font-normal">{t("common.optional")}</span>
@@ -57,7 +57,7 @@ export function OriginFields({ origin, entryDate, onOriginChange, onEntryDateCha
         </div>
         <p className="text-sm text-texto-leve">{t("animal.form.originPurchaseHint")}</p>
       </fieldset>
-      <div className="mt-3">
+      <div>
         <label htmlFor={`${id}-entry`} className="block text-sm text-texto-suave mb-1">
           {origin === "BORN_ON_FARM" ? t("animal.form.entryDateBorn") : t("animal.form.entryDate")}{" "}
           <span className="text-texto-leve">{t("common.optional")}</span>
@@ -70,7 +70,7 @@ export function OriginFields({ origin, entryDate, onOriginChange, onEntryDateCha
           onChange={(e) => onEntryDateChange(e.target.value)}
           aria-invalid={!!error}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`border rounded-lg px-3 py-2 text-texto ${error ? "border-alerta" : "border-borda"}`}
+          className={`w-full border rounded-lg px-3 py-2 text-texto ${error ? "border-alerta" : "border-borda"}`}
         />
         {error && (
           <p id={`${id}-error`} className="text-sm text-alerta mt-1">

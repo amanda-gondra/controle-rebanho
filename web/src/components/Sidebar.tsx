@@ -1,16 +1,10 @@
+import { initialsOf } from "../types/format.js";
 import { List, PlusCircle, Syringe, LogOut, Settings, Handshake, LayoutDashboard, Layers } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { sectionOf, type Section } from "../navigation/origin.js";
 import { useAuth } from "./AuthProvider.js";
 import { t, type MessageKey } from "../i18n/index.js";
 
-// Iniciais do nome para o "avatar" (ex.: "Maria Silva" → "MS")
-function initialsOf(name: string) {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase();
-}
 
 // `mobile: false` = fica só no menu do computador (a barra do celular tem
 // espaço para poucos itens; "Cadastrar animal" está no topo da lista)
@@ -54,14 +48,10 @@ export function Sidebar() {
       <aside className="hidden md:flex md:flex-col w-64 bg-sidebar text-white h-screen sticky top-0 overflow-hidden">
         {/* Conteúdo — acima dos morros (z-10) */}
         <div className="relative z-10 flex flex-col flex-1 p-4">
-          {/* Logo */}
-          <div className="flex items-center gap-2.5 px-2 py-3 mb-6">
-            <img
-              src="/logo.png"
-              alt={t("common.appName")}
-              className="w-8 h-8 [filter:brightness(0)_invert(1)]"
-            />
-            <span className="text-xl font-semibold">{t("common.appName")}</span>
+          {/* Logo oficial (versão para fundo escuro) */}
+          <div className="flex items-center gap-2.5 px-1 py-2 mb-6">
+            <img src="/brand/camporico-mark.png" alt="" className="w-11 h-auto" />
+            <img src="/brand/camporico-wordmark-dark.png" alt={t("brand.name")} className="h-[26px] w-auto" />
           </div>
 
           {/* Navegação */}
@@ -73,14 +63,14 @@ export function Sidebar() {
                 end={end}
                 aria-current={active === section ? "page" : undefined}
                 className={() =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-colors ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] cursor-pointer transition-colors ${
                     active === section
                       ? "bg-sidebar-ativo text-white font-medium"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`
                 }
               >
-                <Icon size={18} />
+                <Icon size={20} aria-hidden="true" />
                 {t(label)}
               </NavLink>
             ))}
@@ -93,14 +83,14 @@ export function Sidebar() {
             to={SETTINGS_ITEM.to}
             aria-current={active === SETTINGS_ITEM.section ? "page" : undefined}
             className={() =>
-              `flex items-center gap-3 px-3 py-2.5 mb-2 rounded-lg text-sm cursor-pointer transition-colors ${
+              `flex items-center gap-3 px-3 py-2.5 mb-2 rounded-lg text-[15px] cursor-pointer transition-colors ${
                 active === SETTINGS_ITEM.section
                   ? "bg-sidebar-ativo text-white font-medium"
                   : "text-white/70 hover:bg-white/10 hover:text-white"
               }`
             }
           >
-            <SETTINGS_ITEM.Icon size={18} />
+            <SETTINGS_ITEM.Icon size={20} aria-hidden="true" />
             {t(SETTINGS_ITEM.label)}
           </NavLink>
 
@@ -128,25 +118,29 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Morros decorativos — camadas de verde ao fundo (z-0) */}
+        {/* Paisagem decorativa: morros, árvores e um boi em silhueta (z-0) */}
         <svg
           aria-hidden="true"
-          viewBox="0 0 260 170"
-          preserveAspectRatio="none"
-          className="absolute inset-x-0 bottom-0 z-0 w-full h-44 pointer-events-none"
+          viewBox="0 0 260 190"
+          preserveAspectRatio="xMidYMax slice"
+          className="absolute inset-x-0 bottom-0 z-0 w-full h-48 pointer-events-none opacity-90"
         >
+          <path d="M0 110 C 50 80, 95 95, 140 112 S 215 128, 260 98 L260 190 L0 190 Z" fill="#183320" />
+          <g fill="#1D3B24">
+            <ellipse cx="38" cy="96" rx="20" ry="13" />
+            <rect x="36" y="100" width="4" height="22" />
+            <ellipse cx="62" cy="104" rx="12" ry="9" />
+            <rect x="61" y="106" width="3" height="14" />
+            <ellipse cx="214" cy="92" rx="18" ry="12" />
+            <rect x="212" y="96" width="4" height="20" />
+          </g>
+          <path d="M0 136 C 60 112, 110 128, 170 134 S 230 142, 260 132 L260 190 L0 190 Z" fill="#1F3D24" />
+          {/* boi */}
           <path
-            d="M0 90 C 45 55, 80 70, 120 95 S 200 120, 260 80 L260 170 L0 170 Z"
-            fill="#1B331F"
+            d="M112 128 c3-4 9-6 16-6 h20 c4 0 7 1 9 3 l5-3 c2-1 4 0 4 2 l-1 4 c2 2 2 5 0 7 l-3 2 v8 h-3 v-6 h-2 v6 h-3 v-8 h-18 v8 h-3 v-6 h-2 v6 h-3 v-9 c-3-1-5-3-6-5 z"
+            fill="#244527"
           />
-          <path
-            d="M0 120 C 55 90, 95 110, 150 120 S 220 135, 260 115 L260 170 L0 170 Z"
-            fill="#20391F"
-          />
-          <path
-            d="M0 145 C 60 125, 110 140, 170 145 S 230 152, 260 145 L260 170 L0 170 Z"
-            fill="#243E22"
-          />
+          <path d="M0 160 C 70 146, 130 156, 190 160 S 240 164, 260 158 L260 190 L0 190 Z" fill="#22422A" />
         </svg>
       </aside>
 

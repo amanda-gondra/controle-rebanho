@@ -142,8 +142,11 @@ Frontend (web/):
 `bege #F1F0EC` (fundo de todas as telas) · `card #FFFFFF` · `texto #2C2A24` · `texto-suave #6B6459`
 `texto-leve #9A8F7C` · `borda #E7E0D2` · `borda-chip #D8CFBD` · `couro #8B6F52` · `alerta #B42318`
 `sidebar #152B1C` (fundo do menu lateral) · `sidebar-ativo #37592E` (item de menu ativo)
-Uso: `bg-verde`, `text-texto`, `border-borda`, etc. Logo em `web/public/logo.png`
-(na sidebar escura, aplicar `[filter:brightness(0)_invert(1)]` pra deixá-la branca).
+Uso: `bg-verde`, `text-texto`, `border-borda`, etc. **Logo oficial CampoRico** em `web/public/brand/`
+(nunca filtrar nem redesenhar; textos do sistema continuam "Rebanho"). Kit de tela em
+`web/src/components/ui/` (StatCard, SectionCard, EmptyState, StatusBadge, Pagination, PeriodFilter,
+FormSection, ActionsMenu…) — usar antes de criar outro. Detalhes em docs/architecture.md
+("Identidade visual e kit de interface").
 Cores fora do tema, inline: ícone de sexo `#2E7BD6` (macho) / `#D6478B` (fêmea),
 pontinho de status vendido `#D8A200` / morto `#9A8F7C` (ver `web/src/types/labels.ts`).
 
@@ -203,7 +206,8 @@ Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
 Sanitário:  POST /products · GET /products (type, includeArchived) · PUT /products/:id ·
             PATCH /products/:id/archive|unarchive · DELETE /products/:id (só nunca usado)
             POST /applications/:id/dismiss-reminder (dispensar lembrete — D-40)
-            POST /applications · GET /applications (filtro type) · GET /applications/:id
+            POST /applications · GET /applications (type, from, to, q; traz createdBy {id, name})
+            GET /applications/summary (números do topo do Manejo) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
             (422 ANIMALS_NOT_IN_HERD_ON_DATE se algum animal já tinha saído na data)
             GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
@@ -212,12 +216,14 @@ Negociações (G5b): POST /trades (compra/venda de 1 ou muitos animais; idempote
             calcula os valores; 422 TRADE_ITEM_ERRORS com erro por linha `items.N.animalId`;
             na compra, a linha pode trazer `newAnimal` {tag, sex, category, castrated?, breed?} —
             o animal é cadastrado junto (G5c); brinco repetido → `items.N.newAnimal.tag` DUPLICATE_TAG)
-            GET /trades (type, from, to, pending, page, pageSize) · GET /trades/:id
+            GET /trades (type, from, to, pending, q, page, pageSize; `animal` quando é 1 só) · GET /trades/:id
+            GET /trades/summary (mesmos filtros: quantidade e soma de compras/vendas, pendentes)
             GET /trades/last-prices (último preço por categoria — só referência)
             PATCH /trades/:id (corrige; recalcula; peso de carcaça pendente) ·
             DELETE /trades/:id/items/:itemId (tira um animal) · DELETE /trades/:id (desfaz)
             GET /animals/:id/result   (kind: DIFFERENCE | INVESTED | SALE_ONLY | PENDING | CURRENCY_MISMATCH)
-Lotes:      POST /lots · GET /lots (includeArchived) · GET /lots/:id · PUT /lots/:id ·
+Lotes:      POST /lots · GET /lots (includeArchived) · GET /lots/:id (+ summary, formedOn) · PUT /lots/:id ·
+            GET /lots/:id/weighings · GET /lots/:id/applications (só o que aconteceu DENTRO do lote) ·
             POST /lots/:id/animals (entrar/trocar na data) · POST /lots/:id/remove (sair na data) ·
             PATCH /lots/:id/archive|unarchive · DELETE /lots/:id (só nunca usado) — D-49
 Painel:     GET /dashboard?from&to (regras em docs/architecture.md "Painel") — D-50
@@ -237,6 +243,11 @@ produto, editar/arquivar, dose, carência + aviso na venda, dispensar/reaplicar 
 idempotência); GMD com período e ganho desde a anterior; pesagem em sequência (`/pesagens`);
 lista do rebanho paginada no servidor; lotes simples; painel mínimo (`/painel`); CSV da lista.
 Índices por expressão/parciais e gatilhos ficam fora do `schema.prisma` — ver docs/database.md.
+
+**Interface fiel às referências visuais (2026-10-21):** logo oficial CampoRico, kit de tela em
+`components/ui/`, topo com sino e menu da conta, telas novas de Painel, Lotes, detalhe do lote
+(abas Animais/Pesagens/Manejo/Movimentações), Cadastrar/Editar animal (partes numeradas), Manejo
+sanitário e Negociações (números do período, busca, período, tabela paginada).
 
 ## Próximos passos
 

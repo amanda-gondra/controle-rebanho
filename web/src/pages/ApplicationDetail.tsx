@@ -1,3 +1,4 @@
+import { invalidateReminderCount } from "../hooks/useReminderCount.js";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Pencil, Trash2, Bell } from "lucide-react";
@@ -58,6 +59,7 @@ export function ApplicationDetail() {
     setDeleting(true);
     try {
       await deleteApplication(id);
+      invalidateReminderCount(); // o sino do topo recalcula
       showToast(t("applicationDetail.deleted"));
       goBack();
     } catch (err) {

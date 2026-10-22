@@ -10,9 +10,11 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const ROOT = new URL("../src/", import.meta.url).pathname;
+// fileURLToPath (e não .pathname): no Windows o .pathname vira "/C:/..." e o caminho quebra
+const ROOT = fileURLToPath(new URL("../src/", import.meta.url));
 const SKIP_DIRS = new Set(["i18n"]);
 
 function filesIn(dir) {
@@ -41,7 +43,7 @@ function looksHuman(text) {
 }
 
 const ALLOWED_CALLS = new Set(["t", "tOptional", "errorMessage", "useState", "Error", "console.error", "console.log"]);
-const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "aria-current", "aria-live", "path", "value", "dataKey", "backFallback", "autoCapitalize", "autoCorrect", "size", "enterKeyHint", "tone"]);
+const IGNORED_ATTRS = new Set(["className", "key", "type", "role", "autoComplete", "inputMode", "to", "href", "src", "id", "htmlFor", "d", "viewBox", "preserveAspectRatio", "fill", "stroke", "name", "aria-haspopup", "aria-labelledby", "aria-describedby", "aria-checked", "aria-expanded", "aria-controls", "aria-current", "aria-live", "path", "value", "dataKey", "backFallback", "autoCapitalize", "autoCorrect", "size", "enterKeyHint", "tone", "scope", "strokeLinecap", "strokeLinejoin"]);
 
 const problems = [];
 

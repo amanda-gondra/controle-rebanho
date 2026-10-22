@@ -1,5 +1,5 @@
 import { request } from "./api.js";
-import type { Product, ProductType, Application, DoseUnit } from "../types/animal.js";
+import type { Product, ProductType, Application, DoseUnit, ApplicationsSummary } from "../types/animal.js";
 
 // ── Produtos ──
 
@@ -62,9 +62,21 @@ export function createApplication(
   return request<Application>("/applications", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function listApplications(type?: ProductType): Promise<Application[]> {
-  const query = type ? `?type=${type}` : "";
-  return request<Application[]>(`/applications${query}`);
+export type ApplicationFilters = { type?: ProductType; q?: string; from?: string; to?: string };
+
+export function listApplications(filters: ApplicationFilters = {}): Promise<Application[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  const text = query.toString();
+  return request<Application[]>(`/applications${text ? `?${text}` : ""}`);
+}
+
+export function getApplicationsSummary(period: { from?: string; to?: string } = {}): Promise<ApplicationsSummary> {
+  const query = new URLSearchParams();
+  if (period.from) query.set("from", period.from);
+  if (period.to) query.set("to", period.to);
+  const text = query.toString();
+  return request<ApplicationsSummary>(`/applications/summary${text ? `?${text}` : ""}`);
 }
 
 export function getApplication(id: string): Promise<Application> {
