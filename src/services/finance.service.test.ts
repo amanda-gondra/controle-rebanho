@@ -1,112 +1,52 @@
-import { describe, it, expect } from "vitest";
-import { computeAnimalResult } from "./finance.service.js";
+import { describe, expect, it } from "vitest";
+import { computeAnimalResult, type TradeSide } from "./finance.service.js";
 
-describe("computeAnimalResult", () => {
-  it("apura resultado REAL quando o animal foi vendido", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: 200, pricePerKg: 10 }, // custo 2000
-      sale: { weightKg: 450, pricePerKg: 12 }, // receita 5400
-      currentWeightKg: 450,
-      estimatedPricePerKg: 11,
-    });
+const side = (value: string | null, currency = "BRL"): TradeSide => ({
+  tradeId: "t",
+  itemId: "i",
+  date: "2026-10-01",
+  priceUnit: "PER_KG",
+  arrobaBasis: null,
+  liveWeightKg: "450.00",
+  carcassWeightKg: null,
+  unitPrice: "10.00",
+  value,
+  currency,
+});
 
-    expect(result.resultType).toBe("REALIZED");
-    expect(result.purchaseCost).toBe(2000);
-    expect(result.saleRevenue).toBe(5400);
-    expect(result.estimatedValue).toBeNull(); // venda tem prioridade sobre estimativa
-    expect(result.result).toBe(3400);
+describe("computeAnimalResult (RN-NEG-012)", () => {
+  it("compra e venda: diferença venda − compra — critério 15", () => {
+    const result = computeAnimalResult(side("2500.00"), side("3600.00"));
+    expect(result.kind).toBe("DIFFERENCE");
+    expect(result.difference).toBe("1100.00");
   });
 
-  it("apura resultado ESTIMADO quando o animal está vivo e há preço informado", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: 200, pricePerKg: 10 }, // custo 2000
-      sale: null,
-      currentWeightKg: 380, // 380 × 11 = 4180
-      estimatedPricePerKg: 11,
-    });
-
-    expect(result.resultType).toBe("ESTIMATED");
-    expect(result.purchaseCost).toBe(2000);
-    expect(result.saleRevenue).toBeNull();
-    expect(result.estimatedValue).toBe(4180);
-    expect(result.result).toBe(2180);
+  it("diferença negativa quando vendeu por menos", () => {
+    expect(computeAnimalResult(side("3000.00"), side("2850.50")).difference).toBe("-149.50");
   });
 
-  it("não apura resultado quando o animal está vivo e não há preço estimado", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: 200, pricePerKg: 10 },
-      sale: null,
-      currentWeightKg: 380,
-      estimatedPricePerKg: null,
-    });
-
-    expect(result.resultType).toBeNull();
-    expect(result.purchaseCost).toBe(2000); // o custo de compra ainda aparece
-    expect(result.estimatedValue).toBeNull();
-    expect(result.result).toBeNull();
+  it("centavos exatos (sem ponto flutuante)", () => {
+    expect(computeAnimalResult(side("0.10"), side("0.30")).difference).toBe("0.20");
   });
 
-  it("não apura resultado estimado sem pesagem, mesmo com preço informado", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: 200, pricePerKg: 10 },
-      sale: null,
-      currentWeightKg: null,
-      estimatedPricePerKg: 11,
-    });
-
-    expect(result.resultType).toBeNull();
-    expect(result.result).toBeNull();
+  it("só compra: investido; só venda: mostra a venda", () => {
+    expect(computeAnimalResult(side("2500.00"), null)).toMatchObject({ kind: "INVESTED", difference: null });
+    expect(computeAnimalResult(null, side("3600.00"))).toMatchObject({ kind: "SALE_ONLY", difference: null });
   });
 
-  it("trata compra ausente como custo zero (animal nascido na fazenda) na venda", () => {
-    const result = computeAnimalResult({
-      purchase: null,
-      sale: { weightKg: 450, pricePerKg: 12 }, // receita 5400
-      currentWeightKg: 450,
-      estimatedPricePerKg: null,
-    });
-
-    expect(result.resultType).toBe("REALIZED");
-    expect(result.purchaseCost).toBeNull(); // fica explícito que não foi informada
-    expect(result.saleRevenue).toBe(5400);
-    expect(result.result).toBe(5400); // receita − 0
+  it("valor pendente (romaneio) não calcula", () => {
+    expect(computeAnimalResult(side("2500.00"), side(null)).kind).toBe("PENDING");
+    expect(computeAnimalResult(null, side(null)).kind).toBe("PENDING");
   });
 
-  it("trata compra ausente como custo zero na estimativa", () => {
-    const result = computeAnimalResult({
-      purchase: null,
-      sale: null,
-      currentWeightKg: 300,
-      estimatedPricePerKg: 11, // 3300
+  it("moedas diferentes: não calcula e avisa", () => {
+    expect(computeAnimalResult(side("2500.00", "BRL"), side("900.00", "USD"))).toMatchObject({
+      kind: "CURRENCY_MISMATCH",
+      difference: null,
     });
-
-    expect(result.resultType).toBe("ESTIMATED");
-    expect(result.purchaseCost).toBeNull();
-    expect(result.estimatedValue).toBe(3300);
-    expect(result.result).toBe(3300);
   });
 
-  it("aceita peso e preço como texto (vindos do Prisma) e arredonda dinheiro", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: "201.50", pricePerKg: "10.30" }, // 2075.45
-      sale: { weightKg: "452.70", pricePerKg: "12.15" }, // 5500.305 → 5500.31
-      currentWeightKg: "452.70",
-      estimatedPricePerKg: null,
-    });
-
-    expect(result.purchaseCost).toBe(2075.45);
-    expect(result.saleRevenue).toBe(5500.31);
-    expect(result.result).toBe(3424.86); // 5500.31 − 2075.45
-  });
-
-  it("retorna prejuízo (resultado negativo) quando a receita é menor que o custo", () => {
-    const result = computeAnimalResult({
-      purchase: { weightKg: 400, pricePerKg: 14 }, // custo 5600
-      sale: { weightKg: 420, pricePerKg: 12 }, // receita 5040
-      currentWeightKg: 420,
-      estimatedPricePerKg: null,
-    });
-
-    expect(result.result).toBe(-560);
+  it("sem compra nem venda: nada", () => {
+    expect(computeAnimalResult(null, null).kind).toBeNull();
   });
 });

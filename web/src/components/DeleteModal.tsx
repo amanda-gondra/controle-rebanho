@@ -1,6 +1,15 @@
-import { useState } from "react";
-import { X } from "lucide-react";
-import { deleteAnimal } from "../services/animals.js";
+import { useCallback, useEffect, useState } from "react";
+import { ModalFrame } from "./ModalFrame.js";
+import { buttonClass } from "./buttonStyles.js";
+import { LoadError } from "./LoadError.js";
+import { deleteAnimal, getDeleteImpact } from "../services/animals.js";
+import type { DeleteImpact } from "../types/animal.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+
+// Excluir animal — só para cadastro errado (D-10, F-ANI-07). Antes de
+// confirmar, mostra TUDO que some junto ("3 pesagens e 2 participações em
+// aplicações"). Com compra ou venda, não exclui e diz por quê.
 
 type Props = {
   animalId: string;
@@ -10,8 +19,19 @@ type Props = {
 };
 
 export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) {
+  const [impact, setImpact] = useState<DeleteImpact | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    setLoadError("");
+    getDeleteImpact(animalId)
+      .then(setImpact)
+      .catch((err) => setLoadError(errorMessage(err, "animal.delete.impactFailed")));
+  }, [animalId]);
+
+  useEffect(load, [load]);
 
   async function handleDelete(e: React.FormEvent) {
     e.preventDefault();
@@ -20,58 +40,50 @@ export function DeleteModal({ animalId, animalTag, onClose, onDeleted }: Props) 
     try {
       await deleteAnimal(animalId);
       onDeleted();
-    } catch (err: any) {
-      setError(err?.message ?? "Não foi possível excluir. Tente de novo.");
+    } catch (err) {
+      setError(errorMessage(err, "animal.delete.failed"));
       setDeleting(false);
     }
   }
 
+  const blocked = impact?.hasTransactions === true;
+
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card rounded-2xl p-6 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-lg font-medium text-texto">Excluir animal?</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Fechar"
-            className="text-texto-leve hover:text-texto cursor-pointer"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <p className="text-sm text-texto-suave mb-5">
-          Tem certeza que quer excluir o {animalTag}? Isso apaga o animal e todas
-          as pesagens dele, e não dá para desfazer.
+    <ModalFrame title={t("animal.delete.title")} subtitle={t("animal.delete.body", { tag: animalTag })} onClose={onClose} busy={deleting}>
+      {loadError ? (
+        <LoadError compact message={loadError} onRetry={load} />
+      ) : !impact ? (
+        <p className="text-sm text-texto-suave mb-4" aria-busy="true">{t("common.loading")}</p>
+      ) : blocked ? (
+        <p role="alert" className="text-sm text-texto bg-bege rounded-lg px-3 py-2 mb-4">
+          {t("animal.delete.blocked")}
         </p>
+      ) : (
+        <p className="text-sm text-texto mb-4">
+          {impact.weighings + impact.applications === 0
+            ? t("animal.delete.nothingElse")
+            : t("animal.delete.impact", {
+                weighings: t("animal.delete.weighingsCount", { count: impact.weighings }),
+                applications: t("animal.delete.applicationsCount", { count: impact.applications }),
+              })}{" "}
+          {t("animal.delete.cannotUndo")}
+        </p>
+      )}
 
-        <form onSubmit={handleDelete}>
-          {error && <p className="text-sm text-alerta mb-4">{error}</p>}
+      <form onSubmit={handleDelete}>
+        {error && <p role="alert" className="text-sm text-alerta mb-4">{error}</p>}
 
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-            >
-              Cancelar
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className={buttonClass("secondary")}>
+            {blocked ? t("common.close") : t("common.cancel")}
+          </button>
+          {!blocked && (
+            <button type="submit" disabled={deleting || !impact} className={buttonClass("danger")}>
+              {deleting ? t("common.deleting") : t("animal.delete.confirm", { tag: animalTag })}
             </button>
-            <button
-              type="submit"
-              disabled={deleting}
-              className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-            >
-              {deleting ? "Excluindo..." : "Excluir"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          )}
+        </div>
+      </form>
+    </ModalFrame>
   );
 }

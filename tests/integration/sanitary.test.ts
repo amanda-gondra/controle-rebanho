@@ -12,15 +12,15 @@ import { prisma } from "../../src/lib/prisma.js";
 const t = useTestApp();
 
 async function createApplication(body: Record<string, unknown>) {
-  return t.app.inject({ method: "POST", url: "/applications", payload: body });
+  return t.client.inject({ method: "POST", url: "/applications", payload: body });
 }
 
 describe("produtos", () => {
   it("cadastra (sem espaços nas pontas) e lista com filtro por tipo", async () => {
-    await createProduct(t.app, { name: "  Ivermectina ", type: "DEWORMER" });
-    await createProduct(t.app, { name: "Aftosa", type: "VACCINE" });
+    await createProduct(t.client, { name: "  Ivermectina ", type: "DEWORMER" });
+    await createProduct(t.client, { name: "Aftosa", type: "VACCINE" });
 
-    const response = await t.app.inject({ url: "/products?type=DEWORMER" });
+    const response = await t.client.inject({ url: "/products?type=DEWORMER" });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toHaveLength(1);
     expect(response.json()[0].name).toBe("Ivermectina");
@@ -32,7 +32,7 @@ describe("produtos", () => {
       { name: "x".repeat(101), type: "VACCINE" },
       { name: "Aftosa", type: "PILL" },
     ]) {
-      const response = await t.app.inject({ method: "POST", url: "/products", payload });
+      const response = await t.client.inject({ method: "POST", url: "/products", payload });
       expect(response.statusCode).toBe(400);
     }
   });
@@ -40,9 +40,9 @@ describe("produtos", () => {
 
 describe("aplicações", () => {
   it("registra em lote e guarda individual por animal", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
-    const b = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
+    const b = await createAnimal(t.client);
 
     const response = await createApplication({
       productId: product.id,
@@ -53,13 +53,13 @@ describe("aplicações", () => {
     expect(response.statusCode).toBe(201);
     expect(response.json().animals).toHaveLength(2);
 
-    const history = await t.app.inject({ url: `/animals/${a.id}/applications` });
+    const history = await t.client.inject({ url: `/animals/${a.id}/applications` });
     expect(history.json()).toHaveLength(1);
   });
 
   it("o mesmo animal duas vezes → 400 (antes: mensagem errada de brinco)", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const response = await createApplication({
       productId: product.id,
       date: "2026-01-10",
@@ -70,8 +70,8 @@ describe("aplicações", () => {
   });
 
   it("animal inexistente na lista → 400 ANIMALS_NOT_FOUND e nada é gravado", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const response = await createApplication({
       productId: product.id,
       date: "2026-01-10",
@@ -83,7 +83,7 @@ describe("aplicações", () => {
   });
 
   it("produto inexistente → 404 PRODUCT_NOT_FOUND", async () => {
-    const a = await createAnimal(t.app);
+    const a = await createAnimal(t.client);
     const response = await createApplication({
       productId: NON_EXISTENT_ID,
       date: "2026-01-10",
@@ -99,8 +99,8 @@ describe("aplicações", () => {
     ["data no futuro", { date: daysFromToday(1), reapplyDate: undefined }],
     ["lista vazia de animais", { animalIds: [] }],
   ])("recusa %s com 400", async (_label, override) => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const response = await createApplication({
       productId: product.id,
       date: "2026-01-10",
@@ -111,15 +111,15 @@ describe("aplicações", () => {
   });
 
   it("edita os dados, mas exige produto existente", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const created = (await createApplication({
       productId: product.id,
       date: "2026-01-10",
       animalIds: [a.id],
     })).json();
 
-    const ok = await t.app.inject({
+    const ok = await t.client.inject({
       method: "PUT",
       url: `/applications/${created.id}`,
       payload: { productId: product.id, date: "2026-01-11", notes: "corrigido" },
@@ -127,7 +127,7 @@ describe("aplicações", () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json().notes).toBe("corrigido");
 
-    const badProduct = await t.app.inject({
+    const badProduct = await t.client.inject({
       method: "PUT",
       url: `/applications/${created.id}`,
       payload: { productId: NON_EXISTENT_ID, date: "2026-01-11" },
@@ -136,28 +136,28 @@ describe("aplicações", () => {
   });
 
   it("excluir a aplicação remove as ligações, mas não os animais", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const created = (await createApplication({
       productId: product.id,
       date: "2026-01-10",
       animalIds: [a.id],
     })).json();
 
-    const response = await t.app.inject({ method: "DELETE", url: `/applications/${created.id}` });
+    const response = await t.client.inject({ method: "DELETE", url: `/applications/${created.id}` });
     expect(response.statusCode).toBe(204);
     expect(await prisma.applicationAnimal.count()).toBe(0);
     expect(await prisma.animal.count()).toBe(1);
 
-    const again = await t.app.inject({ method: "DELETE", url: `/applications/${created.id}` });
+    const again = await t.client.inject({ method: "DELETE", url: `/applications/${created.id}` });
     expect(again.statusCode).toBe(404);
   });
 });
 
 describe("GET /alerts", () => {
   it("mostra reaplicações vencidas e dos próximos 7 dias; esconde as distantes", async () => {
-    const product = await createProduct(t.app);
-    const a = await createAnimal(t.app);
+    const product = await createProduct(t.client);
+    const a = await createAnimal(t.client);
     const base = daysFromToday(-30);
 
     const make = (reapplyDate: string) =>
@@ -168,7 +168,7 @@ describe("GET /alerts", () => {
     await make(daysFromToday(7)); // limite da janela
     await make(daysFromToday(8)); // fora
 
-    const response = await t.app.inject({ url: "/alerts" });
+    const response = await t.client.inject({ url: "/alerts" });
     expect(response.statusCode).toBe(200);
     const alerts = response.json() as { overdue: boolean }[];
     expect(alerts).toHaveLength(3);

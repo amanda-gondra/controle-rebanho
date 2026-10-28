@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isNotInFuture } from "../lib/dates.js";
 
 // Peças de validação reaproveitadas pelos schemas. Os limites são coerentes com
 // as colunas do banco (F-14): um valor que o banco não guarda vira erro de
@@ -7,7 +6,7 @@ import { isNotInFuture } from "../lib/dates.js";
 
 // Limites das colunas Decimal do schema.prisma
 const MAX_WEIGHT_KG = 9999.99; // Decimal(6, 2)
-const MAX_PRICE_PER_KG = 99_999_999.99; // Decimal(10, 2)
+const MAX_UNIT_PRICE = 99_999_999.99; // Decimal(10, 2)
 
 // Limites de texto (técnicos: evitam abuso; ajustáveis se o produto pedir)
 export const MAX_TAG_LENGTH = 50;
@@ -21,21 +20,27 @@ const hasAtMostTwoDecimals = (value: number) =>
 // "AAAA-MM-DD"
 export const calendarDate = z.iso.date("Data inválida. Use o formato AAAA-MM-DD.");
 
-// Data de calendário que não pode estar no futuro (fuso da fazenda — F-04)
-export const pastOrTodayDate = (message: string) =>
-  calendarDate.refine((date) => isNotInFuture(date), message);
+// "Não pode ser no futuro" depende do fuso da fazenda logada, então é
+// conferido na rota com assertNotInFuture (src/lib/dates.ts).
 
 export const weightKg = z.coerce
   .number({ error: "O peso deve ser um número." })
   .positive("O peso deve ser maior que zero.")
   .max(MAX_WEIGHT_KG, `O peso não pode passar de ${MAX_WEIGHT_KG} kg.`)
-  .refine(hasAtMostTwoDecimals, "O peso aceita no máximo 2 casas decimais.");
+  .refine(hasAtMostTwoDecimals, {
+    message: "O peso aceita no máximo 2 casas decimais.",
+    params: { code: "MAX_2_DECIMALS" },
+  });
 
-export const pricePerKg = z.coerce
+// Preço de negociação (G5): R$ por kg, por arroba ou por cabeça
+export const unitPrice = z.coerce
   .number({ error: "O preço deve ser um número." })
-  .positive("O preço por kg deve ser maior que zero.")
-  .max(MAX_PRICE_PER_KG, "O preço por kg está acima do limite permitido.")
-  .refine(hasAtMostTwoDecimals, "O preço aceita no máximo 2 casas decimais.");
+  .positive("O preço deve ser maior que zero.")
+  .max(MAX_UNIT_PRICE, "O preço está acima do limite permitido.")
+  .refine(hasAtMostTwoDecimals, {
+    message: "O preço aceita no máximo 2 casas decimais.",
+    params: { code: "MAX_2_DECIMALS" },
+  });
 
 // Texto obrigatório: tira espaços das pontas e exige pelo menos 1 caractere
 export const requiredText = (max: number, requiredMessage: string) =>

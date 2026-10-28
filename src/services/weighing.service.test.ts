@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeWeightGain, type WeightGainOutcome } from "./weighing.service.js";
+import { gainsSincePrevious, computeWeightGain, type WeightGainOutcome } from "./weighing.service.js";
 
 // Ajudante: garante que o cálculo deu certo e devolve o valor
 function valueOf(outcome: WeightGainOutcome) {
@@ -83,5 +83,35 @@ describe("computeWeightGain", () => {
 
     expect(result.totalGainKg).toBe(-9.5);
     expect(result.averageDailyGainKg).toBe(-0.95);
+  });
+});
+
+
+describe("período e ganho desde a anterior (RN-PES-007/008)", () => {
+  const w = (date: string, weightKg: number) => ({ date: new Date(`${date}T00:00:00.000Z`), weightKg });
+
+  it("GMD traz as datas do período (critério 2)", () => {
+    const outcome = computeWeightGain([w("2024-12-01", 300), w("2024-06-01", 180)]);
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        firstWeightKg: 180,
+        lastWeightKg: 300,
+        totalGainKg: 120,
+        days: 183,
+        averageDailyGainKg: 0.656,
+        startDate: "2024-06-01",
+        endDate: "2024-12-01",
+      },
+    });
+  });
+
+  it("ganho desde a anterior, na ordem recebida (mais recente primeiro)", () => {
+    const gains = gainsSincePrevious([w("2024-12-01", 300), w("2024-09-01", 240), w("2024-06-01", 180)]);
+    expect(gains).toEqual([
+      { gainKg: 60, days: 91, dailyGainKg: 0.659 },
+      { gainKg: 60, days: 92, dailyGainKg: 0.652 },
+      null,
+    ]);
   });
 });

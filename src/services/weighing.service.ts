@@ -1,4 +1,5 @@
-import { prisma } from "../lib/prisma.js";
+import type { FarmDb } from "../lib/tenant.js";
+import { calendarDateOf } from "../lib/dates.js";
 
 // Resultado do cálculo de desempenho de um animal
 export type WeightGainResult = {
@@ -7,6 +8,9 @@ export type WeightGainResult = {
   totalGainKg: number;
   days: number;
   averageDailyGainKg: number;
+  // Período do GMD (RN-PES-007): sempre mostrado junto com o valor
+  startDate: string; // AAAA-MM-DD da primeira pesagem
+  endDate: string; // AAAA-MM-DD da última
 };
 
 // Por que o GMD não pôde ser calculado
@@ -62,15 +66,37 @@ export function computeWeightGain(weighings: WeighingInput[]): WeightGainOutcome
       totalGainKg,
       days,
       averageDailyGainKg: Number((totalGainKg / days).toFixed(3)),
+      startDate: calendarDateOf(first.date),
+      endDate: calendarDateOf(last.date),
     },
   };
 }
 
+// "Ganho desde a anterior" (RN-PES-008): a mesma conta do GMD aplicada a cada
+// par de pesagens seguidas. Informação, não indicador novo. A primeira
+// pesagem não tem anterior (null). Devolve na mesma ordem recebida.
+export type GainSincePrevious = { gainKg: number; days: number; dailyGainKg: number | null } | null;
+
+export function gainsSincePrevious(weighings: WeighingInput[]): GainSincePrevious[] {
+  const order = weighings.map((weighing, index) => ({ weighing, index }));
+  order.sort((a, b) => a.weighing.date.getTime() - b.weighing.date.getTime());
+  const result: GainSincePrevious[] = new Array(weighings.length).fill(null);
+  for (let position = 1; position < order.length; position += 1) {
+    const previous = order[position - 1].weighing;
+    const current = order[position].weighing;
+    const days = Math.round((current.date.getTime() - previous.date.getTime()) / MS_PER_DAY);
+    const gainKg = Number((Number(current.weightKg) - Number(previous.weightKg)).toFixed(2));
+    result[order[position].index] = { gainKg, days, dailyGainKg: days > 0 ? Number((gainKg / days).toFixed(3)) : null };
+  }
+  return result;
+}
+
 // A função que fala com o banco: busca as pesagens e chama a conta pura acima.
 export async function calculateWeightGain(
+  db: FarmDb,
   animalId: string,
 ): Promise<WeightGainOutcome> {
-  const weighings = await prisma.weighing.findMany({
+  const weighings = await db.weighing.findMany({
     where: { animalId },
     orderBy: { date: "asc" },
     select: { date: true, weightKg: true },

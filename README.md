@@ -1,239 +1,243 @@
-<div align="center">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/public/brand/camporico-full-dark.png">
+    <img src="web/public/brand/camporico-full-light.png" alt="CampoRico" width="280">
+  </picture>
+</p>
 
-  <img src="web/public/logo.png" alt="Logo Rebanho" width="90" />
-  
-# Rebanho
+<h1 align="center">Rebanho</h1>
 
-**Sistema de controle de rebanho de gado de corte** — cadastro dos animais, pesagens com ganho de peso e **GMD**, manejo sanitário e controle financeiro básico (compra, venda e resultado) por animal.
-
-<sub>Um histórico organizado para acompanhar o desempenho dos animais e apoiar decisões baseadas em dados.</sub>
-
-</div>
-
----
-
-## 📖 Sobre o projeto
-
-Na pecuária de corte, acompanhar a evolução de cada animal depende de informações registradas ao longo do tempo. Sem um histórico organizado, torna-se difícil saber, com dados concretos, como cada animal está evoluindo e tomar decisões com base em informações confiáveis.
-
-O **Rebanho** foi desenvolvido para uso em uma propriedade rural, centralizando o cadastro dos animais, identificados pelo **brinco**, e todo o seu histórico de **pesagens**. A partir desses registros, o sistema calcula automaticamente o **ganho de peso** e o **ganho médio diário (GMD)**, além de apresentar a evolução do peso ao longo do tempo.
-
-O objetivo é transformar registros de campo em informações úteis para acompanhar o desempenho individual dos animais e apoiar a tomada de decisão.
-
-O sistema também prioriza a experiência do usuário final, com linguagem clara e mensagens compreensíveis, evitando a exposição de códigos de erro ou detalhes técnicos desnecessários na interface.
+<p align="center">
+  Gestão de gado de corte: animais, pesagens, lotes, manejo sanitário e negociações em um só lugar.
+</p>
 
 ---
 
-## ✨ Funcionalidades
+## Sobre o projeto
 
-* **Cadastro de animais** com identificação por brinco único, sexo, categoria, raça e observações.
-* **Data de nascimento com precisão variável**, permitindo registrar a informação conforme o nível de precisão disponível: dia/mês/ano, mês/ano ou desconhecida.
-* **Registro de pesagens** por animal, mantendo um histórico completo ao longo do tempo.
-* **Cálculo automático de ganho de peso e GMD** (ganho médio diário).
-* **Visualização da evolução do peso** de cada animal por meio de gráficos.
-* **Filtros de animais** por status e categoria.
-* **Atualização de status** para situações como venda ou morte, preservando o histórico do animal.
-* **Manejo sanitário completo**, com cadastro de produtos (vacinas e vermífugos), aplicação em lote, histórico por animal e por evento, e alertas de reaplicação.
-* **Módulo financeiro base**, com registro de compra e venda por animal (preço por kg) e cálculo do resultado — realizado ou estimado — na ficha do animal.
-* **Interface responsiva**, adaptada para computador e dispositivos móveis.
-* **Mensagens e estados vazios orientados ao usuário**, evitando a exposição de informações técnicas desnecessárias.
+O **Rebanho** é um sistema web (SaaS) para a gestão de rebanhos de gado de corte, desenvolvido
+dentro da proposta da TG Campo — Tecnologia e Gestão para o Campo.
 
----
+Em muitas fazendas, as informações do rebanho ficam espalhadas em cadernos, planilhas e na
+memória de quem trabalha no curral. Com isso, fica difícil responder perguntas simples do dia a
+dia: quantos animais estão ativos, quanto cada um ganhou de peso, qual lote precisa de
+vacina, quanto uma venda rendeu em relação à compra.
 
-## 🛠️ Tecnologias
+O Rebanho organiza esses registros por fazenda e transforma o histórico de cada animal em
+informação para decidir: o que está acontecendo no rebanho, o que precisa de atenção e o que
+fazer agora.
 
-### Backend
+**Para quem:** pecuaristas, gerentes de fazenda e equipes que registram a rotina de manejo,
+tanto no escritório quanto no celular.
 
-* **Node.js** — ambiente de execução
-* **TypeScript** — linguagem principal
-* **Fastify** — framework para construção da API REST
-* **PostgreSQL** — banco de dados relacional
-* **Prisma** — ORM para acesso ao banco de dados
-* **Zod** — validação e definição dos contratos de dados
-* **Swagger / OpenAPI** — documentação interativa da API
-* **Vitest** — testes automatizados
-* **Helmet + Rate Limit** — segurança e proteção das requisições
+**Estágio atual:** em desenvolvimento ativo, ainda **não publicado para uso**. O código roda
+localmente e conta com testes automatizados; não há ambiente público de demonstração.
 
-### Frontend
+## O que o sistema faz hoje
 
-* **React + TypeScript**
-* **Vite**
-* **Tailwind CSS**
-* **React Router** — navegação entre páginas
-* **Recharts** — visualização dos dados
-* **Lucide** — biblioteca de ícones
+Todas as funções abaixo estão implementadas no código (API e telas). As rotas da API têm testes
+automatizados de integração com banco de dados real.
 
----
+**Rebanho e animais**
+- Cadastro de animais com brinco único por fazenda, sexo, raça, data de nascimento, categoria,
+  origem e data de entrada.
+- Categorias ligadas ao sexo (bezerro ou bezerra, novilha, vaca, garrote, boi, touro), com nomes
+  personalizáveis pela fazenda.
+- Troca de brinco com histórico (a busca encontra o animal pelo brinco atual ou antigo).
+- Ficha do animal com linha do tempo dos eventos, pesagens, aplicações e negociações.
+- Saída do animal (venda ou morte) com data; nada pode ser registrado depois da saída.
+- Lista do rebanho com busca, filtros, ordenação, paginação e exportação em CSV.
 
-## 📸 Telas
+**Pesagens e desempenho**
+- Registro de pesagens (uma por animal por dia) e cálculo do GMD (ganho médio diário).
+- Gráfico de evolução de peso na ficha do animal.
+- **Pesagem em sequência**: tela para pesar vários animais seguidos, digitando só o brinco e o peso.
 
-> Prints do sistema serão adicionados em breve.
+**Lotes**
+- Criação de lotes, entrada e saída de animais com data, mantendo o histórico de movimentação.
+- Detalhe do lote com resumo, animais, pesagens, manejos e movimentações.
 
-<!--
-Sugestões:
-- Lista do rebanho
-- Ficha do animal
-- Gráfico de evolução do peso
-- Cadastro de animal
--->
+**Manejo sanitário**
+- Cadastro de produtos (vacinas, vermífugos e outros), com dose e período de carência.
+- Aplicação em lote: um evento registrado para vários animais, guardado também por animal.
+- Lembretes de reaplicação (vencidos e próximos) e aviso de carência na venda.
 
----
+**Negociações (compra e venda)**
+- Compra e venda de um ou vários animais, com preço por kg, por arroba ou por cabeça.
+- Compra em lote que já cadastra os animais novos.
+- Peso de carcaça pendente, correção e desfazer da negociação.
+- Resultado por animal (venda menos compra, ainda sem custos de produção).
 
-## 🗂️ Estrutura do projeto
+**Painel**
+- Resumo do período: animais ativos, entradas, saídas, lembretes sanitários, distribuição por
+  categoria e por lote, pesagens e GMD médio.
 
-```text
-controle-rebanho/
-│
-├── src/                         # Backend — API Fastify
-│   ├── server.ts                # Inicialização do servidor e configuração global
-│   │
-│   ├── lib/                     # Configurações e integrações
-│   │   └── prisma.ts            # Conexão com o banco de dados
-│   │
-│   ├── schemas/                 # Validação dos dados
-│   ├── routes/                  # Rotas HTTP
-│   └── services/                # Regras de negócio
-│
-├── prisma/                      # Schema, migrações e seed do banco
-│
-└── web/                         # Frontend — React + Vite
-    └── src/
-        ├── pages/               # Páginas da aplicação
-        ├── components/          # Componentes reutilizáveis
-        ├── services/            # Comunicação com a API
-        └── types/               # Tipos e contratos
+**Conta e segurança**
+- Criação de conta e login por fazenda, com sessão em cookie e senha protegida (scrypt).
+- Isolamento dos dados por fazenda (multi-tenant), com testes de acesso cruzado.
+- Registro das ações sensíveis (trilha de auditoria).
+- Configurações da fazenda: nome, fuso horário, antecedência dos lembretes e nomes das categorias.
+- Todos os textos da tela passam por um arquivo de tradução (publicado hoje só em português do Brasil).
+
+## Telas
+
+As imagens abaixo são capturas da aplicação rodando localmente, com dados fictícios de
+demonstração.
+
+### Painel
+![Painel do Rebanho com indicadores do período, distribuição por categoria e por lote](docs/images/painel.png)
+
+### Lista do rebanho
+![Lista do rebanho com busca, filtros e tabela de animais](docs/images/rebanho.png)
+
+### Ficha do animal
+![Ficha de um animal com dados, peso, GMD e histórico](docs/images/ficha-do-animal.png)
+
+### Cadastro de animal
+![Formulário de cadastro de animal dividido em partes](docs/images/cadastro-de-animal.png)
+
+### Pesagem em sequência
+![Tela de pesagem em sequência com animais já pesados na sessão](docs/images/pesagem-em-sequencia.png)
+
+### Detalhe do lote
+![Detalhe de um lote com resumo e lista de animais](docs/images/detalhe-do-lote.png)
+
+### Manejo sanitário
+![Manejo sanitário com números do período e lista de aplicações](docs/images/manejo-sanitario.png)
+
+### Negociações
+![Lista de negociações de compra e venda com números do período](docs/images/negociacoes.png)
+
+<details>
+<summary>Celular e tela de entrada</summary>
+
+<p align="center">
+  <img src="docs/images/celular-painel.png" alt="Painel do Rebanho na tela de um celular" width="320">
+</p>
+
+![Tela de entrada (login) do Rebanho](docs/images/entrar.png)
+
+</details>
+
+## Em desenvolvimento e planejado
+
+O que está abaixo **ainda não existe no sistema**. São decisões de produto já registradas no
+planejamento do projeto, sujeitas a ajustes.
+
+- Várias fazendas por conta e mais de um usuário por fazenda, com papéis.
+- Etapas de produção (cria, recria, engorda) e organização por módulos.
+- Renomear "Negociações" para "Compra e venda" e separar a venda da saída do animal.
+- Recuperação de senha por e-mail.
+- Publicação do sistema em ambiente de produção.
+- Estudo de um assistente com IA e registro por voz (apenas análise; nada implementado).
+
+## Tecnologias
+
+| Camada | Tecnologias |
+| --- | --- |
+| Backend | Node.js 22, TypeScript, Fastify 5, Zod (validação e documentação da API), Swagger |
+| Banco de dados | PostgreSQL 16, Prisma 6 (ORM e migrações) |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, React Router 7, Recharts, lucide-react |
+| Segurança | Sessão em cookie, senha com scrypt, Helmet, rate limit, CORS |
+| Qualidade | Vitest (unidade e integração com banco real), oxlint, conferência de textos fixos na tela |
+| Infraestrutura | Docker Compose (banco local), GitHub Actions (CI com PostgreSQL) |
+
+## Arquitetura
+
+Monorepo com o **backend na raiz** e o **frontend em `web/`**. O frontend conversa com a API
+REST; cada rota protegida só enxerga os dados da fazenda da sessão.
+
+```
+.
+├── src/                 API (Fastify)
+│   ├── routes/          rotas: animais, lotes, sanitário, negociações, painel, fazenda, conta
+│   ├── schemas/         validação com Zod (também gera a documentação da API)
+│   ├── services/        regras de negócio testáveis (GMD, alertas, negociações...)
+│   ├── lib/             banco, sessão, isolamento por fazenda, erros, datas
+│   └── config/          variáveis de ambiente validadas ao iniciar
+├── prisma/              modelo de dados, migrações e dados de exemplo
+├── tests/               testes de integração e auxiliares
+├── web/                 aplicação React
+│   └── src/             páginas, componentes, textos (i18n) e serviços da API
+└── docs/                documentação técnica e imagens deste README
 ```
 
-A estrutura separa as responsabilidades entre as diferentes camadas da aplicação: as rotas recebem as requisições, os schemas validam os dados, os services concentram as regras de negócio e o Prisma realiza a comunicação com o banco de dados.
+Documentação técnica: [arquitetura](docs/architecture.md) · [banco de dados](docs/database.md) ·
+[testes](docs/testing.md).
 
----
-
-## 🚀 Como rodar localmente
+## Como rodar localmente
 
 ### Pré-requisitos
 
-* Node.js
-* Docker
-* Git
+- Node.js **22.12** ou mais recente
+- Docker (para o PostgreSQL local)
 
-### 1. Clone o repositório
-
-```bash
-git clone SEU_REPOSITORIO
-cd controle-rebanho
-```
-
-### 2. Suba o banco de dados
+### 1. Banco de dados
 
 ```bash
-docker compose up -d
+cp .env.example .env        # preencha DATABASE_URL conforme o docker-compose.yml
+docker compose up -d        # sobe o PostgreSQL 16 na porta 5433
 ```
 
-### 3. Configure e execute o backend
-
-Na raiz do projeto:
+### 2. Backend (na raiz do projeto)
 
 ```bash
 npm install
+npx prisma migrate dev      # cria as tabelas no banco local
+npm run dev                 # API em http://localhost:3333
 ```
 
-Crie o arquivo `.env` utilizando o `.env.example` como referência e configure a variável `DATABASE_URL`. O servidor valida a configuração ao subir e informa qual variável está faltando ou inválida.
+Com a API rodando em desenvolvimento, a documentação interativa fica em
+`http://localhost:3333/docs`.
 
-Em seguida, execute:
-
-```bash
-npx prisma migrate dev
-npm run dev
-```
-
-### Testes
-
-```bash
-npm run test:unit          # regras de cálculo, sem banco
-npm run db:test:migrate    # prepara o banco de TESTE (TEST_DATABASE_URL, nome terminado em _test)
-npm test                   # unidade + integração (todas as rotas contra o banco de teste)
-```
-
-Veja `docs/testing.md`.
-
-O backend estará disponível em `http://localhost:3333`, e a documentação interativa da API estará disponível em `/docs`.
-
-### 4. Configure e execute o frontend
+### 3. Frontend
 
 ```bash
 cd web
+cp .env.example .env        # VITE_API_URL=http://localhost:3333
 npm install
-npm run dev
+npm run dev                 # aplicação em http://localhost:5173
 ```
 
-O frontend será iniciado na porta configurada pelo Vite.
+Abra `http://localhost:5173` e crie uma conta na tela de cadastro.
 
----
+### Variáveis de ambiente
 
-## 🧾 Principais rotas da API
+Os nomes e exemplos ficam em [`.env.example`](.env.example) e [`web/.env.example`](web/.env.example).
+Nunca versione o arquivo `.env` com valores reais.
 
-| Método   | Rota                      | Descrição                               |
-| -------- | ------------------------- | --------------------------------------- |
-| `POST`   | `/animals`                | Cadastra um novo animal                 |
-| `GET`    | `/animals`                | Lista os animais, com suporte a filtros |
-| `GET`    | `/animals/:id`            | Retorna os detalhes de um animal        |
-| `PUT`    | `/animals/:id`            | Atualiza os dados de um animal          |
-| `PATCH`  | `/animals/:id/status`     | Atualiza o status do animal             |
-| `DELETE` | `/animals/:id`            | Exclui um animal                        |
-| `POST`   | `/animals/:id/weighings`  | Registra uma nova pesagem               |
-| `GET`    | `/animals/:id/weighings`  | Retorna o histórico de pesagens         |
-| `GET`    | `/animals/:id/weight-gain`| Retorna o ganho de peso e o GMD         |
-| `POST`   | `/applications`           | Registra uma aplicação sanitária em lote (vacina/vermífugo) |
-| `GET`    | `/alerts`                 | Lista alertas de reaplicação (vencidas e próximas) |
-| `POST`   | `/animals/:id/sale`       | Registra a venda de um animal (preço/kg) |
-| `GET`    | `/animals/:id/result`     | Retorna o resultado financeiro do animal |
+| Variável | Uso |
+| --- | --- |
+| `DATABASE_URL` | Conexão com o banco de desenvolvimento |
+| `TEST_DATABASE_URL` | Banco usado pelos testes (o nome precisa terminar em `_test`) |
+| `HOST`, `PORT` | Endereço da API (padrão `127.0.0.1:3333`) |
+| `CORS_ORIGINS` | Endereços do frontend autorizados (padrão `http://localhost:5173`) |
+| `VITE_API_URL` | Endereço da API usado pelo frontend |
 
-A documentação completa e interativa da API está disponível na rota `/docs` (desligada em produção por padrão). Erros seguem o formato `{ code, message }` — ver `docs/architecture.md`.
+As demais variáveis (`LOG_LEVEL`, `RATE_LIMIT_MAX`, `COOKIE_SECURE`, entre outras) são
+opcionais e estão descritas no `.env.example`.
 
----
+### Testes e verificações
 
-## 💡 Decisões de projeto
+```bash
+npm run test:unit           # testes de unidade do backend (não precisam de banco)
+npm run db:test:migrate     # prepara o banco de teste (TEST_DATABASE_URL)
+npm test                    # unidade, regras da tela (web/src) e integração com o banco
+npm run typecheck
+npm run lint
 
-* **Validação como fonte única:** os schemas do Zod são responsáveis pela validação das requisições e pela definição dos contratos utilizados na documentação da API, centralizando as regras e reduzindo duplicações.
+cd web
+npm run lint                # inclui a conferência de textos fixos na tela
+npm run build
+```
 
-* **Tratamento de erros centralizado:** um único mecanismo define as respostas para diferentes situações, mantendo um padrão consistente para dados inválidos, recursos não encontrados, registros duplicados e dados insuficientes para cálculo.
+## Acesso ao projeto
 
-* **Data de nascimento com precisão variável:** decisão baseada em uma necessidade identificada no contexto da pecuária. Nem sempre o dia exato do nascimento de um animal é conhecido; por isso, o sistema permite registrar a informação conforme o nível de precisão disponível, sem exigir dados estimados ou incorretos.
+- **Código:** este repositório é público; qualquer pessoa pode ler o código-fonte.
+- **Sistema:** o uso exige conta e login. Cada fazenda só vê os próprios dados.
+- **Demonstração:** não existe ambiente online de demonstração no momento. Para conhecer o
+  sistema, é preciso rodá-lo localmente seguindo as instruções acima.
 
-* **Experiência orientada ao usuário final:** embora o backend utilize códigos HTTP para representar diferentes situações, a interface traduz essas respostas em mensagens claras e compreensíveis. Por exemplo, quando não há pesagens suficientes para calcular o desempenho, o usuário recebe uma explicação sobre a situação em vez de apenas um código técnico.
+## Autoria
 
----
-
-## 🗺️ Roadmap
-
-### Concluído
-
-* [x] Cadastro e gerenciamento de animais
-* [x] Registro e histórico de pesagens
-* [x] Cálculo de ganho de peso e GMD
-* [x] Documentação interativa da API
-* [x] Interface para acompanhamento do rebanho
-* [x] Gráfico de evolução do peso
-* [x] Manejo sanitário completo (produtos, aplicação em lote, histórico, alertas de reaplicação)
-* [x] Financeiro base — compra e venda por animal, resultado por animal (v3.0)
-
-### Em andamento / próximas etapas
-
-* [ ] Ampliação da cobertura de testes automatizados
-* [ ] Financeiro — custos por categoria, rateio por lote e dashboard financeiro
-* [ ] Lotes e pastos
-* [ ] Reprodução e nascimentos
-* [ ] Painel dinâmico com indicadores do rebanho
-* [ ] Cadastro de fazenda e personalização por perfil de operação
-
-> Detalhamento de cada versão em [`ROADMAP.md`](ROADMAP.md).
-
----
-
-## 👩‍💻 Autora
-
-**Amanda Gondra**
-Estudante de Ciência da Computação | Desenvolvedora Backend
-
-* **GitHub:** @amanda-gondra
-* **LinkedIn:** Amanda Gondra
+Desenvolvido por **Amanda Gondra**.

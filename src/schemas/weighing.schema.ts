@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { pastOrTodayDate, weightKg } from "./common.schema.js";
+import { calendarDate, weightKg } from "./common.schema.js";
 
 // Valida o corpo ao registrar ou editar uma pesagem (mesmas regras nos dois casos)
 export const weighingBodySchema = z
   .object({
-    date: pastOrTodayDate("A data da pesagem não pode ser no futuro."),
+    date: calendarDate,
     weightKg,
   })
   .strict();

@@ -30,6 +30,10 @@ const envSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  // Tentativas de login/cadastro por minuto, por IP (proteção contra força bruta)
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  // Cookie de sessão só por HTTPS. Padrão: ligado em produção.
+  COOKIE_SECURE: booleanFlag.optional(),
 });
 
 export type AppConfig = {
@@ -40,6 +44,8 @@ export type AppConfig = {
   apiDocsEnabled: boolean;
   logLevel: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent";
   rateLimitMax: number;
+  authRateLimitMax: number;
+  cookieSecure: boolean;
 };
 
 export class InvalidConfigError extends Error {
@@ -74,5 +80,7 @@ export function loadConfig(
     apiDocsEnabled: env.API_DOCS_ENABLED ?? env.NODE_ENV !== "production",
     logLevel: env.LOG_LEVEL,
     rateLimitMax: env.RATE_LIMIT_MAX,
+    authRateLimitMax: env.AUTH_RATE_LIMIT_MAX,
+    cookieSecure: env.COOKIE_SECURE ?? env.NODE_ENV === "production",
   };
 }

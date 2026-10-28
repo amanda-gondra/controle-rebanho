@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyReapplication } from "./sanitary.service.js";
+import { classifyReapplication, findWithdrawalConflicts, isReminderOpen, withdrawalEndDate } from "./sanitary.service.js";
 
 describe("classifyReapplication", () => {
   // um "hoje" fixo pra todos os testes, pra não depender da data real
@@ -59,5 +59,76 @@ describe("classifyReapplication", () => {
     const ontemNoBanco = new Date("2026-08-30T00:00:00.000Z");
     const result = classifyReapplication({ reapplyDate: ontemNoBanco }, meiaNoite);
     expect(result.overdue).toBe(true);
+  });
+
+  // ── Antecedência configurável (G2 — RN-CFG-006) ──
+  describe("com a antecedência da fazenda", () => {
+    const tz = "America/Sao_Paulo";
+
+    it("com 15 dias, a reaplicação daqui a 10 dias vira alerta", () => {
+      const daquiA10Dias = new Date("2026-09-08T00:00:00.000Z");
+      const result = classifyReapplication({ reapplyDate: daquiA10Dias }, hoje, tz, 15);
+      expect(result.isAlert).toBe(true);
+      expect(result.overdue).toBe(false);
+    });
+
+    it("com 0 dias, só a de hoje e as vencidas são alerta", () => {
+      const hojeNoBanco = new Date("2026-08-29T00:00:00.000Z");
+      const amanha = new Date("2026-08-30T00:00:00.000Z");
+      const ontem = new Date("2026-08-28T00:00:00.000Z");
+      expect(classifyReapplication({ reapplyDate: hojeNoBanco }, hoje, tz, 0).isAlert).toBe(true);
+      expect(classifyReapplication({ reapplyDate: amanha }, hoje, tz, 0).isAlert).toBe(false);
+      expect(classifyReapplication({ reapplyDate: ontem }, hoje, tz, 0)).toEqual({
+        isAlert: true,
+        overdue: true,
+      });
+    });
+  });
+});
+
+
+describe("carência (D-12)", () => {
+  it("fim = data + dias; sem dias informados = sem fim (não é zero)", () => {
+    expect(withdrawalEndDate("2026-09-10", 30)).toBe("2026-10-10");
+    expect(withdrawalEndDate("2026-09-10", 0)).toBe("2026-09-10");
+    expect(withdrawalEndDate("2026-09-10", null)).toBeNull();
+  });
+
+  const record = (tag: string, applicationDate: string, end: string, animalId = tag) => ({
+    animalId,
+    tag,
+    productName: "Ivermectina",
+    applicationDate,
+    withdrawalEndDate: end,
+  });
+
+  it("avisa quem está em carência na data da venda", () => {
+    const conflicts = findWithdrawalConflicts("2026-10-01", [
+      record("BR-2", "2026-09-10", "2026-10-10"), // em carência
+      record("BR-1", "2026-09-10", "2026-10-01"), // termina no dia: liberado
+      record("BR-3", "2026-10-05", "2026-11-05"), // aplicado depois da venda
+    ]);
+    expect(conflicts.map((c) => c.tag)).toEqual(["BR-2"]);
+  });
+
+  it("um aviso por animal, com o fim mais distante; ordenado por brinco", () => {
+    const conflicts = findWithdrawalConflicts("2026-10-01", [
+      record("BR-10", "2026-09-01", "2026-10-05", "a"),
+      record("BR-10", "2026-09-20", "2026-10-20", "a"),
+      record("BR-9", "2026-09-20", "2026-10-02", "b"),
+    ]);
+    expect(conflicts.map((c) => [c.tag, c.withdrawalEndDate])).toEqual([
+      ["BR-9", "2026-10-02"],
+      ["BR-10", "2026-10-20"],
+    ]);
+  });
+});
+
+describe("lembrete (D-40)", () => {
+  it("só sai ao reaplicar, dispensar ou sem animal ativo — nunca pelo tempo", () => {
+    expect(isReminderOpen({ dismissed: false, reapplied: false, activeAnimals: 3 })).toBe(true);
+    expect(isReminderOpen({ dismissed: true, reapplied: false, activeAnimals: 3 })).toBe(false);
+    expect(isReminderOpen({ dismissed: false, reapplied: true, activeAnimals: 3 })).toBe(false);
+    expect(isReminderOpen({ dismissed: false, reapplied: false, activeAnimals: 0 })).toBe(false);
   });
 });

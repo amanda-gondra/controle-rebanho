@@ -1,64 +1,209 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { prisma } from "../lib/prisma.js";
-import { toDbDate } from "../lib/dates.js";
-import { ErrorCode, badRequest, notFound } from "../lib/errors.js";
+import { Prisma } from "@prisma/client";
+import { assertAnimalsInHerdOnDate } from "../lib/animal-life.js";
+import { assertNotInFuture, calendarDateOf, toDbDate, todayInTimeZone } from "../lib/dates.js";
+import { ErrorCode, badRequest, conflict, notFound } from "../lib/errors.js";
+import { uniqueViolation } from "../lib/error-handler.js";
+import { AuditAction, actorOf, recordAudit } from "../lib/history.js";
+import type { FarmDb } from "../lib/tenant.js";
+import { openReminders } from "../lib/reminders.js";
 import {
   createProductSchema,
+  updateProductSchema,
   listProductsQuerySchema,
+  productIdParamSchema,
   createApplicationSchema,
   updateApplicationSchema,
   listApplicationsQuerySchema,
+  applicationsSummaryQuerySchema,
   applicationIdParamSchema,
+  dismissReminderSchema,
 } from "../schemas/sanitary.schema.js";
 import { animalIdParamSchema } from "../schemas/animal.schema.js";
-import { classifyReapplication } from "../services/sanitary.service.js";
+import { classifyReapplication, isReminderOpen, withdrawalEndDate } from "../services/sanitary.service.js";
 
-const productNotFound = () =>
-  notFound(ErrorCode.PRODUCT_NOT_FOUND, "Produto não encontrado.");
+// Manejo sanitário (Espec — Manejo sanitário v1.0). O sistema registra e
+// lembra; não diagnostica, não prescreve, não sugere dose nem intervalo
+// (RN-SAN-001). "Aplica em lote, guarda individual" (RN-SAN-002).
 
-const applicationNotFound = () =>
-  notFound(ErrorCode.APPLICATION_NOT_FOUND, "Aplicação não encontrada.");
+const productNotFound = () => notFound(ErrorCode.PRODUCT_NOT_FOUND, "Produto não encontrado.");
+const applicationNotFound = () => notFound(ErrorCode.APPLICATION_NOT_FOUND, "Aplicação não encontrada.");
+const duplicateProductName = () => conflict(ErrorCode.DUPLICATE_PRODUCT_NAME, "Já existe um produto com esse nome.");
+const productArchived = () =>
+  conflict(ErrorCode.PRODUCT_ARCHIVED, "Este produto está arquivado. Reative-o em Produtos para usar.");
+
+const FUTURE_DATE = "A data não pode ser no futuro.";
+
+const APPLICATION_INCLUDE = {
+  product: true,
+  animals: { include: { animal: true } },
+} as const;
+
+// Nome único na fazenda sem diferenciar maiúsculas (RN-SAN-005); o índice
+// (farmId, lower(name)) garante de novo no banco
+async function assertProductNameAvailable(db: Pick<FarmDb, "product">, name: string, exceptId?: string) {
+  const taken = await db.product.findFirst({
+    where: { name: { equals: name, mode: "insensitive" }, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: { id: true },
+  });
+  if (taken) throw duplicateProductName();
+}
+
+// Todos os animais existem nesta fazenda? (o schema já recusa ids repetidos)
+async function assertAnimalsExist(db: FarmDb, animalIds: string[]) {
+  const found = await db.animal.count({ where: { id: { in: animalIds } } });
+  if (found !== animalIds.length) {
+    throw badRequest(ErrorCode.ANIMALS_NOT_FOUND, "Um ou mais animais não foram encontrados.");
+  }
+}
+
+// Carência copiada do produto no dia (RN-SAN-009)
+const withdrawalOf = (date: string, days: number | null) => {
+  const end = withdrawalEndDate(date, days);
+  return { withdrawalDays: days, withdrawalEndDate: end ? toDbDate(end) : null };
+};
+
+const decimalOrNull = (value: number | null | undefined) =>
+  value === null || value === undefined ? null : new Prisma.Decimal(value);
+
+const withUsage = <T extends { _count: { applications: number } }>({ _count, ...product }: T) => ({
+  ...product,
+  usageCount: _count.applications,
+});
 
 export async function sanitaryRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
   // ── PRODUTOS ──
 
-  // POST /products — cadastra uma vacina ou vermífugo
   r.post(
     "/products",
     {
       schema: {
         tags: ["Produtos"],
-        summary: "Cadastra um produto (vacina/vermífugo)",
+        summary: "Cadastra um produto sanitário (vacina, vermífugo, antiparasitário externo, outro)",
         body: createProductSchema,
       },
     },
     async (request, reply) => {
-      const product = await prisma.product.create({
-        data: request.body,
+      await assertProductNameAvailable(request.db, request.body.name);
+      const product = await request.db.product.create({
+        data: { ...request.body, farmId: request.auth.farm.id },
       });
-      return reply.status(201).send(product);
+      return reply.status(201).send({ ...product, usageCount: 0 });
     },
   );
 
-  // GET /products — lista os produtos (filtro opcional por tipo)
+  // GET /products — ativos por padrão (seleção da aplicação); com
+  // includeArchived=true, todos (tela de Produtos). Traz quantas vezes foi usado.
   r.get(
     "/products",
     {
       schema: {
         tags: ["Produtos"],
-        summary: "Lista os produtos (com filtro por tipo)",
+        summary: "Lista os produtos (filtro por tipo; arquivados só se pedir)",
         querystring: listProductsQuerySchema,
       },
     },
     async (request) => {
-      const { type } = request.query;
-      return prisma.product.findMany({
-        where: { type },
+      const { type, includeArchived } = request.query;
+      const products = await request.db.product.findMany({
+        where: { type, ...(includeArchived === "true" ? {} : { archivedAt: null }) },
         orderBy: { name: "asc" },
+        include: { _count: { select: { applications: true } } },
       });
+      return products.map(withUsage);
+    },
+  );
+
+  // PUT /products/:id — edita (F-18). Mudar a carência NÃO altera aplicações
+  // antigas: cada uma guardou a sua (RN-SAN-009, critério 12).
+  r.put(
+    "/products/:id",
+    {
+      schema: {
+        tags: ["Produtos"],
+        summary: "Edita um produto",
+        params: productIdParamSchema,
+        body: updateProductSchema,
+      },
+    },
+    async (request) => {
+      const existing = await request.db.product.findUnique({ where: { id: request.params.id } });
+      if (!existing) throw productNotFound();
+      if (request.body.name !== undefined) {
+        await assertProductNameAvailable(request.db, request.body.name, existing.id);
+      }
+      const product = await request.db.product.update({
+        where: { id: existing.id },
+        data: request.body,
+        include: { _count: { select: { applications: true } } },
+      });
+      return withUsage(product);
+    },
+  );
+
+  // Arquivar / reativar: some da seleção, o histórico continua (RN-SAN-005)
+  for (const [path, archived] of [
+    ["/products/:id/archive", true],
+    ["/products/:id/unarchive", false],
+  ] as const) {
+    r.patch(
+      path,
+      {
+        schema: {
+          tags: ["Produtos"],
+          summary: archived ? "Arquiva um produto" : "Reativa um produto arquivado",
+          params: productIdParamSchema,
+        },
+      },
+      async (request) => {
+        const actor = actorOf(request.auth);
+        const product = await request.db.$transaction(async (tx) => {
+          const found = await tx.product.findUnique({ where: { id: request.params.id } });
+          if (!found) return null;
+          const updated = await tx.product.update({
+            where: { id: found.id },
+            data: { archivedAt: archived ? (found.archivedAt ?? new Date()) : null },
+            include: { _count: { select: { applications: true } } },
+          });
+          if (Boolean(found.archivedAt) !== archived) {
+            await recordAudit(tx, actor, {
+              action: archived ? AuditAction.PRODUCT_ARCHIVED : AuditAction.PRODUCT_RESTORED,
+              entityType: "Product",
+              entityId: found.id,
+              details: { name: found.name },
+            });
+          }
+          return updated;
+        });
+        if (!product) throw productNotFound();
+        return withUsage(product);
+      },
+    );
+  }
+
+  // DELETE /products/:id — só produto NUNCA usado; usado → arquive
+  r.delete(
+    "/products/:id",
+    {
+      schema: {
+        tags: ["Produtos"],
+        summary: "Exclui um produto nunca usado",
+        params: productIdParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const { count } = await request.db.product.deleteMany({
+        where: { id: request.params.id, applications: { none: {} } },
+      });
+      if (count === 0) {
+        const exists = await request.db.product.findUnique({ where: { id: request.params.id }, select: { id: true } });
+        if (!exists) throw productNotFound();
+        throw conflict(ErrorCode.PRODUCT_IN_USE, "Este produto já foi usado em aplicações. Arquive em vez de excluir.");
+      }
+      return reply.status(204).send();
     },
   );
 
@@ -70,52 +215,89 @@ export async function sanitaryRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ["Aplicações"],
-        summary: "Registra uma aplicação de vacina/vermífugo",
+        summary: "Registra uma aplicação (vacina, vermífugo, antiparasitário, remédio)",
         body: createApplicationSchema,
       },
     },
     async (request, reply) => {
-      const { productId, date, reapplyDate, notes, animalIds } = request.body;
+      const {
+        productId,
+        date,
+        reapplyDate,
+        notes,
+        animalIds,
+        batchNumber,
+        doseAmount,
+        doseUnit,
+        reappliesApplicationId,
+        idempotencyKey,
+      } = request.body;
+      const farmId = request.auth.farm.id;
 
-      // 1. confere se o produto existe
-      const product = await prisma.product.findUnique({
-        where: { id: productId },
-      });
+      // Envio repetido (mesmo identificador): devolve a aplicação já gravada
+      const findRepeated = () =>
+        idempotencyKey
+          ? request.db.application.findFirst({ where: { idempotencyKey }, include: APPLICATION_INCLUDE })
+          : Promise.resolve(null);
+      const repeated = await findRepeated();
+      if (repeated) return reply.status(200).send(repeated);
+
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
+
+      // 1. produto desta fazenda e não arquivado
+      const product = await request.db.product.findUnique({ where: { id: productId } });
       if (!product) throw productNotFound();
+      if (product.archivedAt) throw productArchived();
 
-      // 2. confere se todos os animais existem (o schema já recusa ids repetidos)
-      const found = await prisma.animal.count({
-        where: { id: { in: animalIds } },
-      });
-      if (found !== animalIds.length) {
-        throw badRequest(
-          ErrorCode.ANIMALS_NOT_FOUND,
-          "Um ou mais animais não foram encontrados.",
-        );
+      // 2. animais da fazenda, todos no rebanho na data (RN-SAN-003)
+      await assertAnimalsExist(request.db, animalIds);
+      await assertAnimalsInHerdOnDate(request.db, animalIds, date);
+
+      // 3. reaplicação a partir de um lembrete (D-40): o de origem tem que
+      //    existir nesta fazenda, ter reaplicação marcada e não ser posterior
+      if (reappliesApplicationId) {
+        const source = await request.db.application.findUnique({
+          where: { id: reappliesApplicationId },
+          select: { date: true, reapplyDate: true },
+        });
+        if (!source || !source.reapplyDate || calendarDateOf(source.date) > date) {
+          throw badRequest(ErrorCode.REAPPLY_SOURCE_INVALID, "Não encontramos o lembrete desta reaplicação.");
+        }
       }
 
-      // 3. cria a aplicação (evento) JÁ com as ligações por animal
-      const application = await prisma.application.create({
-        data: {
-          productId,
-          date: toDbDate(date),
-          reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
-          notes,
-          animals: {
-            create: animalIds.map((animalId) => ({ animalId })),
+      // 4. o evento JÁ com as ligações por animal (criação ANINHADA: farmId explícito)
+      try {
+        const application = await request.db.application.create({
+          data: {
+            farmId,
+            productId,
+            date: toDbDate(date),
+            reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
+            notes,
+            batchNumber: batchNumber ?? null,
+            doseAmount: decimalOrNull(doseAmount),
+            doseUnit: doseUnit ?? null,
+            ...withdrawalOf(date, product.withdrawalDays),
+            reappliesApplicationId: reappliesApplicationId ?? null,
+            idempotencyKey: idempotencyKey ?? null,
+            createdById: request.auth.user.id, // D-51: quem registrou
+            animals: { create: animalIds.map((animalId) => ({ animalId, farmId })) },
           },
-        },
-        include: {
-          product: true,
-          animals: { include: { animal: true } },
-        },
-      });
-
-      return reply.status(201).send(application);
+          include: APPLICATION_INCLUDE,
+        });
+        return reply.status(201).send(application);
+      } catch (error) {
+        // Duas gravações ao mesmo tempo com o mesmo identificador
+        if (uniqueViolation(error, "Application")?.includes("idempotencyKey")) {
+          const existing = await findRepeated();
+          if (existing) return reply.status(200).send(existing);
+        }
+        throw error;
+      }
     },
   );
 
-  // GET /applications — histórico por evento (filtro opcional por tipo)
+  // GET /applications — histórico por evento (tipo, período; paginação opcional)
   r.get(
     "/applications",
     {
@@ -126,49 +308,114 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const { type } = request.query;
-      const applications = await prisma.application.findMany({
-        where: type ? { product: { type } } : {},
-        orderBy: { date: "desc" },
+      const { type, from, to, q, page, pageSize } = request.query;
+      const where: Prisma.ApplicationWhereInput = {
+        ...(type ? { product: { type } } : {}),
+        ...dateRange(from, to),
+        ...(q
+          ? {
+              OR: [
+                { product: { name: { contains: q, mode: "insensitive" } } },
+                { animals: { some: { animal: { tag: { contains: q, mode: "insensitive" } } } } },
+              ],
+            }
+          : {}),
+      };
+      return request.db.application.findMany({
+        where,
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        ...(page ? { skip: (page - 1) * (pageSize ?? 50), take: pageSize ?? 50 } : {}),
         include: {
           product: true,
           _count: { select: { animals: true } }, // quantos animais no evento
+          createdBy: { select: { id: true, name: true } }, // quem registrou (só o nome)
         },
       });
-      return applications;
     },
   );
 
-  // GET /alerts — reaplicações chegando (próximos 7 dias) e vencidas
+  // GET /applications/summary — números do topo da tela (no período, se vier):
+  // aplicações, animais diferentes tratados, ativos hoje, lembretes abertos e
+  // produtos em uso. Tudo contado no banco da fazenda da sessão.
+  r.get(
+    "/applications/summary",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Resumo do manejo sanitário (aplicações, animais tratados, lembretes, produtos)",
+        querystring: applicationsSummaryQuerySchema,
+      },
+    },
+    async (request) => {
+      const { from, to } = request.query;
+      const inPeriod = dateRange(from, to);
+      const [applications, treated, activeAnimals, reminders, products] = await Promise.all([
+        request.db.application.count({ where: inPeriod }),
+        request.db.applicationAnimal.findMany({
+          where: { application: inPeriod },
+          distinct: ["animalId"],
+          select: { animalId: true },
+        }),
+        request.db.animal.count({ where: { status: "ACTIVE" } }),
+        openReminders(request.db, request.auth.farm),
+        request.db.product.count({ where: { archivedAt: null } }),
+      ]);
+      return {
+        applications,
+        animalsTreated: treated.length,
+        activeAnimals,
+        reminders: {
+          open: reminders.length,
+          overdue: reminders.filter((reminder) => reminder.overdue).length,
+          alertDays: request.auth.farm.settings.reapplyAlertDays,
+        },
+        products,
+      };
+    },
+  );
+
+  // GET /alerts — lembretes de reaplicação (D-40, RN-SAN-006/007/008):
+  // dentro da antecedência da fazenda ou vencidos; saem só ao reaplicar a
+  // partir dele, ao dispensar ou sem animal ativo. Conta só os ativos.
   r.get(
     "/alerts",
     {
       schema: {
         tags: ["Aplicações"],
-        summary: "Reaplicações chegando ou vencidas",
+        summary: "Lembretes de reaplicação (chegando ou vencidos)",
       },
     },
-    async () => {
-      const now = new Date();
+    async (request) => openReminders(request.db, request.auth.farm),
+  );
 
-      // busca as que têm data de reaplicação (a regra de "é alerta" fica na função)
-      const applications = await prisma.application.findMany({
-        where: { reapplyDate: { not: null } },
-        orderBy: { reapplyDate: "asc" },
-        include: {
-          product: true,
-          _count: { select: { animals: true } },
-        },
+  // POST /applications/:id/dismiss-reminder — "Dispensar" (D-40): motivo opcional
+  r.post(
+    "/applications/:id/dismiss-reminder",
+    {
+      schema: {
+        tags: ["Aplicações"],
+        summary: "Dispensa o lembrete de reaplicação",
+        params: applicationIdParamSchema,
+        body: dismissReminderSchema,
+      },
+    },
+    async (request) => {
+      const existing = await request.db.application.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, reapplyDate: true, reminderDismissedAt: true },
       });
-
-      // usa a função pura pra decidir quais são alerta e quais estão vencidas
-      return applications
-        .map((app) => {
-          const { isAlert, overdue } = classifyReapplication(app, now);
-          return { ...app, isAlert, overdue };
-        })
-        .filter((app) => app.isAlert)
-        .map(({ isAlert, ...app }) => app); // tira o isAlert do resultado final
+      if (!existing) throw applicationNotFound();
+      if (!existing.reapplyDate) {
+        throw conflict(ErrorCode.NO_REMINDER, "Esta aplicação não tem reaplicação marcada.");
+      }
+      return request.db.application.update({
+        where: { id: existing.id },
+        data: {
+          reminderDismissedAt: existing.reminderDismissedAt ?? new Date(),
+          reminderDismissReason: request.body.reason ?? null,
+        },
+        include: APPLICATION_INCLUDE,
+      });
     },
   );
 
@@ -183,62 +430,87 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const application = await prisma.application.findUnique({
+      const application = await request.db.application.findUnique({
         where: { id: request.params.id },
-        include: {
-          product: true,
-          animals: { include: { animal: true } },
-        },
+        include: { ...APPLICATION_INCLUDE, reappliedBy: { select: { id: true, date: true } } },
       });
       if (!application) throw applicationNotFound();
       return application;
     },
   );
 
-  // PUT /applications/:id — edita os dados de uma aplicação (não os animais)
+  // PUT /applications/:id — corrige o lançamento (RN-SAN-011), inclusive os
+  // animais (tirar quem não recebeu, incluir quem faltou). As regras do
+  // cadastro valem na edição. Produto arquivado pode continuar numa aplicação
+  // antiga, mas não entra por troca.
   r.put(
     "/applications/:id",
     {
       schema: {
         tags: ["Aplicações"],
-        summary: "Edita os dados de uma aplicação",
+        summary: "Corrige uma aplicação (dados e animais)",
         params: applicationIdParamSchema,
         body: updateApplicationSchema,
       },
     },
     async (request) => {
-      // confere se a aplicação existe
-      const existing = await prisma.application.findUnique({
+      const existing = await request.db.application.findUnique({
         where: { id: request.params.id },
+        include: { animals: { select: { animalId: true } } },
       });
       if (!existing) throw applicationNotFound();
 
-      const { productId, date, reapplyDate, notes } = request.body;
+      const { productId, date, reapplyDate, notes, animalIds, batchNumber, doseAmount, doseUnit } = request.body;
+      assertNotInFuture(date, request.auth.farm.timezone, "date", FUTURE_DATE);
 
-      // confere se o produto novo existe
-      const product = await prisma.product.findUnique({
-        where: { id: productId },
-      });
+      const product = await request.db.product.findUnique({ where: { id: productId } });
       if (!product) throw productNotFound();
+      if (product.archivedAt && product.id !== existing.productId) throw productArchived();
 
-      const updated = await prisma.application.update({
-        where: { id: request.params.id },
-        data: {
-          productId,
-          date: toDbDate(date),
-          reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
-          notes,
-        },
-        include: {
-          product: true,
-          animals: { include: { animal: true } },
-        },
+      const finalAnimalIds = animalIds ?? existing.animals.map((link) => link.animalId);
+      if (animalIds) await assertAnimalsExist(request.db, animalIds);
+      // a data (e os animais) não podem deixar alguém fora do rebanho
+      await assertAnimalsInHerdOnDate(request.db, finalAnimalIds, date);
+
+      // Carência: troca de produto pega a do produto novo; o mesmo, mantém a copiada
+      const days = product.id === existing.productId ? existing.withdrawalDays : product.withdrawalDays;
+      const farmId = request.auth.farm.id;
+
+      return request.db.$transaction(async (tx) => {
+        if (animalIds) {
+          const current = new Set(existing.animals.map((link) => link.animalId));
+          const wanted = new Set(animalIds);
+          const removed = [...current].filter((id) => !wanted.has(id));
+          const added = animalIds.filter((id) => !current.has(id));
+          if (removed.length > 0) {
+            await tx.applicationAnimal.deleteMany({ where: { applicationId: existing.id, animalId: { in: removed } } });
+          }
+          if (added.length > 0) {
+            await tx.applicationAnimal.createMany({
+              data: added.map((animalId) => ({ applicationId: existing.id, animalId, farmId })),
+            });
+          }
+        }
+        return tx.application.update({
+          where: { id: existing.id },
+          data: {
+            productId,
+            date: toDbDate(date),
+            reapplyDate: reapplyDate ? toDbDate(reapplyDate) : null,
+            notes,
+            ...(batchNumber !== undefined ? { batchNumber } : {}),
+            ...(doseAmount !== undefined || doseUnit !== undefined
+              ? { doseAmount: decimalOrNull(doseAmount), doseUnit: doseUnit ?? null }
+              : {}),
+            ...withdrawalOf(date, days),
+          },
+          include: APPLICATION_INCLUDE,
+        });
       });
-      return updated;
     },
   );
 
-  // DELETE /applications/:id — exclui uma aplicação
+  // DELETE /applications/:id — exclui uma aplicação (confirmação na tela)
   r.delete(
     "/applications/:id",
     {
@@ -249,16 +521,36 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
-      const { count } = await prisma.application.deleteMany({
-        where: { id: request.params.id },
+      const actor = actorOf(request.auth);
+      const count = await request.db.$transaction(async (tx) => {
+        const application = await tx.application.findUnique({
+          where: { id: request.params.id },
+          select: { date: true, product: { select: { name: true } }, _count: { select: { animals: true } } },
+        });
+        // as ligações (ApplicationAnimal) somem junto por causa do onDelete: Cascade
+        const deleted = await tx.application.deleteMany({ where: { id: request.params.id } });
+        if (deleted.count > 0 && application) {
+          // Trilha (D-51/D-54): a exclusão fica registrada
+          await recordAudit(tx, actor, {
+            action: AuditAction.APPLICATION_DELETED,
+            entityType: "Application",
+            entityId: request.params.id,
+            details: {
+              product: application.product.name,
+              date: calendarDateOf(application.date),
+              animals: application._count.animals,
+            },
+          });
+        }
+        return deleted.count;
       });
       if (count === 0) throw applicationNotFound();
       return reply.status(204).send();
     },
   );
 
-  // GET /animals/:id/applications — histórico sanitário de UM animal (pra ficha)
+  // GET /animals/:id/applications — histórico sanitário de UM animal (ficha),
+  // com o fim da carência de cada aplicação e se ainda está em carência hoje
   r.get(
     "/animals/:id/applications",
     {
@@ -269,20 +561,24 @@ export async function sanitaryRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      const animal = await prisma.animal.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!animal) {
-        throw notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
-      }
-      const links = await prisma.applicationAnimal.findMany({
+      const animal = await request.db.animal.findUnique({ where: { id: request.params.id }, select: { id: true } });
+      if (!animal) throw notFound(ErrorCode.ANIMAL_NOT_FOUND, "Animal não encontrado.");
+      const today = todayInTimeZone(request.auth.farm.timezone);
+      const links = await request.db.applicationAnimal.findMany({
         where: { animalId: request.params.id },
-        include: {
-          application: { include: { product: true } },
-        },
+        include: { application: { include: { product: true } } },
         orderBy: { application: { date: "desc" } },
       });
-      return links.map((link) => link.application);
+      return links.map(({ application }) => ({
+        ...application,
+        inWithdrawal: application.withdrawalEndDate ? calendarDateOf(application.withdrawalEndDate) > today : false,
+      }));
     },
   );
+}
+
+// Filtro de data (inclusive nas duas pontas) para aplicações
+function dateRange(from?: string, to?: string): Prisma.ApplicationWhereInput {
+  if (!from && !to) return {};
+  return { date: { ...(from ? { gte: toDbDate(from) } : {}), ...(to ? { lte: toDbDate(to) } : {}) } };
 }

@@ -12,11 +12,16 @@ enum Sex {
   FEMALE
 }
 
+// Categorias (G4 — D-02). Regra de sexo em src/lib/categories.ts e num CHECK
+// no banco: CALF serve aos dois sexos; HEIFER e COW só fêmea; YEARLING,
+// ADULT_MALE e BULL só macho.
 enum Category {
-  CALF     // bezerro
-  YEARLING // novilho
-  STEER    // boi
-  COW      // vaca
+  CALF       // bezerro / bezerra
+  HEIFER     // novilha
+  COW        // vaca
+  YEARLING   // garrote
+  ADULT_MALE // boi
+  BULL       // touro
 }
 
 enum Status {
@@ -31,92 +36,436 @@ enum BirthDatePrecision {
   UNKNOWN        // desconhecida
 }
 
-// Tipo do produto sanitário: vacina ou vermífugo (tratados separados nas telas)
+// Tipo do produto sanitário (D-39). O sistema não diagnostica nem prescreve.
 enum ProductType {
-  VACCINE  // vacina
-  DEWORMER // vermífugo
+  VACCINE               // vacina
+  DEWORMER              // vermífugo
+  EXTERNAL_PARASITICIDE // antiparasitário externo (carrapato, mosca, berne)
+  OTHER                 // outro (remédio, antibiótico…)
 }
 
+// Unidade da dose aplicada (RN-SAN-013: só registro do que o produtor aplicou)
+enum DoseUnit {
+  ML   // mL
+  G    // g
+  DOSE // dose(s)
+}
+
+// Certeza da causa da morte (D-27). O sistema não sugere causa nem diagnostica.
+enum DeathCauseCertainty {
+  CONFIRMED    // confirmada
+  SUSPECTED    // suspeita
+  NOT_INFORMED // não informada
+}
+
+// De onde veio a pesagem (D-08): manual, ou criada por compra/venda (G5).
+// Pesagem de compra/venda só muda pela negociação (RN-PES-009).
+enum WeighingSource {
+  MANUAL
+  PURCHASE
+  SALE
+}
+
+// Unidade de preço de uma negociação (compra/venda). Na fazenda, é só a que
+// vem marcada por padrão (G2); cada negociação grava a sua (G5).
+enum PriceUnit {
+  PER_KG     // por kg
+  PER_ARROBA // por arroba
+  PER_HEAD   // por cabeça
+}
+
+// Compra ou venda (G5). Cada animal tem no máximo uma de cada (RN-NEG-004).
+enum TradeType {
+  PURCHASE // compra
+  SALE     // venda
+}
+
+// Arroba: sobre o peso de carcaça do frigorífico (÷ 15) ou sobre o peso vivo
+// dividido por um fator (padrão da fazenda: 30 kg vivos por arroba).
+enum ArrobaBasis {
+  CARCASS
+  LIVE_FACTOR
+}
+
+// De onde veio o animal (D-52). A compra registrada no sistema preenche
+// sozinha (PURCHASED + data da compra); o resto o produtor informa, se souber.
+enum AnimalOrigin {
+  BORN_ON_FARM // nasceu na fazenda
+  PURCHASED    // comprado
+  RECEIVED     // recebido (doação, parceria, transferência de outra propriedade)
+  NOT_INFORMED // não informado
+}
+
+// O que mudou no animal (linha do tempo — D-28, D-19, RN-ANIMAL-017)
+enum AnimalEventType {
+  TAG_CHANGED      // troca de brinco (de → para, motivo)
+  CATEGORY_CHANGED // categoria
+  SEX_CHANGED      // sexo (correção)
+  BIRTH_CHANGED    // nascimento (precisão + data)
+  STATUS_CHANGED   // situação/saída (inclui correção da data e reversão)
+  ORIGIN_CHANGED   // origem / data de entrada (D-52)
+  LOT_CHANGED      // lote (entrada, transferência, saída — D-49)
+}
+
+// Motivo da troca de brinco (F-ANI-06)
+enum TagChangeReason {
+  LOST      // brinco perdido
+  DAMAGED   // brinco danificado
+  TYPO      // correção de digitação
+  OTHER     // outro
+}
+
+// ── Conta (G1) ──────────────────────────────────────────────────────────────
+// Cada produtor tem a sua fazenda. TODO dado do rebanho pertence a uma fazenda
+// (farmId) e uma fazenda nunca enxerga os dados de outra.
+
+model Farm {
+  id        String   @id @default(uuid())
+  name      String
+  country   String   @default("BR")
+  timezone  String   @default("America/Sao_Paulo") // D-16: usado em "hoje", "futuro" e "vencido"
+
+  // ── Configurações (G2 — D-21). Todas têm padrão: conta nova funciona sem
+  // configurar nada. Os padrões também estão em src/lib/farm.ts (FARM_DEFAULTS)
+  // e um teste confere que os dois batem.
+  currency           String    @default("BRL") // D-30: fixa na 1.0, só leitura
+  weightUnit         String    @default("kg") // D-30: unidade EXIBIDA; peso é sempre guardado em kg
+  arrobaLiveFactorKg Decimal   @default(30) @db.Decimal(4, 2) // sugestão para arroba sobre peso vivo
+  preferredPriceUnit PriceUnit @default(PER_KG) // o que vem marcado ao registrar compra/venda
+  reapplyAlertDays   Int       @default(7) // antecedência do lembrete de reaplicação (0–60)
+  defaultCastrated   Boolean   @default(false) // padrão do campo "castrado" no cadastro de machos
+  categoryLabels     Json      @default("{}") // G4: só os nomes de categoria que a fazenda MUDOU
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User?
+  animals            Animal[]
+  weighings          Weighing[]
+  products           Product[]
+  applications       Application[]
+  applicationAnimals ApplicationAnimal[]
+  trades             Trade[]
+  tradeItems         TradeItem[]
+  animalEvents       AnimalEvent[]
+  auditLogs          AuditLog[]
+  lots               Lot[]
+  lotMemberships     LotMembership[]
+}
+
+// Na Release 1.0: um usuário por fazenda (farmId @unique).
+model User {
+  id           String    @id @default(uuid())
+  farmId       String    @unique
+  farm         Farm      @relation(fields: [farmId], references: [id])
+  name         String
+  email        String    @unique // sempre guardado em minúsculas
+  passwordHash String // scrypt (D-24) — nunca a senha
+  sessions     Session[]
+  trades       Trade[] // negociações que registrou
+  animalEvents AnimalEvent[]
+  auditLogs    AuditLog[]
+  animals      Animal[]      @relation("AnimalCreatedBy")
+  lotMemberships LotMembership[]
+  weighings    Weighing[]    @relation("WeighingCreatedBy")
+  applications Application[] @relation("ApplicationCreatedBy")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Sessão de login (D-23). O navegador guarda um token aleatório num cookie
+// HttpOnly; aqui fica só o HASH dele. Apagar a linha = sair/revogar.
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime // vence por inatividade (renovada com o uso)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ── Rebanho ─────────────────────────────────────────────────────────────────
+
 model Animal {
-  id                  String             @id @default(uuid())
-  tag                 String             @unique
+  id                  String              @id @default(uuid())
+  farmId              String
+  farm                Farm                @relation(fields: [farmId], references: [id])
+  tag                 String
   sex                 Sex
   breed               String?
   category            Category
-  status              Status             @default(ACTIVE)
-  birthDate           DateTime?
-  birthPrecision      BirthDatePrecision @default(UNKNOWN)
+  castrated           Boolean? // G4: só machos (fêmea = vazio — CHECK no banco)
+  status              Status              @default(ACTIVE)
+  // Saída (D-27): data em que o animal foi vendido ou morreu. Nada (pesagem,
+  // aplicação) pode ter data depois dela (RN-ANIMAL-012). Na morte, causa e
+  // certeza. Ativo = sem saída (CHECK no banco).
+  exitDate            DateTime?            @db.Date
+  deathCause          String?
+  deathCauseCertainty DeathCauseCertainty?
+  birthDate           DateTime?           @db.Date
+  birthPrecision      BirthDatePrecision  @default(UNKNOWN)
+  // Origem e data de entrada na fazenda (D-52): opcionais — nunca obrigar o
+  // que o produtor não sabe. Entrada não antes do nascimento, nem depois da saída.
+  origin              AnimalOrigin        @default(NOT_INFORMED)
+  entryDate           DateTime?           @db.Date
   notes               String?
+  createdById         String?
+  createdBy           User?               @relation("AnimalCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  events              AnimalEvent[]
+  lotMemberships      LotMembership[]
   weighings           Weighing[]
   applications        ApplicationAnimal[]
-  purchase            AnimalPurchase?
-  sale                AnimalSale?
-  estimatedPricePerKg Decimal?           @db.Decimal(10, 2) // preço/kg informado p/ animal vivo
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  tradeItems          TradeItem[] // compra e venda (no máximo uma de cada)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  // Brinco único POR FAZENDA, sem diferenciar maiúsculas (D-29): além desta
+  // chave, a migração cria o índice único (farmId, lower(tag)) — o que vale de fato.
+  @@unique([farmId, tag])
+  @@index([farmId, status])
+}
+
+// Linha do tempo do animal (D-28): uma linha por mudança, nunca editada.
+// `fromValue`/`toValue` guardam o valor em texto estável (código, data ISO),
+// a tela traduz. `effectiveDate` = quando aconteceu (data da troca, da saída);
+// `createdAt` = quando foi registrado. Autor: o usuário da sessão.
+model AnimalEvent {
+  id            String          @id @default(uuid())
+  farmId        String
+  farm          Farm            @relation(fields: [farmId], references: [id])
+  animalId      String
+  animal        Animal          @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  type          AnimalEventType
+  fromValue     String?
+  toValue       String?
+  reason        TagChangeReason? // só na troca de brinco
+  effectiveDate DateTime        @db.Date
+  userId        String?
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+  // Ordem de gravação: eventos da mesma alteração aparecem na ordem da tela
+  sequence      Int             @default(autoincrement())
+
+  @@index([animalId, createdAt])
+  @@index([farmId, type, fromValue]) // busca pelo brinco antigo (RN-ANIMAL-015)
+}
+
+// Trilha de ações sensíveis (D-51/D-54): quem fez, quando, o quê e em qual
+// registro. Só acrescentada — um gatilho no banco recusa UPDATE. Nunca guarda
+// senha, token nem dado pessoal além do necessário.
+model AuditLog {
+  id         String   @id @default(uuid())
+  farmId     String
+  farm       Farm     @relation(fields: [farmId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // ex.: ANIMAL_DELETED, TRADE_UNDONE (ver src/lib/audit.ts)
+  entityType String // ex.: Animal, Trade, Application
+  entityId   String
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([farmId, createdAt])
+  @@index([farmId, entityType, entityId])
 }
 
 model Weighing {
   id        String   @id @default(uuid())
+  farmId    String
+  farm      Farm     @relation(fields: [farmId], references: [id])
   animalId  String
   animal    Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date      DateTime
-  weightKg  Decimal  @db.Decimal(6, 2)
-  createdAt DateTime @default(now())
+  date      DateTime       @db.Date
+  weightKg  Decimal        @db.Decimal(6, 2)
+  source    WeighingSource @default(MANUAL) // D-08 / RN-PES-009
+  tradeItem TradeItem? // a negociação que criou esta pesagem (se não for manual)
+  createdById String?
+  createdBy   User?        @relation("WeighingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+
+  @@unique([animalId, date]) // D-33: uma pesagem por animal por dia
+  @@index([farmId])
 }
 
-// Cadastro de produtos sanitários (vacinas e vermífugos). Versão mínima: nome + tipo.
+// Produtos sanitários da fazenda. Nome único na fazenda sem diferenciar
+// maiúsculas (índice (farmId, lower(name)) criado na migração — RN-SAN-005).
+// Produto usado não se apaga: arquiva (some da seleção, fica no histórico).
 model Product {
-  id           String        @id @default(uuid())
-  name         String
-  type         ProductType
-  applications Application[]
-  createdAt    DateTime      @default(now())
+  id             String        @id @default(uuid())
+  farmId         String
+  farm           Farm          @relation(fields: [farmId], references: [id])
+  name           String
+  type           ProductType
+  purpose        String? // "para que serve", escrito pelo produtor
+  manufacturer   String?
+  // Carência em dias, informada pelo produtor a partir da bula (D-12).
+  // Vazio = "não informada" — nunca tratado como zero (RN-SAN-009).
+  withdrawalDays Int?
+  notes          String?
+  archivedAt     DateTime?
+  applications   Application[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+
+  @@index([farmId, type])
 }
 
 // Um "evento" de aplicação: um produto aplicado numa data, em vários animais.
 model Application {
   id          String              @id @default(uuid())
+  farmId      String
+  farm        Farm                @relation(fields: [farmId], references: [id])
   productId   String
   product     Product             @relation(fields: [productId], references: [id])
-  date        DateTime
-  reapplyDate DateTime?
+  date        DateTime            @db.Date
+  reapplyDate DateTime?           @db.Date
   notes       String?
+  // Dose aplicada (opcional, informada — RN-SAN-013), vale para todos os animais
+  doseAmount  Decimal?            @db.Decimal(10, 3)
+  doseUnit    DoseUnit?
+  batchNumber String? // partida/lote do frasco
+  // Carência COPIADA do produto no dia (mudar o produto depois não altera — RN-SAN-009)
+  withdrawalDays    Int?
+  withdrawalEndDate DateTime? @db.Date
+  // Lembrete (D-40): sai ao registrar a reaplicação A PARTIR dele ou ao dispensar
+  reappliesApplicationId String?
+  reapplies              Application?  @relation("Reapplication", fields: [reappliesApplicationId], references: [id], onDelete: SetNull)
+  reappliedBy            Application[] @relation("Reapplication")
+  reminderDismissedAt    DateTime?
+  reminderDismissReason  String?
+  // Envio repetido (internet que volta) devolve a MESMA aplicação (REQ-INT-02)
+  idempotencyKey String?
   animals     ApplicationAnimal[]
+  createdById String?
+  createdBy   User?               @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @default(now()) @updatedAt
+
+  @@unique([farmId, idempotencyKey])
+  @@index([reappliesApplicationId])
+  @@index([farmId, date])
+  @@index([farmId, reapplyDate])
+  @@index([productId])
 }
 
 // A "ponte": liga cada aplicação a cada animal que participou dela.
 model ApplicationAnimal {
   id            String      @id @default(uuid())
+  farmId        String
+  farm          Farm        @relation(fields: [farmId], references: [id])
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   animalId      String
   animal        Animal      @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
   @@unique([applicationId, animalId]) // não repete o mesmo animal na mesma aplicação
+  @@index([animalId])
+  @@index([farmId])
 }
 
-// Compra do animal: o produtor pensa em peso × preço por kg. 1 compra por animal.
-model AnimalPurchase {
-  id         String   @id @default(uuid())
-  animalId   String   @unique
-  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime
-  weightKg   Decimal  @db.Decimal(6, 2)
-  pricePerKg Decimal  @db.Decimal(10, 2)
-  notes      String?
-  createdAt  DateTime @default(now())
+// ── Compra e venda (G5) ─────────────────────────────────────────────────────
+// "Negocia em lote, guarda individual" (mesmo raciocínio da aplicação): uma
+// negociação (Trade) com um item por animal (TradeItem). Cada negociação
+// grava a forma de preço, o fator e a moeda que valeram NAQUELE dia — mudar a
+// configuração da fazenda depois não altera nada (RN-NEG-003).
+
+model Trade {
+  id             String       @id @default(uuid())
+  farmId         String
+  farm           Farm         @relation(fields: [farmId], references: [id])
+  type           TradeType
+  date           DateTime     @db.Date
+  priceUnit      PriceUnit
+  arrobaBasis    ArrobaBasis? // só na arroba (CHECK no banco)
+  arrobaFactorKg Decimal?     @db.Decimal(4, 2) // só na arroba sobre peso vivo
+  currency       String // D-30: gravada na negociação (BRL na 1.0)
+  counterparty   String? // comprador (venda) ou vendedor (compra)
+  notes          String?
+  // Envio repetido (toque duplo, internet que volta) devolve a MESMA
+  // negociação em vez de criar outra (RN-NEG-016)
+  idempotencyKey String?
+  // Venda com animal em carência registrada: o aviso foi mostrado e aceito (RN-SAN-010)
+  withdrawalWarningAccepted Boolean @default(false)
+  createdById    String?
+  createdBy      User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items          TradeItem[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([id, type]) // alvo da chave do item: item e negociação têm sempre o mesmo tipo
+  @@unique([farmId, idempotencyKey])
+  @@index([farmId, date])
 }
 
-// Venda do animal: mesma ideia da compra. 1 venda por animal.
-model AnimalSale {
-  id         String   @id @default(uuid())
-  animalId   String   @unique
-  animal     Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date       DateTime
-  weightKg   Decimal  @db.Decimal(6, 2)
-  pricePerKg Decimal  @db.Decimal(10, 2)
-  notes      String?
-  createdAt  DateTime @default(now())
+model TradeItem {
+  id              String    @id @default(uuid())
+  farmId          String
+  farm            Farm      @relation(fields: [farmId], references: [id])
+  tradeId         String
+  type            TradeType // repetido da negociação: garante 1 compra e 1 venda por animal
+  trade           Trade     @relation(fields: [tradeId, type], references: [id, type], onDelete: Cascade)
+  animalId        String
+  // D-10 / F-05: animal com negociação não é apagado (o banco recusa)
+  animal          Animal    @relation(fields: [animalId], references: [id], onDelete: Restrict)
+  liveWeightKg    Decimal?  @db.Decimal(6, 2) // obrigatório, exceto por cabeça
+  carcassWeightKg Decimal?  @db.Decimal(6, 2) // arroba por carcaça; pode ficar pendente (D-35)
+  unitPrice       Decimal   @db.Decimal(10, 2) // R$ por kg, por arroba ou por cabeça
+  priceAdjusted   Boolean   @default(false) // preço diferente do da categoria (RN-NEG-018/021)
+  value           Decimal?  @db.Decimal(14, 2) // calculado no servidor; vazio = pendente
+  weighingId      String?   @unique // pesagem criada pelo peso vivo (D-08)
+  weighing        Weighing? @relation(fields: [weighingId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([animalId, type]) // RN-NEG-004: no máximo uma compra e uma venda por animal
+  @@index([tradeId])
+  @@index([farmId])
+}
+
+// ── Lotes (D-49, versão simples) ─────────────────────────────────────────────
+// Um lote agrupa animais como o produtor trabalha ("recria 1", "vacas de
+// cria"). Cada animal está em NO MÁXIMO um lote por vez; a entrada e a saída
+// ficam guardadas com data (LotMembership) — mudar de lote nunca apaga onde
+// o animal esteve. Pasto/piquete ficam para depois (fora da D-49).
+// Nome único na fazenda sem diferenciar maiúsculas (índice na migração).
+
+model Lot {
+  id          String          @id @default(uuid())
+  farmId      String
+  farm        Farm            @relation(fields: [farmId], references: [id])
+  name        String
+  description String?
+  archivedAt  DateTime? // só lote vazio; não recebe animais
+  memberships LotMembership[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([farmId])
+}
+
+// Período de um animal num lote: entrou em `startDate`, saiu em `endDate`
+// (vazio = está lá). Índice único parcial na migração: um período aberto
+// por animal.
+model LotMembership {
+  id          String    @id @default(uuid())
+  farmId      String
+  farm        Farm      @relation(fields: [farmId], references: [id])
+  lotId       String
+  lot         Lot       @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  animalId    String
+  animal      Animal    @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  startDate   DateTime  @db.Date
+  endDate     DateTime? @db.Date
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([lotId, endDate])
+  @@index([animalId, startDate])
+  @@index([farmId])
 }

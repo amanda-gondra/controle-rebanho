@@ -3,23 +3,34 @@ import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { hasZodFastifySchemaValidationErrors } from "fastify-type-provider-zod";
 import { AppError, ErrorCode, type FieldError } from "./errors.js";
+import { issueToFieldErrors, type IssueLike } from "./validation-errors.js";
 
 type ErrorBody = { code: ErrorCode; message: string; errors?: FieldError[] };
 
 // Qual unicidade foi violada → qual código e mensagem devolver (F-12).
 // A chave é "Modelo.campo1,campo2".
 const DUPLICATE_MESSAGES: Record<string, { code: ErrorCode; message: string }> = {
-  "Animal.tag": {
+  "Animal.farmId,tag": {
     code: ErrorCode.DUPLICATE_TAG,
     message: "Já existe um animal cadastrado com este brinco.",
   },
-  "AnimalPurchase.animalId": {
-    code: ErrorCode.DUPLICATE_PURCHASE,
-    message: "Este animal já tem uma compra registrada.",
+  "User.email": {
+    code: ErrorCode.EMAIL_ALREADY_REGISTERED,
+    message: "Já existe uma conta com esse e-mail.",
   },
-  "AnimalSale.animalId": {
-    code: ErrorCode.DUPLICATE_SALE,
-    message: "Este animal já tem uma venda registrada.",
+  "Weighing.animalId,date": {
+    code: ErrorCode.DUPLICATE_WEIGHING_DATE,
+    message: "Este animal já tem uma pesagem nesse dia. Edite a pesagem existente.",
+  },
+};
+
+// Índices criados à mão nas migrações (sem diferenciar maiúsculas): o Prisma
+// só conhece o nome deles
+const DUPLICATE_BY_INDEX: Record<string, { code: ErrorCode; message: string }> = {
+  Animal_farmId_lower_tag_key: DUPLICATE_MESSAGES["Animal.farmId,tag"],
+  Product_farmId_lower_name_key: {
+    code: ErrorCode.DUPLICATE_PRODUCT_NAME,
+    message: "Já existe um produto com esse nome.",
   },
 };
 
@@ -43,6 +54,15 @@ function uniqueFields(error: Prisma.PrismaClientKnownRequestError): string[] {
   return [];
 }
 
+// Para as rotas que tratam uma unicidade do jeito delas (ex.: negociação
+// repetida devolve a que já existe): os campos violados, se o erro for de
+// unicidade NESSA tabela; senão null.
+export function uniqueViolation(error: unknown, model: string): string[] | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return null;
+  const errorModel = String((error.meta as { modelName?: string })?.modelName ?? "");
+  return errorModel === model ? uniqueFields(error) : null;
+}
+
 function prismaErrorResponse(
   error: Prisma.PrismaClientKnownRequestError,
 ): { status: number; body: ErrorBody } | null {
@@ -50,7 +70,11 @@ function prismaErrorResponse(
     case "P2002": {
       const model = String((error.meta as { modelName?: string })?.modelName ?? "");
       const key = `${model}.${uniqueFields(error).join(",")}`;
-      const known = DUPLICATE_MESSAGES[key];
+      // Índice criado na migração (D-29: brinco sem diferenciar maiúsculas):
+      // o Prisma não conhece os campos dele, só o nome
+      const known =
+        DUPLICATE_MESSAGES[key] ??
+        Object.entries(DUPLICATE_BY_INDEX).find(([index]) => JSON.stringify(error.meta ?? {}).includes(index))?.[1];
       return {
         status: 409,
         body: known ?? {
@@ -109,7 +133,11 @@ export function errorHandler(
   if (error instanceof AppError) {
     return reply
       .status(error.statusCode)
-      .send({ code: error.code, message: error.message } satisfies ErrorBody);
+      .send({
+        code: error.code,
+        message: error.message,
+        ...(error.errors ? { errors: error.errors } : {}),
+      } satisfies ErrorBody);
   }
 
   // Validação automática (schemas Zod nas rotas) → 400
@@ -117,10 +145,20 @@ export function errorHandler(
     return reply.status(400).send({
       code: ErrorCode.VALIDATION_ERROR,
       message: "Dados inválidos.",
-      errors: error.validation.map((issue) => ({
-        field: issue.instancePath ? issue.instancePath.replace(/^\//, "") : "",
-        error: issue.message ?? "Valor inválido.",
-      })),
+      // Cada problema vira { field, code, params?, error } — G3
+      errors: error.validation.flatMap((issue) => {
+        const path = issue.instancePath.replace(/^\//, "").split("/").filter(Boolean);
+        const input =
+          error.validationContext === "querystring"
+            ? request.query
+            : error.validationContext === "params"
+              ? request.params
+              : request.body;
+        return issueToFieldErrors(
+          { ...(issue.params as object), code: issue.keyword, path, message: issue.message } as IssueLike,
+          input,
+        );
+      }),
     } satisfies ErrorBody);
   }
 
@@ -129,10 +167,9 @@ export function errorHandler(
     return reply.status(400).send({
       code: ErrorCode.VALIDATION_ERROR,
       message: "Dados inválidos.",
-      errors: error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        error: issue.message ?? "Valor inválido.",
-      })),
+      errors: error.issues.flatMap((issue) =>
+        issueToFieldErrors(issue as unknown as IssueLike, request.body),
+      ),
     } satisfies ErrorBody);
   }
 

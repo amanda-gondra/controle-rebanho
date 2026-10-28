@@ -22,5 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Testes da tela rodam pelo Vitest da raiz (projeto web-unit)
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, RefreshCw, Trash2, Syringe, Pill } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { Plus, Pencil, RefreshCw, Trash2, Tag } from "lucide-react";
+import { ProductTypeIcon } from "../components/ProductTypeIcon.js";
 import {
   LineChart,
   Line,
@@ -18,41 +19,46 @@ import {
   deleteWeighing,
 } from "../services/animals.js";
 import { listAnimalApplications } from "../services/sanitary.js";
-import {
-  getPurchase,
-  getSale,
-  getAnimalResult,
-  deletePurchase,
-  deleteSale,
-} from "../services/finance.js";
+import { getAnimalResult } from "../services/trades.js";
 import type {
   Animal,
   Weighing,
   WeightGain,
   Application,
-  Purchase,
-  Sale,
-  AnimalResult,
 } from "../types/animal.js";
+import type { AnimalResult } from "../types/trade.js";
 import {
   sexLabel,
-  categoryLabel,
   statusLabel,
   statusStyle,
 } from "../types/labels.js";
-import { formatDate, formatNumber, formatMoney } from "../types/format.js";
+import { formatDate, formatMonthYear, formatNumber } from "../types/format.js";
 import { WeighingModal } from "../components/WeighingModal.js";
 import { EditWeighingModal } from "../components/EditWeighingModal.js";
 import { StatusModal } from "../components/StatusModal.js";
 import { DeleteModal } from "../components/DeleteModal.js";
-import { TradeModal } from "../components/TradeModal.js";
-import { EstimatedPriceModal } from "../components/EstimatedPriceModal.js";
+import { AnimalTradesCard } from "../components/AnimalTradesCard.js";
 import { useToast } from "../components/ToastProvider.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+import { useCategoryLabels } from "../hooks/useCategoryLabels.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { buttonClass } from "../components/buttonStyles.js";
+import { useOpen, useOrigin, useOriginState } from "../navigation/hooks.js";
+import { TagChangeModal } from "../components/TagChangeModal.js";
+import { AnimalHistoryCard } from "../components/AnimalHistoryCard.js";
+import { LotMoveModal } from "../components/LotMoveModal.js";
+import { originText } from "../types/history.js";
 
 export function AnimalDetail() {
   const { id } = useParams(); // pega o :id do endereço
-  const navigate = useNavigate();
+  const open = useOpen();
+  const originState = useOriginState();
+  const { goBack } = useOrigin("/");
   const showToast = useToast();
+  const { labelOf } = useCategoryLabels();
 
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [weighings, setWeighings] = useState<Weighing[]>([]);
@@ -60,41 +66,43 @@ export function AnimalDetail() {
   // Por que o ganho não foi calculado (código vindo da API)
   const [gainUnavailableCode, setGainUnavailableCode] = useState<string | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [purchase, setPurchase] = useState<Purchase | null>(null);
-  const [sale, setSale] = useState<Sale | null>(null);
   const [result, setResult] = useState<AnimalResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Falhas de carga: da ficha inteira ou de uma seção (cada uma com "Tentar de novo")
+  const [loadError, setLoadError] = useState("");
+  const [weighingsError, setWeighingsError] = useState(false);
+  const [applicationsError, setApplicationsError] = useState(false);
   const [showWeighingModal, setShowWeighingModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingWeighing, setEditingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighing, setDeletingWeighing] = useState<Weighing | null>(null);
   const [deletingWeighingLoading, setDeletingWeighingLoading] = useState(false);
-  // Financeiro (v3.0)
-  const [tradeModal, setTradeModal] = useState<{
-    kind: "purchase" | "sale";
-    existing: Purchase | Sale | null;
-  } | null>(null);
-  const [showPriceModal, setShowPriceModal] = useState(false);
-  const [deletingTrade, setDeletingTrade] = useState<"purchase" | "sale" | null>(
-    null,
-  );
-  const [deletingTradeLoading, setDeletingTradeLoading] = useState(false);
-
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [showLotModal, setShowLotModal] = useState(false);
+  // Muda a cada recarga da ficha: a linha do tempo recarrega junto
+  const [historyKey, setHistoryKey] = useState(0);
   // Busca (ou rebusca) todos os dados do animal.
-  function loadData() {
+  const loadData = useCallback(() => {
     if (!id) return;
+    setHistoryKey((key) => key + 1);
     getAnimal(id)
-      .then((data) => setAnimal(data))
+      .then((data) => {
+        setAnimal(data);
+        setLoadError("");
+      })
       .catch((err) => {
         if (err?.status === 404) setNotFound(true);
-        else console.error(err);
+        else setLoadError(errorMessage(err, "animalDetail.loadFailed"));
       })
       .finally(() => setLoading(false));
     listWeighings(id)
-      .then((data) => setWeighings(data))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        setWeighings(data);
+        setWeighingsError(false);
+      })
+      .catch(() => setWeighingsError(true));
     getWeightGain(id)
       .then((data) => {
         setGain(data);
@@ -105,24 +113,29 @@ export function AnimalDetail() {
         setGainUnavailableCode(err?.code ?? null);
       });
     listAnimalApplications(id)
-      .then((data) => setApplications(data))
-      .catch((err) => console.error(err));
-    // 404 é esperado quando não há compra/venda registrada — vira null.
-    getPurchase(id)
-      .then((data) => setPurchase(data))
-      .catch(() => setPurchase(null));
-    getSale(id)
-      .then((data) => setSale(data))
-      .catch(() => setSale(null));
+      .then((data) => {
+        setApplications(data);
+        setApplicationsError(false);
+      })
+      .catch(() => setApplicationsError(true));
+    // Compra, venda e diferença (G5)
     getAnimalResult(id)
       .then((data) => setResult(data))
       .catch(() => setResult(null));
-  }
+  }, [id]);
 
   useEffect(() => {
     setLoading(true);
+    setNotFound(false);
+    setLoadError("");
     loadData();
-  }, [id]);
+  }, [loadData]);
+
+  function retryAll() {
+    setLoading(true);
+    setLoadError("");
+    loadData();
+  }
 
   // Confirma a exclusão de uma pesagem
   async function handleDeleteWeighing() {
@@ -132,32 +145,11 @@ export function AnimalDetail() {
       await deleteWeighing(id, deletingWeighing.id);
       setDeletingWeighing(null);
       loadData();
-      showToast("Pesagem excluída.");
+      showToast(t("animalDetail.weighingDeleted"));
     } catch (err) {
-      console.error(err);
+      showToast(errorMessage(err, "animalDetail.weighingDeleteFailed"));
     } finally {
       setDeletingWeighingLoading(false);
-    }
-  }
-
-  // Confirma a exclusão de uma compra, ou o desfazer de uma venda.
-  async function handleDeleteTrade() {
-    if (!id || !deletingTrade) return;
-    setDeletingTradeLoading(true);
-    try {
-      if (deletingTrade === "purchase") {
-        await deletePurchase(id);
-        showToast("Compra removida.");
-      } else {
-        await deleteSale(id);
-        showToast("Venda desfeita. O animal voltou a ativo.");
-      }
-      setDeletingTrade(null);
-      loadData();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setDeletingTradeLoading(false);
     }
   }
 
@@ -167,7 +159,20 @@ export function AnimalDetail() {
       <div className="min-h-screen bg-bege flex">
         <Sidebar />
         <main className="flex-1 p-4 pb-24 md:p-8">
-          <p className="text-texto-suave">Carregando...</p>
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        </main>
+      </div>
+    );
+  }
+
+  // Falha de rede/servidor: não é "não encontrado"
+  if (loadError && !animal) {
+    return (
+      <div className="min-h-screen bg-bege flex">
+        <Sidebar />
+        <main className="flex-1 p-4 pb-24 md:p-8">
+          <PageHeader title={t("animalDetail.title")} backFallback="/" backLabel={t("animalDetail.backToHerd")} />
+          <LoadError message={loadError} onRetry={retryAll} />
         </main>
       </div>
     );
@@ -181,17 +186,14 @@ export function AnimalDetail() {
         <main className="flex-1 p-4 pb-24 md:p-8 flex items-center justify-center">
           <div className="text-center">
             <h2 className="text-xl font-medium text-texto mb-2">
-              Não encontramos este animal
+              {t("animalDetail.notFoundTitle")}
             </h2>
             <p className="text-texto-suave mb-4">
-              Ele pode ter sido removido, ou o código do brinco está diferente.
+              {t("animalDetail.notFoundHelp")}
             </p>
-            <button
-              onClick={() => navigate("/")}
-              className="px-4 py-2.5 rounded-xl bg-verde text-white font-medium cursor-pointer"
-            >
-              Voltar para o rebanho
-            </button>
+            <Link to="/" className={buttonClass("primary")}>
+              {t("animalDetail.backToHerd")}
+            </Link>
           </div>
         </main>
       </div>
@@ -199,16 +201,26 @@ export function AnimalDetail() {
   }
 
   // Monta o texto da data de nascimento conforme a precisão
-  let birthText = "Idade não informada";
+  let birthText = t("animalDetail.birthUnknown");
   if (animal.birthDate && animal.birthPrecision === "DAY_MONTH_YEAR") {
-    birthText = `Nascido em ${formatDate(animal.birthDate)}`;
+    birthText = t("animalDetail.bornOn", { date: formatDate(animal.birthDate) });
   } else if (animal.birthDate && animal.birthPrecision === "MONTH_YEAR") {
-    const d = new Date(animal.birthDate);
-    birthText = `Nascido em ${d.toLocaleDateString("pt-BR", {
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    })}`;
+    birthText = t("animalDetail.bornOn", { date: formatMonthYear(animal.birthDate) });
+  }
+
+  // Saída (D-27): o animal vendido/morto não recebe pesagens novas (RN-ANIMAL-012)
+  const hasExited = animal.status !== "ACTIVE";
+  let exitText = t("animalDetail.exitNoDate");
+  if (animal.exitDate) {
+    const date = formatDate(animal.exitDate);
+    if (animal.status === "SOLD") exitText = t("animalDetail.exitSold", { date });
+    else if (animal.deathCause) {
+      exitText = t("animalDetail.exitDeadWithCause", {
+        date,
+        cause: animal.deathCause,
+        certainty: t(`animalDetail.certaintyLower${animal.deathCauseCertainty ?? "NOT_INFORMED"}`),
+      });
+    } else exitText = t("animalDetail.exitDead", { date });
   }
 
   return (
@@ -216,55 +228,100 @@ export function AnimalDetail() {
       <Sidebar />
       <main className="flex-1 p-4 pb-24 md:p-8">
         {/* Cabeçalho */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate("/")}
-            title="Voltar para o rebanho"
-            className="text-texto-suave hover:text-texto cursor-pointer"
-          >
-            <ArrowLeft size={22} />
-          </button>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-medium text-texto">{animal.tag}</h1>
-              <span
-                className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}
-              >
+        <PageHeader
+          title={
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="whitespace-nowrap">{animal.tag}</span>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[animal.status]}`}>
                 {statusLabel[animal.status]}
               </span>
-            </div>
-            <p className="text-texto-suave">
-              {categoryLabel[animal.category]} · {sexLabel[animal.sex]} ·{" "}
-              {animal.breed ?? "—"}
+            </span>
+          }
+          subtitle={t("animalDetail.summary", {
+            category: labelOf(animal.category, animal.sex),
+            sex: animal.castrated
+              ? `${sexLabel[animal.sex]} ${t("animalDetail.castratedSuffix")}`
+              : sexLabel[animal.sex],
+            breed: animal.breed ?? t("animalDetail.noBreed"),
+          })}
+          backFallback="/"
+          backLabel={t("animalDetail.backToHerd")}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => open(`/animais/${animal.id}/editar`)}
+                title={t("animalDetail.editLabel")}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <Pencil size={16} aria-hidden="true" /> {t("common.edit")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTagModal(true)}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <Tag size={16} aria-hidden="true" /> {t("tagChange.action")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStatusModal(true)}
+                title={t("animalDetail.statusLabel")}
+                className={buttonClass("secondary", "text-sm px-3 py-2")}
+              >
+                <RefreshCw size={16} aria-hidden="true" /> {t("animalDetail.changeStatus")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(true)}
+                title={t("animalDetail.deleteLabel")}
+                className={buttonClass("dangerOutline", "text-sm px-3 py-2")}
+              >
+                <Trash2 size={16} aria-hidden="true" /> {t("common.delete")}
+              </button>
+            </>
+          }
+        >
+          {animal.previousTag && (
+            <p className="text-sm text-texto-suave">{t("tagChange.before", { tag: animal.previousTag })}</p>
+          )}
+          <p className="text-sm text-texto-leve">{birthText}</p>
+          <p className="text-sm text-texto-leve">
+            {t("animalDetail.originLine", { origin: originText(animal.origin, animal.entryDate) })}
+          </p>
+          {/* Lote atual (D-49) */}
+          <p className="text-sm text-texto-leve">
+            {animal.lot ? (
+              <>
+                {t("animalDetail.lotLabel")}{" "}
+                <Link to={`/lotes/${animal.lot.id}`} state={originState} className="text-verde font-medium hover:underline">
+                  {animal.lot.name}
+                </Link>
+                {animal.lot.since && ` · ${t("lots.since", { date: formatDate(animal.lot.since) })}`}
+              </>
+            ) : (
+              t("animalDetail.noLot")
+            )}
+            {animal.status === "ACTIVE" && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setShowLotModal(true)}
+                  className="text-verde font-medium underline cursor-pointer"
+                >
+                  {t(animal.lot ? "animalDetail.changeLot" : "animalDetail.putInLot")}
+                </button>
+              </>
+            )}
+          </p>
+          {/* Faixa de saída (D-27): quando e por quê o animal saiu */}
+          {animal.status !== "ACTIVE" && (
+            <p role="status" className="mt-2 inline-block text-sm rounded-lg bg-card border border-borda text-texto px-3 py-1.5">
+              {exitText}
             </p>
-            <p className="text-sm text-texto-leve">{birthText}</p>
-          </div>
-
-          {/* Botões de ação */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => navigate(`/animais/${animal.id}/editar`)}
-              title="Editar animal"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Pencil size={16} /> Editar
-            </button>
-            <button
-              onClick={() => setShowStatusModal(true)}
-              title="Mudar o status do animal"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <RefreshCw size={16} /> Mudar status
-            </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              title="Excluir animal"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-borda-chip text-alerta text-sm font-medium hover:bg-bege cursor-pointer"
-            >
-              <Trash2 size={16} /> Excluir
-            </button>
-          </div>
-        </div>
+          )}
+        </PageHeader>
 
         {/* Resumo + gráfico (se tem 2+ pesagens) ou estado vazio */}
         {gain ? (
@@ -272,44 +329,44 @@ export function AnimalDetail() {
             {/* Cartões de resumo */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">Peso atual</p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.currentWeight")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.lastWeightKg)} kg
+                  {t("units.kgValue", { value: formatNumber(gain.lastWeightKg) })}
                 </p>
               </div>
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">
-                  Ganho médio diário (GMD)
-                </p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.adg")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.averageDailyGainKg)} kg/dia
+                  {t("units.kgPerDay", { value: formatNumber(gain.averageDailyGainKg) })}
                 </p>
               </div>
               <div className="bg-card border border-borda rounded-xl p-5">
-                <p className="text-sm text-texto-suave mb-1">Ganho total</p>
+                <p className="text-sm text-texto-suave mb-1">{t("animalDetail.totalGain")}</p>
                 <p className="text-2xl font-medium text-texto">
-                  {formatNumber(gain.totalGainKg)} kg
+                  {t("units.kgValue", { value: formatNumber(gain.totalGainKg) })}
                 </p>
               </div>
             </div>
 
             {/* Gráfico da evolução do peso */}
             <div className="bg-card border border-borda rounded-xl p-6 mb-6">
-              <p className="font-medium text-texto mb-4">Evolução do peso</p>
+              <p className="font-medium text-texto mb-4">{t("animalDetail.weightChart")}</p>
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart
                   data={[...weighings].reverse().map((w) => ({
-                    data: formatDate(w.date),
-                    peso: Number(w.weightKg),
+                    date: formatDate(w.date),
+                    weight: Number(w.weightKg),
                   }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#E7E0D2" />
-                  <XAxis dataKey="data" stroke="#6B6459" fontSize={12} />
-                  <YAxis stroke="#6B6459" fontSize={12} unit=" kg" />
+                  <XAxis dataKey="date" stroke="#6B6459" fontSize={12} />
+                  <YAxis stroke="#6B6459" fontSize={12} unit={t("units.kgSuffix")} />
                   <Tooltip />
                   <Line
                     type="monotone"
-                    dataKey="peso"
+                    dataKey="weight"
+                    name={t("animalDetail.weightSeries")}
+                    unit={t("units.kgSuffix")}
                     stroke="#3B6D11"
                     strokeWidth={2}
                     dot={{ fill: "#3B6D11" }}
@@ -321,18 +378,21 @@ export function AnimalDetail() {
         ) : (
           <div className="bg-card border border-borda rounded-xl p-10 mb-6 text-center">
             <p className="text-texto font-medium mb-1">
-              Ainda não dá para calcular o ganho de peso
+              {t("animalDetail.noGainTitle")}
             </p>
             <p className="text-texto-suave text-sm mb-4">
               {gainUnavailableCode === "SAME_DAY_WEIGHINGS"
-                ? "A primeira e a última pesagem são do mesmo dia. Registre uma pesagem em outra data."
-                : "Registre pelo menos duas pesagens e o gráfico aparece aqui."}
+                ? t("animalDetail.noGainSameDay")
+                : t("animalDetail.noGainHelp")}
             </p>
             <button
+              type="button"
               onClick={() => setShowWeighingModal(true)}
-              className="inline-flex items-center gap-2 bg-verde text-white text-sm font-medium px-4 py-2.5 rounded-lg cursor-pointer"
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
+              className={buttonClass("primary", "text-sm")}
             >
-              <Plus size={16} /> Registrar pesagem
+              <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
           </div>
         )}
@@ -340,18 +400,28 @@ export function AnimalDetail() {
         {/* Histórico de pesagens */}
         <div className="bg-card border border-borda rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="font-medium text-texto">Pesagens</p>
+            <p className="font-medium text-texto">{t("animalDetail.weighings")}</p>
             <button
+              type="button"
               onClick={() => setShowWeighingModal(true)}
-              className="flex items-center gap-2 bg-verde text-white text-sm font-medium px-3 py-2 rounded-lg cursor-pointer"
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.weighingDisabled") : undefined}
+              className={buttonClass("primary", "text-sm px-3 py-2")}
             >
-              <Plus size={16} /> Registrar pesagem
+              <Plus size={16} /> {t("animalDetail.addWeighing")}
             </button>
           </div>
 
-          {weighings.length === 0 ? (
+          {hasExited && (
+            <p className="text-sm text-texto-suave bg-bege rounded-lg px-3 py-2 mb-3">
+              {t("animalDetail.weighingDisabled")}
+            </p>
+          )}
+          {weighingsError ? (
+            <LoadError compact message={t("animalDetail.weighingsLoadFailed")} onRetry={loadData} />
+          ) : weighings.length === 0 ? (
             <p className="text-texto-suave text-sm">
-              Nenhuma pesagem registrada ainda.
+              {t("animalDetail.noWeighings")}
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-borda">
@@ -365,22 +435,31 @@ export function AnimalDetail() {
                   </span>
                   <div className="flex items-center gap-4">
                     <span className="font-medium text-texto">
-                      {String(w.weightKg).replace(".", ",")} kg
+                      {t("units.kgValue", { value: formatNumber(Number(w.weightKg)) })}
                     </span>
-                    <button
-                      onClick={() => setEditingWeighing(w)}
-                      title="Editar pesagem"
-                      className="text-texto-leve hover:text-verde cursor-pointer"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      onClick={() => setDeletingWeighing(w)}
-                      title="Excluir pesagem"
-                      className="text-texto-leve hover:text-alerta cursor-pointer"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {w.source === "MANUAL" ? (
+                      <>
+                        <button
+                          onClick={() => setEditingWeighing(w)}
+                          title={t("animalDetail.editWeighing")}
+                          aria-label={t("animalDetail.editWeighing")}
+                          className="text-texto-leve hover:text-verde cursor-pointer"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => setDeletingWeighing(w)}
+                          title={t("animalDetail.deleteWeighing")}
+                          aria-label={t("animalDetail.deleteWeighing")}
+                          className="text-texto-leve hover:text-alerta cursor-pointer"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    ) : (
+                      // Pesagem de compra/venda só muda pela negociação (RN-PES-009)
+                      <span className="text-xs text-texto-leve">{t("animalDetail.weighingFromTrade")}</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -390,227 +469,92 @@ export function AnimalDetail() {
 
         {/* Manejo sanitário (vacinas e vermífugos deste animal) */}
         <div className="bg-card border border-borda rounded-xl p-6">
-          <p className="font-medium text-texto mb-4">Manejo sanitário</p>
-          {applications.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <p className="font-medium text-texto">{t("animalDetail.sanitary")}</p>
+            <button
+              type="button"
+              onClick={() => open(`/aplicacoes/nova?animal=${animal.id}`)}
+              disabled={hasExited}
+              title={hasExited ? t("animalDetail.applicationDisabled") : undefined}
+              className={buttonClass("secondary", "text-sm px-3 py-2")}
+            >
+              <Plus size={16} aria-hidden="true" /> {t("application.create")}
+            </button>
+          </div>
+          {applicationsError ? (
+            <LoadError compact message={t("animalDetail.applicationsLoadFailed")} onRetry={loadData} />
+          ) : applications.length === 0 ? (
             <p className="text-texto-suave text-sm">
-              Nenhuma vacina ou vermífugo registrado para este animal.
+              {t("animalDetail.noApplications")}
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-borda">
               {applications.map((app) => {
-                const isVaccine = app.product.type === "VACCINE";
                 return (
-                  <div
+                  <Link
                     key={app.id}
-                    onClick={() => navigate(`/aplicacoes/${app.id}`)}
-                    className="flex items-center gap-3 py-3 cursor-pointer hover:bg-bege -mx-2 px-2 rounded-lg"
+                    to={`/aplicacoes/${app.id}`}
+                    state={originState}
+                    className="flex items-center gap-3 py-3 hover:bg-bege -mx-2 px-2 rounded-lg"
                   >
-                    <span
-                      className={`flex items-center justify-center w-9 h-9 rounded-full ${
-                        isVaccine
-                          ? "bg-verde-claro text-verde"
-                          : "bg-bege text-couro"
-                      }`}
-                    >
-                      {isVaccine ? <Syringe size={16} /> : <Pill size={16} />}
-                    </span>
-                    <div className="flex-1">
+                    <ProductTypeIcon type={app.product.type} />
+                    <div className="flex-1 min-w-0">
                       <p className="font-medium text-texto text-sm">
                         {app.product.name}
                       </p>
                       <p className="text-xs text-texto-suave">
-                        {isVaccine ? "Vacina" : "Vermífugo"} ·{" "}
-                        {formatDate(app.date)}
+                        {t("animalDetail.applicationLine", {
+                          type: t(`product.type.${app.product.type}`),
+                          date: formatDate(app.date),
+                        })}
                         {app.notes ? ` · ${app.notes}` : ""}
                       </p>
                     </div>
-                  </div>
+                    {/* Selo de carência (D-12): só quando ainda vale hoje */}
+                    {app.inWithdrawal && app.withdrawalEndDate && (
+                      <span className="text-xs rounded px-2 py-1 bg-[#FAEEDA] text-[#854F0B] shrink-0">
+                        {t("product.withdrawal.inWithdrawal", { date: formatDate(app.withdrawalEndDate) })}
+                      </span>
+                    )}
+                  </Link>
                 );
               })}
             </div>
           )}
         </div>
 
-        {/* Financeiro (v3.0) — compra, venda e resultado do animal */}
-        <div className="bg-card border border-borda rounded-xl p-6 mt-6">
-          <p className="font-medium text-texto mb-4">Financeiro</p>
+        {/* Compra e venda (G5) — resultado sem custos */}
+        <AnimalTradesCard animal={animal} result={result} />
 
-          {/* Resultado apurado (real se vendido, estimado se vivo) */}
-          {result && result.resultType ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">Custo de compra</p>
-                <p className="text-xl font-medium text-texto">
-                  {result.purchaseCost !== null
-                    ? formatMoney(result.purchaseCost)
-                    : "Não informado"}
-                </p>
-              </div>
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">
-                  {result.resultType === "REALIZED"
-                    ? "Receita da venda"
-                    : "Valor estimado"}
-                </p>
-                <p className="text-xl font-medium text-texto">
-                  {formatMoney(
-                    result.resultType === "REALIZED"
-                      ? (result.saleRevenue ?? 0)
-                      : (result.estimatedValue ?? 0),
-                  )}
-                </p>
-              </div>
-              <div className="rounded-xl bg-bege p-4">
-                <p className="text-sm text-texto-suave mb-1">
-                  Resultado
-                  {result.resultType === "ESTIMATED" ? " (estimado)" : ""}
-                </p>
-                <p
-                  className={`text-xl font-medium ${
-                    (result.result ?? 0) >= 0 ? "text-verde" : "text-alerta"
-                  }`}
-                >
-                  {formatMoney(result.result ?? 0)}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-texto-suave text-sm mb-6">
-              Registre a compra e informe o preço estimado (com ao menos uma
-              pesagem) para ver o resultado enquanto o animal não é vendido.
-            </p>
-          )}
+        {/* Linha do tempo (D-28): o que mudou, quando e quem */}
+        <AnimalHistoryCard animal={animal} refreshKey={historyKey} />
 
-          {/* Linhas: compra, venda e — se ainda vivo — preço estimado */}
-          <div className="flex flex-col divide-y divide-borda">
-            {/* Compra */}
-            <div className="flex items-center justify-between gap-3 py-3">
-              <div>
-                <p className="text-sm font-medium text-texto">Compra</p>
-                <p className="text-xs text-texto-suave">
-                  {purchase
-                    ? `${formatDate(purchase.date)} · ${formatNumber(
-                        Number(purchase.weightKg),
-                      )} kg × ${formatMoney(Number(purchase.pricePerKg))}/kg`
-                    : "Não registrada"}
-                </p>
-              </div>
-              {purchase ? (
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-texto">
-                    {formatMoney(
-                      Number(purchase.weightKg) * Number(purchase.pricePerKg),
-                    )}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setTradeModal({ kind: "purchase", existing: purchase })
-                    }
-                    title="Editar compra"
-                    className="text-texto-leve hover:text-verde cursor-pointer"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setDeletingTrade("purchase")}
-                    title="Remover compra"
-                    className="text-texto-leve hover:text-alerta cursor-pointer"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() =>
-                    setTradeModal({ kind: "purchase", existing: null })
-                  }
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-                >
-                  <Plus size={15} /> Registrar
-                </button>
-              )}
-            </div>
+        {showLotModal && (
+          <LotMoveModal
+            animalIds={[animal.id]}
+            currentLotId={animal.lot?.id ?? null}
+            title={t(animal.lot ? "animalDetail.changeLot" : "animalDetail.putInLot")}
+            onClose={() => setShowLotModal(false)}
+            onMoved={() => {
+              setShowLotModal(false);
+              loadData();
+              showToast(t("animalDetail.lotUpdated"));
+            }}
+          />
+        )}
 
-            {/* Venda */}
-            <div className="flex items-center justify-between gap-3 py-3">
-              <div>
-                <p className="text-sm font-medium text-texto">Venda</p>
-                <p className="text-xs text-texto-suave">
-                  {sale
-                    ? `${formatDate(sale.date)} · ${formatNumber(
-                        Number(sale.weightKg),
-                      )} kg × ${formatMoney(Number(sale.pricePerKg))}/kg`
-                    : animal.status === "DEAD"
-                      ? "Animal morto"
-                      : "Não registrada"}
-                </p>
-              </div>
-              {sale ? (
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-texto">
-                    {formatMoney(
-                      Number(sale.weightKg) * Number(sale.pricePerKg),
-                    )}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setTradeModal({ kind: "sale", existing: sale })
-                    }
-                    title="Editar venda"
-                    className="text-texto-leve hover:text-verde cursor-pointer"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setDeletingTrade("sale")}
-                    title="Desfazer venda"
-                    className="text-texto-leve hover:text-alerta cursor-pointer"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setTradeModal({ kind: "sale", existing: null })}
-                  disabled={animal.status === "DEAD"}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Plus size={15} /> Registrar
-                </button>
-              )}
-            </div>
-
-            {/* Preço estimado — só faz sentido enquanto o animal está vivo e não vendido */}
-            {!sale && animal.status !== "DEAD" && (
-              <div className="flex items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="text-sm font-medium text-texto">
-                    Preço estimado (kg)
-                  </p>
-                  <p className="text-xs text-texto-suave">
-                    {animal.estimatedPricePerKg
-                      ? `${formatMoney(Number(animal.estimatedPricePerKg))}/kg`
-                      : "Não informado"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowPriceModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-borda-chip text-texto-suave text-sm font-medium hover:bg-bege cursor-pointer"
-                >
-                  {animal.estimatedPricePerKg ? (
-                    <>
-                      <Pencil size={15} /> Alterar
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={15} /> Informar
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        {showTagModal && (
+          <TagChangeModal
+            animalId={animal.id}
+            currentTag={animal.tag}
+            onClose={() => setShowTagModal(false)}
+            onSaved={(newTag) => {
+              setShowTagModal(false);
+              loadData();
+              showToast(t("tagChange.saved", { tag: newTag }));
+            }}
+          />
+        )}
 
         {/* Modal de registrar pesagem */}
         {showWeighingModal && (
@@ -618,10 +562,16 @@ export function AnimalDetail() {
             animalId={animal.id}
             animalTag={animal.tag}
             onClose={() => setShowWeighingModal(false)}
+            onEditExisting={(date) => {
+              // D-33: já tem pesagem nesse dia → abre a edição dela
+              const existing = weighings.find((w) => w.date.slice(0, 10) === date);
+              setShowWeighingModal(false);
+              if (existing) setEditingWeighing(existing);
+            }}
             onSaved={() => {
               setShowWeighingModal(false);
               loadData();
-              showToast("Pesagem registrada.");
+              showToast(t("animalDetail.weighingCreated"));
             }}
           />
         )}
@@ -635,60 +585,39 @@ export function AnimalDetail() {
             onSaved={() => {
               setEditingWeighing(null);
               loadData();
-              showToast("Pesagem atualizada.");
+              showToast(t("animalDetail.weighingUpdated"));
             }}
           />
         )}
 
         {/* Confirmação de excluir pesagem */}
         {deletingWeighing && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-            onClick={() => setDeletingWeighing(null)}
+          <ConfirmDialog
+            title={t("animalDetail.deleteWeighingTitle")}
+            confirmLabel={t("common.delete")}
+            busyLabel={t("common.deleting")}
+            busy={deletingWeighingLoading}
+            danger
+            onConfirm={handleDeleteWeighing}
+            onClose={() => setDeletingWeighing(null)}
           >
-            <div
-              className="bg-card rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-medium text-texto mb-1">
-                Excluir pesagem?
-              </h2>
-              <p className="text-sm text-texto-suave mb-5">
-                Tem certeza que quer excluir a pesagem de{" "}
-                {formatDate(deletingWeighing.date)} (
-                {String(deletingWeighing.weightKg).replace(".", ",")} kg)? Isso
-                pode alterar o cálculo do ganho de peso.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingWeighing(null)}
-                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleDeleteWeighing}
-                  disabled={deletingWeighingLoading}
-                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-                >
-                  {deletingWeighingLoading ? "Excluindo..." : "Excluir"}
-                </button>
-              </div>
-            </div>
-          </div>
+            {t("animalDetail.deleteWeighingBody", {
+              date: formatDate(deletingWeighing.date),
+              weight: t("units.kgValue", { value: formatNumber(Number(deletingWeighing.weightKg)) }),
+            })}
+          </ConfirmDialog>
         )}
 
         {/* Modal de mudar status */}
         {showStatusModal && (
           <StatusModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            currentStatus={animal.status}
+            animal={animal}
+            hasSale={!!result?.sale}
             onClose={() => setShowStatusModal(false)}
             onSaved={() => {
               setShowStatusModal(false);
               loadData();
-              showToast("Status atualizado.");
+              showToast(t("animalDetail.statusUpdated"));
             }}
           />
         )}
@@ -700,87 +629,12 @@ export function AnimalDetail() {
             animalTag={animal.tag}
             onClose={() => setShowDeleteModal(false)}
             onDeleted={() => {
-              showToast("Animal excluído.");
-              navigate("/");
+              showToast(t("animalDetail.animalDeleted"));
+              goBack();
             }}
           />
         )}
 
-        {/* Modal de compra / venda (cadastro e edição) */}
-        {tradeModal && (
-          <TradeModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            kind={tradeModal.kind}
-            existing={tradeModal.existing}
-            onClose={() => setTradeModal(null)}
-            onSaved={() => {
-              const wasEdit = !!tradeModal.existing;
-              const noun = tradeModal.kind === "sale" ? "Venda" : "Compra";
-              setTradeModal(null);
-              loadData();
-              showToast(`${noun} ${wasEdit ? "atualizada" : "registrada"}.`);
-            }}
-          />
-        )}
-
-        {/* Modal do preço estimado */}
-        {showPriceModal && (
-          <EstimatedPriceModal
-            animalId={animal.id}
-            animalTag={animal.tag}
-            current={animal.estimatedPricePerKg}
-            onClose={() => setShowPriceModal(false)}
-            onSaved={() => {
-              setShowPriceModal(false);
-              loadData();
-              showToast("Preço estimado atualizado.");
-            }}
-          />
-        )}
-
-        {/* Confirmação de remover compra / desfazer venda */}
-        {deletingTrade && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-            onClick={() => setDeletingTrade(null)}
-          >
-            <div
-              className="bg-card rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-medium text-texto mb-1">
-                {deletingTrade === "purchase"
-                  ? "Remover compra?"
-                  : "Desfazer venda?"}
-              </h2>
-              <p className="text-sm text-texto-suave mb-5">
-                {deletingTrade === "purchase"
-                  ? "O custo de compra deixa de entrar no resultado deste animal."
-                  : "A venda é apagada e o animal volta para o status Ativo."}
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingTrade(null)}
-                  className="px-4 py-2.5 rounded-xl border border-borda-chip text-texto-suave font-medium cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleDeleteTrade}
-                  disabled={deletingTradeLoading}
-                  className="px-4 py-2.5 rounded-xl bg-alerta text-white font-medium cursor-pointer disabled:opacity-60"
-                >
-                  {deletingTradeLoading
-                    ? "Processando..."
-                    : deletingTrade === "purchase"
-                      ? "Remover"
-                      : "Desfazer"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );

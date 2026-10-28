@@ -18,6 +18,12 @@ export const ErrorCode = {
   DUPLICATE_RECORD: "DUPLICATE_RECORD",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 
+  // conta e sessão (G1)
+  UNAUTHENTICATED: "UNAUTHENTICATED",
+  SESSION_EXPIRED: "SESSION_EXPIRED",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+  EMAIL_ALREADY_REGISTERED: "EMAIL_ALREADY_REGISTERED",
+
   // animais e pesagens
   ANIMAL_NOT_FOUND: "ANIMAL_NOT_FOUND",
   DUPLICATE_TAG: "DUPLICATE_TAG",
@@ -26,30 +32,70 @@ export const ErrorCode = {
   WEIGHING_NOT_FOUND: "WEIGHING_NOT_FOUND",
   INSUFFICIENT_WEIGHINGS: "INSUFFICIENT_WEIGHINGS",
   SAME_DAY_WEIGHINGS: "SAME_DAY_WEIGHINGS",
+  SAME_TAG: "SAME_TAG", // troca de brinco para o mesmo brinco (D-19)
+  ORIGIN_FROM_PURCHASE: "ORIGIN_FROM_PURCHASE", // origem vem da compra registrada (D-52)
+  ENTRY_DATE_OUT_OF_RANGE: "ENTRY_DATE_OUT_OF_RANGE", // entrada antes do nascimento/depois da saída
+
+  // saída do animal e pesagens (G5 — entrega 1)
+  EXIT_DATE_CONFLICT: "EXIT_DATE_CONFLICT",
+  INVALID_STATUS_TRANSITION: "INVALID_STATUS_TRANSITION",
+  WEIGHING_DATE_OUT_OF_RANGE: "WEIGHING_DATE_OUT_OF_RANGE",
+  DUPLICATE_WEIGHING_DATE: "DUPLICATE_WEIGHING_DATE",
+  WEIGHING_FROM_TRADE: "WEIGHING_FROM_TRADE",
+  ANIMALS_NOT_IN_HERD_ON_DATE: "ANIMALS_NOT_IN_HERD_ON_DATE",
+
+  // categorias (G4)
+  CATEGORY_INCOMPATIBLE_WITH_SEX: "CATEGORY_INCOMPATIBLE_WITH_SEX",
+  CASTRATED_ONLY_FOR_MALES: "CASTRATED_ONLY_FOR_MALES",
+  DUPLICATE_CATEGORY_LABEL: "DUPLICATE_CATEGORY_LABEL",
 
   // sanitário
   PRODUCT_NOT_FOUND: "PRODUCT_NOT_FOUND",
   APPLICATION_NOT_FOUND: "APPLICATION_NOT_FOUND",
   ANIMALS_NOT_FOUND: "ANIMALS_NOT_FOUND",
+  DUPLICATE_PRODUCT_NAME: "DUPLICATE_PRODUCT_NAME", // RN-SAN-005
+  PRODUCT_ARCHIVED: "PRODUCT_ARCHIVED", // produto arquivado não entra em aplicação nova
+  PRODUCT_IN_USE: "PRODUCT_IN_USE", // produto usado não se exclui: arquiva
+  NO_REMINDER: "NO_REMINDER", // aplicação sem reaplicação marcada
+  REAPPLY_SOURCE_INVALID: "REAPPLY_SOURCE_INVALID", // lembrete de origem não serve
+  WITHDRAWAL_WARNING: "WITHDRAWAL_WARNING", // venda com animal em carência registrada (aviso)
 
-  // financeiro
-  PURCHASE_NOT_FOUND: "PURCHASE_NOT_FOUND",
-  SALE_NOT_FOUND: "SALE_NOT_FOUND",
-  DUPLICATE_PURCHASE: "DUPLICATE_PURCHASE",
-  DUPLICATE_SALE: "DUPLICATE_SALE",
+  // compra e venda (G5 — negociações)
+  TRADE_NOT_FOUND: "TRADE_NOT_FOUND",
+  TRADE_ITEM_NOT_FOUND: "TRADE_ITEM_NOT_FOUND",
+  TRADE_ITEM_ERRORS: "TRADE_ITEM_ERRORS", // um ou mais animais não podem entrar (lista por linha)
+  ANIMAL_ALREADY_SOLD: "ANIMAL_ALREADY_SOLD",
+  ANIMAL_ALREADY_PURCHASED: "ANIMAL_ALREADY_PURCHASED",
   DEAD_ANIMAL_CANNOT_BE_SOLD: "DEAD_ANIMAL_CANNOT_BE_SOLD",
   SALE_BEFORE_PURCHASE: "SALE_BEFORE_PURCHASE",
+  TRADE_DATE_OUT_OF_RANGE: "TRADE_DATE_OUT_OF_RANGE",
+
+  // lotes (D-49)
+  LOT_NOT_FOUND: "LOT_NOT_FOUND",
+  DUPLICATE_LOT_NAME: "DUPLICATE_LOT_NAME",
+  LOT_ARCHIVED: "LOT_ARCHIVED", // lote arquivado não recebe animais
+  LOT_NOT_EMPTY: "LOT_NOT_EMPTY", // só lote vazio é arquivado
+  LOT_IN_USE: "LOT_IN_USE", // lote com histórico não se exclui: arquiva
+  LOT_MOVE_ERRORS: "LOT_MOVE_ERRORS", // um ou mais animais não podem ser movidos (lista por animal)
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
-export type FieldError = { field: string; error: string };
+// Erro de um campo. `code` é o contrato (o frontend traduz); `params` traz os
+// números da regra; `error` é o texto em português para quem lê a API.
+export type FieldError = {
+  field: string;
+  code: string;
+  params?: Record<string, string | number | boolean>;
+  error: string;
+};
 
 export class AppError extends Error {
   constructor(
     public readonly statusCode: number,
     public readonly code: ErrorCode,
     message: string,
+    public readonly errors?: FieldError[],
   ) {
     super(message);
     this.name = "AppError";
@@ -68,3 +114,16 @@ export const unprocessable = (code: ErrorCode, message: string) =>
 
 export const badRequest = (code: ErrorCode, message: string) =>
   new AppError(400, code, message);
+
+export const unauthorized = (code: ErrorCode, message: string) =>
+  new AppError(401, code, message);
+
+// Erro de validação de UM campo, no mesmo formato da validação do Zod
+// (usado quando a regra depende da fazenda, ex.: data futura no fuso dela).
+export const fieldError = (field: string, code: string, error: string) =>
+  new AppError(400, ErrorCode.VALIDATION_ERROR, "Dados inválidos.", [{ field, code, error }]);
+
+// Erro de regra de negócio ligado a campos, com código PRÓPRIO (ex.: categoria
+// que não combina com o sexo) — o frontend decide pelo código e mostra no campo.
+export const ruleError = (code: ErrorCode, message: string, errors: FieldError[], status = 400) =>
+  new AppError(status, code, message, errors);

@@ -17,6 +17,7 @@ cd web && npm run dev         # frontend (Vite), porta 5173
 npm run test:unit             # testes de unidade (sem banco)
 npm run db:test:migrate       # aplica migrations no banco de TESTE (TEST_DATABASE_URL)
 npm test                      # unidade + integração (precisa do banco de teste)
+npm run dev:claim-initial-farm  # cria login para a "Fazenda inicial" (dados antigos de teste)
 ```
 
 - Variáveis: ver `.env.example` (só nomes). Validadas ao subir em `src/config/env.ts`.
@@ -50,6 +51,27 @@ npm test                      # unidade + integração (precisa do banco de test
 - **Datas** entram como texto ISO (`YYYY-MM-DD`) e viram `Date` com `toDbDate()` (meia-noite UTC).
   "Hoje/futuro/vencido" sempre pelo fuso da fazenda (`src/lib/dates.ts`, padrão D-16).
 - **Toda rota tem teste de integração** em `tests/integration/` (banco de teste real).
+- **Fazenda (multi-tenant) — regra de ouro:** rota protegida usa **só `request.db`** (já filtrado
+  pela fazenda da sessão, `src/lib/tenant.ts`), nunca o `prisma` direto. Em `create`, passar
+  `farmId: request.auth.farm.id` (inclusive em criação aninhada). `farmId` NUNCA vem do
+  navegador. Toda rota nova entra no teste de acesso cruzado (`tests/integration/tenancy.test.ts`).
+- **"Data no futuro"** é conferida na rota com `assertNotInFuture(data, request.auth.farm.timezone, ...)`.
+- **Textos da tela (G3):** nunca escrever texto em português direto no JSX: usar
+  `t("chave")` de `web/src/i18n/index.ts` e acrescentar a frase em `web/src/i18n/pt-BR.ts`.
+  Erro da API: `errorMessage(err)` / `fieldErrorsOf(err)` (`web/src/i18n/errors.ts`) — **nunca**
+  mostrar `err.message`. Datas/números/dinheiro só por `types/format.ts` (Intl). `npm run lint`
+  em `web/` acusa texto fixo. Para conferir: abrir o app com `?lang=test`.
+- **Erro de campo na API** sempre com `code` (+ `params`): `fieldError(campo, código, texto)`;
+  em `refine`, `{ message, params: { code } }`.
+- **Navegação e telas (auditoria de interface, 2026-10-18 — detalhes em `docs/architecture.md`):**
+  abrir outra tela por dentro do sistema sempre com `useOpen()` ou `<Link state={useOriginState()}>`
+  (a tela aberta sabe de onde veio); "voltar", "cancelar" e "depois de salvar" usam
+  `useOrigin(destinoSeguro)` — nunca `navigate(-1)` direto nem destino fixo. Cabeçalho com
+  `PageHeader` (título + `backFallback`), botões com `buttonClass(...)`, janelas com `ModalFrame`
+  (ou `ConfirmDialog`), falha de carga com `LoadError` (nunca só `console.error`). Formulário
+  usa `useUnsavedChanges(dirty)` e chama `allowLeave()` antes de sair depois de salvar.
+  Filtros, busca e página de lista ficam no endereço (`navigation/listParams.ts`). Todo rótulo
+  ligado ao campo (`htmlFor`/`id`).
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
@@ -70,22 +92,47 @@ Backend (raiz):
   src/server.ts                 sobe o servidor (config → buildApp → listen; desliga limpo)
   src/app.ts                    buildApp(config): plugins, erros, rotas (sem abrir porta)
   src/config/env.ts             variáveis de ambiente validadas
-  src/lib/                      prisma.ts, errors.ts, error-handler.ts, dates.ts
+  src/lib/                      prisma.ts, tenant.ts (filtro por fazenda), auth.ts, session.ts,
+                                password.ts, errors.ts, error-handler.ts, dates.ts,
+                                farm.ts (configurações: campos, padrões, fusos do Brasil),
+                                categories.ts (categorias: regra de sexo e nomes — G4),
+                                animal-life.ts (saída e "nada depois da saída" — G5a),
+                                trades.ts (negociações: pesagens criadas, desfazer, resposta da API — G5b)
   tests/                        integration/ (rotas), helpers/ (app, banco, factories), setup/
-  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, finance
-  src/routes/                   animals.routes.ts, sanitary.routes.ts, finance.routes.ts
+  src/schemas/                  Zod: common (limites), animal, weighing, sanitary, trade, farm, auth
+  src/routes/                   auth.routes.ts (público) + animals, sanitary, trades, finance (resultado), farm
   src/services/                 weighing.service.ts (GMD), sanitary.service.ts (alertas),
-                                finance.service.ts (resultado por animal)
+                                exit.service.ts (saída do animal: o que impede a data — G5a),
+                                trade.service.ts (valor de cada animal em centavos exatos; quem pode entrar — G5b),
+                                finance.service.ts (resultado por animal: venda − compra, sem custos),
+                                animal.service.ts (categoria × sexo e castrado — G4)
   prisma/schema.prisma          modelagem   |   prisma/seed.ts  dados de exemplo
 
 Frontend (web/):
-  src/pages/                    AnimalList, AnimalCreate, AnimalDetail, AnimalEdit,
-                                Products, ApplicationCreate, Sanitary, ApplicationDetail
-  src/components/               Sidebar, AnimalActionsMenu (menu ⋮ da lista, via portal),
+  src/pages/                    Login, Register (públicas) + AnimalList, AnimalCreate, AnimalDetail,
+                                AnimalEdit, Products, ApplicationCreate, Sanitary, ApplicationDetail,
+                                TradeList, TradeCreate (assistente), TradeDetail, TradeEdit (Negociações — G5b),
+                                Settings (Configurações da fazenda), NotFound (endereço desconhecido),
+                                Dashboard (painel), LotList, LotDetail, WeighingSession (pesagem em sequência)
+  src/components/               AuthProvider (useAuth), RequireAuth, AuthLayout, PasswordInput,
+                                Sidebar (usuário + sair), AnimalActionsMenu (menu ⋮ da lista, via portal),
                                 modais (Weighing, EditWeighing, Status, Delete,
-                                EditApplication, Trade, EstimatedPrice), ToastProvider
-  src/services/                 animals.ts, sanitary.ts, finance.ts, api.ts (helper request<T>)
-  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata)
+                                EditApplication, Confirm), ToastProvider,
+                                TradeDealFields + TradePricesEditor (assistente de negociação), AnimalTradesCard,
+                                NewAnimalsEditor (linhas de animais novos na compra em lote — G5c),
+                                CategoryPicker (categoria pelo sexo + castrado)
+  src/navigation/               origin.ts (de onde a tela veio; destino seguro), hooks.ts (useOpen,
+                                useOrigin, useOriginState), useUnsavedChanges.tsx (aviso de
+                                alterações não salvas), listParams.ts (filtros/página no endereço)
+  src/components/ (compartilhados) PageHeader + BackButton, ModalFrame, ConfirmDialog, LoadError,
+                                buttonStyles.ts (buttonClass)
+  src/hooks/                    useCategoryLabels (nomes das categorias da fazenda)
+  src/i18n/                     index.ts (t()), pt-BR.ts (TODOS os textos), errors.ts (erro da
+                                API → frase), RichText (frase com <b>), i18n.test.ts
+  src/services/                 auth.ts, animals.ts, sanitary.ts, trades.ts, farm.ts,
+                                api.ts (request<T>: manda o cookie; 401 → volta para o login)
+  src/types/                    animal.ts, labels.ts, format.ts (formatAge = idade exata),
+                                timezones.ts (nomes dos fusos do Brasil), categories.ts
   src/index.css                 tema "campo moderno" (paleta em @theme)
 ```
 
@@ -95,8 +142,11 @@ Frontend (web/):
 `bege #F1F0EC` (fundo de todas as telas) · `card #FFFFFF` · `texto #2C2A24` · `texto-suave #6B6459`
 `texto-leve #9A8F7C` · `borda #E7E0D2` · `borda-chip #D8CFBD` · `couro #8B6F52` · `alerta #B42318`
 `sidebar #152B1C` (fundo do menu lateral) · `sidebar-ativo #37592E` (item de menu ativo)
-Uso: `bg-verde`, `text-texto`, `border-borda`, etc. Logo em `web/public/logo.png`
-(na sidebar escura, aplicar `[filter:brightness(0)_invert(1)]` pra deixá-la branca).
+Uso: `bg-verde`, `text-texto`, `border-borda`, etc. **Logo oficial CampoRico** em `web/public/brand/`
+(nunca filtrar nem redesenhar; textos do sistema continuam "Rebanho"). Kit de tela em
+`web/src/components/ui/` (StatCard, SectionCard, EmptyState, StatusBadge, Pagination, PeriodFilter,
+FormSection, ActionsMenu…) — usar antes de criar outro. Detalhes em docs/architecture.md
+("Identidade visual e kit de interface").
 Cores fora do tema, inline: ícone de sexo `#2E7BD6` (macho) / `#D6478B` (fêmea),
 pontinho de status vendido `#D8A200` / morto `#9A8F7C` (ver `web/src/types/labels.ts`).
 
@@ -115,121 +165,68 @@ ficha). Testes: GMD, alertas e resultado.
 virou tabela (brinco, animal com idade exata, sexo com ícone colorido, raça, peso + data da
 última pesagem, status com pontinho, menu ⋮). Filtro/busca/ordenação/paginação agora são
 client-side (1 fetch da lista inteira). Sidebar repaginada (verde `sidebar`, item ativo,
-usuário placeholder — login é v7 —, morros SVG). `GET /animals` passou a devolver
+usuário logado + botão sair (G1), morros SVG). `GET /animals` passou a devolver
 `lastWeighingDate`.
 
-### Schema Prisma (atual)
+### Banco (resumo — fonte da verdade: `prisma/schema.prisma`)
 
-```prisma
-enum Sex { MALE FEMALE }
-enum Category { CALF YEARLING STEER COW }
-enum Status { ACTIVE SOLD DEAD }
-enum BirthDatePrecision { DAY_MONTH_YEAR MONTH_YEAR UNKNOWN }
-enum ProductType { VACCINE DEWORMER }
-
-model Animal {
-  id String @id @default(uuid())
-  tag String @unique
-  sex Sex
-  breed String?
-  category Category
-  status Status @default(ACTIVE)
-  birthDate DateTime?
-  birthPrecision BirthDatePrecision @default(UNKNOWN)
-  notes String?
-  weighings Weighing[]
-  applications ApplicationAnimal[]
-  purchase AnimalPurchase?
-  sale AnimalSale?
-  estimatedPricePerKg Decimal? @db.Decimal(10, 2)  // preço/kg informado p/ animal vivo
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Weighing {
-  id String @id @default(uuid())
-  animalId String
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  createdAt DateTime @default(now())
-}
-
-model Product {
-  id String @id @default(uuid())
-  name String
-  type ProductType
-  applications Application[]
-  createdAt DateTime @default(now())
-}
-
-model Application {
-  id String @id @default(uuid())
-  productId String
-  product Product @relation(fields: [productId], references: [id])
-  date DateTime
-  reapplyDate DateTime?
-  notes String?
-  animals ApplicationAnimal[]
-  createdAt DateTime @default(now())
-}
-
-model ApplicationAnimal {
-  id String @id @default(uuid())
-  applicationId String
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  animalId String
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  @@unique([applicationId, animalId])
-}
-
-// v3.0 — compra e venda: 1 por animal (animalId @unique). Mesma forma: peso × preço/kg.
-model AnimalPurchase {
-  id String @id @default(uuid())
-  animalId String @unique
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  pricePerKg Decimal @db.Decimal(10, 2)
-  notes String?
-  createdAt DateTime @default(now())
-}
-
-model AnimalSale {
-  id String @id @default(uuid())
-  animalId String @unique
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  date DateTime
-  weightKg Decimal @db.Decimal(6, 2)
-  pricePerKg Decimal @db.Decimal(10, 2)
-  notes String?
-  createdAt DateTime @default(now())
-}
-```
+- Conta: `Farm` (nome, país, fuso + configurações da G2: moeda, unidade, fator da arroba,
+  unidade de preço, antecedência do lembrete, castrado padrão) · `User` (1 por fazenda; e-mail único; hash scrypt) ·
+  `Session` (hash do token, validade).
+- Rebanho, **todos com `farmId`**: `Animal` (brinco único por fazenda; categoria G4 combinando
+  com o sexo; `castrated` só machos; saída G5a: `exitDate`, `deathCause`, `deathCauseCertainty`) ·
+  `Weighing` (`source` MANUAL/PURCHASE/SALE; uma por animal por dia) ·
+  `Product` · `Application` + `ApplicationAnimal` · `Trade` + `TradeItem` (G5b: negociação de compra/venda
+  com um item por animal; no máximo 1 compra e 1 venda por animal; item → animal `Restrict`).
+- Datas de calendário são `@db.Date`. Dinheiro e peso são `Decimal`.
 
 ### Rotas
 
 ```
-Animais:    POST /animals · GET /animals (filtros status/category, sortBy, order;
-            devolve currentWeightKg + lastWeighingDate da última pesagem)
+Conta:      POST /auth/register · POST /auth/login · POST /auth/logout   (públicas)
+            GET /auth/me                                                (protegida)
+Fazenda:    GET /farm · PATCH /farm   (sem id: sempre a fazenda da sessão; G2)
+            → TODAS as rotas abaixo exigem login (401 UNAUTHENTICATED / SESSION_EXPIRED)
+              e só enxergam a fazenda da sessão (outra fazenda → 404)
+Animais:    POST /animals · GET /animals (PAGINADA no servidor: q (brinco atual/antigo, raça,
+            categoria), tag, status, category, sex, lotId|none, sortBy, order, page, pageSize ≤ 5000;
+            devolve { items, total, page, pageSize, counts } com peso/data da última pesagem e lote)
+            POST /animals/:id/tag-changes (troca de brinco — D-19) · GET /animals/:id/history (linha do tempo — D-28)
+            GET /animals/:id/delete-impact (o que vai junto ao excluir)
             GET /animals/:id · PUT /animals/:id · DELETE /animals/:id
-            PATCH /animals/:id/status
+            PATCH /animals/:id/status   (saída: exitDate obrigatória p/ DEAD/SOLD; causa+certeza só DEAD — G5a)
             DELETE: 409 ANIMAL_HAS_TRANSACTIONS se houver compra/venda (D-10)
-            PATCH status: 409 ANIMAL_HAS_SALE se houver venda e status ≠ SOLD (D-06)
+            PATCH status: 409 ANIMAL_HAS_SALE se houver venda; 409 INVALID_STATUS_TRANSITION
+            (morto ↔ vendido direto); 422 EXIT_DATE_CONFLICT (saída antes de pesagem/aplicação/compra/nascimento)
 Pesagens:   POST /animals/:id/weighings · GET /animals/:id/weighings
             PUT /animals/:id/weighings/:weighingId · DELETE /animals/:id/weighings/:weighingId
             GET /animals/:id/weight-gain   (422 INSUFFICIENT_WEIGHINGS | SAME_DAY_WEIGHINGS)
-Sanitário:  POST /products · GET /products (filtro type)
-            POST /applications · GET /applications (filtro type) · GET /applications/:id
+            Uma pesagem por animal por dia (409 DUPLICATE_WEIGHING_DATE); nada depois da saída
+            (422 WEIGHING_DATE_OUT_OF_RANGE); só source=MANUAL edita/apaga (409 WEIGHING_FROM_TRADE)
+Sanitário:  POST /products · GET /products (type, includeArchived) · PUT /products/:id ·
+            PATCH /products/:id/archive|unarchive · DELETE /products/:id (só nunca usado)
+            POST /applications/:id/dismiss-reminder (dispensar lembrete — D-40)
+            POST /applications · GET /applications (type, from, to, q; traz createdBy {id, name})
+            GET /applications/summary (números do topo do Manejo) · GET /applications/:id
             PUT /applications/:id · DELETE /applications/:id
-            GET /alerts   (reaplicações ≤7 dias + vencidas)
+            (422 ANIMALS_NOT_IN_HERD_ON_DATE se algum animal já tinha saído na data)
+            GET /alerts   (reaplicações dentro da antecedência da fazenda — padrão 7 dias — + vencidas)
             GET /animals/:id/applications
-Financeiro: POST/GET/PUT/DELETE /animals/:id/purchase   (409 se já existe)
-            POST/GET/PUT/DELETE /animals/:id/sale       (POST marca SOLD; DELETE volta ACTIVE;
-                                                         409 se animal DEAD ou venda já existe;
-                                                         422 SALE_BEFORE_PURCHASE — D-06)
-            PATCH /animals/:id/estimated-price   (pricePerKg: número ou null p/ limpar)
-            GET /animals/:id/result   (resultType: REALIZED | ESTIMATED | null)
+Negociações (G5b): POST /trades (compra/venda de 1 ou muitos animais; idempotencyKey; o servidor
+            calcula os valores; 422 TRADE_ITEM_ERRORS com erro por linha `items.N.animalId`;
+            na compra, a linha pode trazer `newAnimal` {tag, sex, category, castrated?, breed?} —
+            o animal é cadastrado junto (G5c); brinco repetido → `items.N.newAnimal.tag` DUPLICATE_TAG)
+            GET /trades (type, from, to, pending, q, page, pageSize; `animal` quando é 1 só) · GET /trades/:id
+            GET /trades/summary (mesmos filtros: quantidade e soma de compras/vendas, pendentes)
+            GET /trades/last-prices (último preço por categoria — só referência)
+            PATCH /trades/:id (corrige; recalcula; peso de carcaça pendente) ·
+            DELETE /trades/:id/items/:itemId (tira um animal) · DELETE /trades/:id (desfaz)
+            GET /animals/:id/result   (kind: DIFFERENCE | INVESTED | SALE_ONLY | PENDING | CURRENCY_MISMATCH)
+Lotes:      POST /lots · GET /lots (includeArchived) · GET /lots/:id (+ summary, formedOn) · PUT /lots/:id ·
+            GET /lots/:id/weighings · GET /lots/:id/applications (só o que aconteceu DENTRO do lote) ·
+            POST /lots/:id/animals (entrar/trocar na data) · POST /lots/:id/remove (sair na data) ·
+            PATCH /lots/:id/archive|unarchive · DELETE /lots/:id (só nunca usado) — D-49
+Painel:     GET /dashboard?from&to (regras em docs/architecture.md "Painel") — D-50
 Saúde:      GET /health (processo) · GET /ready (banco)
 ```
 
@@ -239,6 +236,19 @@ individual (ficha) e por evento (lote). Replicar esse tipo de raciocínio nas pr
 
 ---
 
+**Núcleo (2026-10-18 a 2026-10-21, decisões D-49 a D-58 aprovadas pela Amanda):** brinco sem
+maiúsculas e troca de brinco com histórico; linha do tempo do animal; autor e trilha de ações
+sensíveis (`AuditLog`, não editável); origem e data de entrada; sanitário v1.0 (4 tipos de
+produto, editar/arquivar, dose, carência + aviso na venda, dispensar/reaplicar lembrete,
+idempotência); GMD com período e ganho desde a anterior; pesagem em sequência (`/pesagens`);
+lista do rebanho paginada no servidor; lotes simples; painel mínimo (`/painel`); CSV da lista.
+Índices por expressão/parciais e gatilhos ficam fora do `schema.prisma` — ver docs/database.md.
+
+**Interface fiel às referências visuais (2026-10-21):** logo oficial CampoRico, kit de tela em
+`components/ui/`, topo com sino e menu da conta, telas novas de Painel, Lotes, detalhe do lote
+(abas Animais/Pesagens/Manejo/Movimentações), Cadastrar/Editar animal (partes numeradas), Manejo
+sanitário e Negociações (números do período, busca, período, tabela paginada).
+
 ## Próximos passos
 
 O plano oficial é a **Release 1.0** no Obsidian ("Escopo Release 1.0" e "Guia de Execução"):
@@ -247,5 +257,46 @@ O antigo roadmap v3–v7 deste arquivo foi substituído por ele.
 
 **Fase 3 (fundação técnica, 2026-10-12):** app factory, config validada, códigos de erro,
 limites, fuso da fazenda, GMD no mesmo dia, D-06/D-10 na API, seed seguro, rotas em inglês,
-testes de integração de todas as rotas e CI com Postgres. **Ainda NÃO há login nem separação
-por fazenda (G1) — não publicar a API.**
+testes de integração de todas as rotas e CI com Postgres.
+
+**G1 (2026-10-12):** fazenda, usuário, login com sessão em cookie (D-23), senha scrypt (D-24),
+telas de entrar/criar conta/sair (D-25), `farmId` em tudo + filtro único, testes de acesso
+cruzado. Falta: recuperação de senha (precisa de e-mail), chaves compostas `[id, farmId]` (🟡).
+
+**G2 (2026-10-13):** configurações da fazenda (`GET/PATCH /farm`, tela "Configurações"):
+nome, fuso (só Brasil — D-31), antecedência do lembrete (vale na hora em `/alerts`); moeda e
+unidade fixas na 1.0 (D-30). Fator da arroba, unidade de preço e castrado padrão já ficam
+guardados, mas os cartões só aparecem com a G5/G4; nomes das categorias entram na G4.
+`request.auth.farm.settings` traz as configurações em toda rota protegida.
+
+**G4 (2026-10-13):** categorias `CALF HEIFER COW YEARLING ADULT_MALE BULL` (D-02) com regra de
+sexo na API e no banco; campo `castrated` (só machos; padrão da fazenda); nomes das categorias
+personalizáveis (Configurações → Animais; `useCategoryLabels` no frontend). Nunca escrever o
+nome da categoria fixo numa tela: usar `labelOf(category, sex)`. Migração converte os dados
+antigos e para se houver "vaca macho"/"boi fêmea".
+
+**G3 (2026-10-13):** textos da tela em `web/src/i18n/pt-BR.ts` (só pt-BR publicado; idioma de
+teste `?lang=test` em desenvolvimento), erros traduzidos pelo `code` (inclusive por campo, com
+`params`), datas/números/dinheiro por `Intl`, nomes padrão de categoria e fusos na tradução,
+conferência automática de texto fixo no `npm run lint` do web.
+
+**G5 entrega 1 — G5a (2026-10-13):** saída do animal (D-27): data de saída obrigatória para morto
+e vendido; na morte, causa (texto livre, opcional) + certeza (confirmada/suspeita/não informada);
+corrigir a saída ou voltar para ativo (engano). Nada depois da saída: pesagem e aplicação
+recusadas. Pesagem com origem (`source`) e uma por animal por dia (D-33). Ficha mostra a faixa
+"Saiu em …" e desliga "Registrar pesagem". Falta na G5: negociações (`Trade`), pesagens de
+compra/venda criadas por elas, linha do tempo (D-28).
+
+**G5 entrega 2 — G5b (2026-10-14):** negociações no modelo definitivo (`Trade` + `TradeItem`, D-03/D-08):
+preço por kg, por arroba (carcaça ÷ 15 ou peso vivo ÷ fator gravado na negociação) ou por cabeça;
+venda e compra em lote com preço por categoria (ajuste para marcados ou por animal); valores em
+centavos exatos no servidor; peso vivo vira pesagem (troca a manual do dia — D-37); carcaça
+pendente (D-35); tirar animal e desfazer; resultado venda − compra sem custos; valor estimado
+removido (D-09); dados antigos migrados. Telas: menu "Negociações", assistente em 3 passos,
+detalhe, correção, cartão em Configurações.
+
+**G5 entrega 3 — G5c (2026-10-14):** compra em lote que cadastra os animais (D-36, RN-NEG-015): cada
+linha da compra pode ser um animal novo (brinco, categoria — o nome já diz o sexo —, castrado,
+raça), criado na mesma transação com as regras do cadastro; brinco repetido (na fazenda ou na
+lista) volta como erro da linha; desfazer a compra não apaga os animais criados. Com isso a G5
+está completa; fica para depois só a linha do tempo do animal (D-28).

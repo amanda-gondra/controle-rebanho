@@ -1,171 +1,206 @@
-import { useEffect, useState } from "react";
-import { Plus, Syringe, Pill } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Archive, ArchiveRestore, Pencil, Plus, Trash2 } from "lucide-react";
 import { Sidebar } from "../components/Sidebar.js";
-import { listProducts, createProduct } from "../services/sanitary.js";
-import type { Product, ProductType } from "../types/animal.js";
+import { PageHeader } from "../components/PageHeader.js";
+import { LoadError } from "../components/LoadError.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { ProductModal } from "../components/ProductModal.js";
+import { ProductTypeIcon } from "../components/ProductTypeIcon.js";
+import { buttonClass } from "../components/buttonStyles.js";
 import { useToast } from "../components/ToastProvider.js";
+import { deleteProduct, listProducts, setProductArchived } from "../services/sanitary.js";
+import { PRODUCT_TYPES, type Product } from "../types/animal.js";
+import { t } from "../i18n/index.js";
+import { errorMessage } from "../i18n/errors.js";
+
+// Produtos sanitários (F-18, F-SAN-05): lista por tipo com para que serve,
+// carência e uso; cadastrar, editar, arquivar (some da seleção, o histórico
+// continua) e excluir só o que nunca foi usado.
 
 export function Products() {
   const showToast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [deleting, setDeleting] = useState<Product | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-  // formulário
-  const [name, setName] = useState("");
-  const [type, setType] = useState<ProductType>("VACCINE");
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  function loadProducts() {
+  const load = useCallback(() => {
     setLoading(true);
-    listProducts()
-      .then((data) => setProducts(data))
-      .catch((err) => console.error(err))
+    setLoadError("");
+    listProducts(undefined, true)
+      .then(setProducts)
+      .catch((err) => setLoadError(errorMessage(err, "products.loadFailed")))
       .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    loadProducts();
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!name.trim()) return setError("Informe o nome do produto.");
+  useEffect(load, [load]);
 
-    setSaving(true);
+  async function toggleArchived(product: Product) {
     try {
-      await createProduct({ name: name.trim(), type });
-      setName("");
-      loadProducts();
-      showToast("Produto cadastrado.");
-    } catch (err: any) {
-      setError(err?.message ?? "Algo deu errado. Tente de novo.");
-    } finally {
-      setSaving(false);
+      await setProductArchived(product.id, !product.archivedAt);
+      showToast(t(product.archivedAt ? "products.restoredToast" : "products.archivedToast"));
+      load();
+    } catch (err) {
+      showToast(errorMessage(err, "products.actionFailed"));
     }
   }
 
-  const vaccines = products.filter((p) => p.type === "VACCINE");
-  const dewormers = products.filter((p) => p.type === "DEWORMER");
+  async function confirmDelete() {
+    if (!deleting) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      await deleteProduct(deleting.id);
+      showToast(t("products.deleted"));
+      setDeleting(null);
+      load();
+    } catch (err) {
+      setActionError(errorMessage(err, "products.actionFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const active = products.filter((product) => !product.archivedAt);
+  const archived = products.filter((product) => product.archivedAt);
+
+  const row = (product: Product) => (
+    <li key={product.id} className="flex flex-wrap items-center gap-3 py-3">
+      <ProductTypeIcon type={product.type} />
+      <div className="flex-1 min-w-[10rem]">
+        <p className="font-medium text-texto">
+          {product.name}
+          {product.archivedAt && <span className="ml-2 text-xs text-texto-leve">{t("products.archived")}</span>}
+        </p>
+        <p className="text-xs text-texto-suave">
+          {[
+            product.purpose,
+            product.withdrawalDays == null
+              ? t("product.withdrawal.notInformed")
+              : t("product.withdrawal.days", { count: product.withdrawalDays }),
+            product.usageCount ? t("products.usage", { count: product.usageCount }) : t("products.unused"),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setEditing(product)}
+          aria-label={`${t("products.edit")} ${product.name}`}
+          className={buttonClass("secondary", "text-sm px-3 py-2")}
+        >
+          <Pencil size={15} aria-hidden="true" /> {t("products.edit")}
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleArchived(product)}
+          aria-label={`${product.archivedAt ? t("products.unarchive") : t("products.archive")} ${product.name}`}
+          className={buttonClass("secondary", "text-sm px-3 py-2")}
+        >
+          {product.archivedAt ? <ArchiveRestore size={15} aria-hidden="true" /> : <Archive size={15} aria-hidden="true" />}{" "}
+          {product.archivedAt ? t("products.unarchive") : t("products.archive")}
+        </button>
+        {!product.usageCount && (
+          <button
+            type="button"
+            onClick={() => setDeleting(product)}
+            aria-label={`${t("products.delete")} ${product.name}`}
+            className={buttonClass("dangerOutline", "text-sm px-3 py-2")}
+          >
+            <Trash2 size={15} aria-hidden="true" /> {t("products.delete")}
+          </button>
+        )}
+      </div>
+    </li>
+  );
 
   return (
     <div className="min-h-screen bg-bege flex">
       <Sidebar />
-      <main className="flex-1 p-4 pb-24 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-medium text-texto">Produtos</h1>
-          <p className="text-texto-suave">
-            Cadastre as vacinas e vermífugos que você usa
-          </p>
-        </div>
-
-        {/* Formulário de cadastro */}
-        <div className="bg-card border border-borda rounded-xl p-6 max-w-2xl mb-8">
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="block font-medium text-texto mb-1">
-                Nome do produto <span className="text-alerta">*</span>
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex.: Vacina Aftosa"
-                autoFocus
-                className="w-full border border-borda rounded-lg px-3 py-2 text-texto"
-              />
-            </div>
-
-            <div className="mb-5">
-              <label className="block font-medium text-texto mb-1">Tipo</label>
-              <div className="flex gap-3">
-                {(
-                  [
-                    ["VACCINE", "Vacina"],
-                    ["DEWORMER", "Vermífugo"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setType(value)}
-                    className={`flex-1 py-2.5 rounded-lg border font-medium cursor-pointer ${
-                      type === value
-                        ? "bg-verde border-verde text-white"
-                        : "bg-card border-borda-chip text-texto-suave"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {error && <p className="text-sm text-alerta mb-4">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 bg-verde text-white font-medium px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-60"
-            >
-              <Plus size={18} /> {saving ? "Cadastrando..." : "Cadastrar produto"}
+      <main className="flex-1 min-w-0 p-4 pb-24 md:p-8">
+        <PageHeader
+          title={t("products.title")}
+          subtitle={t("products.subtitle")}
+          backFallback="/manejo"
+          backLabel={t("application.back")}
+          actions={
+            <button type="button" onClick={() => setEditing("new")} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {t("products.new")}
             </button>
-          </form>
-        </div>
+          }
+        />
 
-        {/* Listas de produtos */}
-        {loading ? (
-          <p className="text-texto-suave">Carregando...</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
-            {/* Vacinas */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Syringe size={18} className="text-verde" />
-                <h2 className="font-medium text-texto">Vacinas</h2>
-              </div>
-              {vaccines.length === 0 ? (
-                <p className="text-texto-leve text-sm">
-                  Nenhuma vacina cadastrada.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {vaccines.map((p) => (
-                    <div
-                      key={p.id}
-                      className="bg-card border border-borda rounded-lg px-4 py-2.5 text-texto"
-                    >
-                      {p.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Vermífugos */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Pill size={18} className="text-verde" />
-                <h2 className="font-medium text-texto">Vermífugos</h2>
-              </div>
-              {dewormers.length === 0 ? (
-                <p className="text-texto-leve text-sm">
-                  Nenhum vermífugo cadastrado.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {dewormers.map((p) => (
-                    <div
-                      key={p.id}
-                      className="bg-card border border-borda rounded-lg px-4 py-2.5 text-texto"
-                    >
-                      {p.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+        {loading && products.length === 0 ? (
+          <p className="text-texto-suave" aria-busy="true">{t("common.loading")}</p>
+        ) : loadError ? (
+          <div className="max-w-3xl">
+            <LoadError message={loadError} onRetry={load} />
           </div>
+        ) : products.length === 0 ? (
+          <div className="bg-card border border-borda rounded-xl p-10 text-center max-w-xl">
+            <p className="text-texto mb-4">{t("products.empty")}</p>
+            <button type="button" onClick={() => setEditing("new")} className={buttonClass("primary")}>
+              <Plus size={18} aria-hidden="true" /> {t("products.new")}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6 max-w-3xl">
+            {PRODUCT_TYPES.map((type) => {
+              const ofType = active.filter((product) => product.type === type);
+              return (
+                <section key={type} className="bg-card border border-borda rounded-xl p-5" aria-labelledby={`group-${type}`}>
+                  <h2 id={`group-${type}`} className="font-medium text-texto mb-1">
+                    {t(`products.group.${type}`)}
+                  </h2>
+                  {ofType.length === 0 ? (
+                    <p className="text-sm text-texto-leve py-2">{t("products.emptyType")}</p>
+                  ) : (
+                    <ul className="divide-y divide-borda">{ofType.map(row)}</ul>
+                  )}
+                </section>
+              );
+            })}
+            {archived.length > 0 && (
+              <details className="bg-card border border-borda rounded-xl p-5">
+                <summary className="font-medium text-texto cursor-pointer">
+                  {t("products.archivedSection")} ({archived.length})
+                </summary>
+                <ul className="divide-y divide-borda mt-2">{archived.map(row)}</ul>
+              </details>
+            )}
+          </div>
+        )}
+
+        {editing && (
+          <ProductModal
+            product={editing === "new" ? undefined : editing}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              showToast(t(editing === "new" ? "products.created" : "products.saved"));
+              setEditing(null);
+              load();
+            }}
+          />
+        )}
+
+        {deleting && (
+          <ConfirmDialog
+            title={t("products.deleteTitle")}
+            confirmLabel={t("products.delete")}
+            busyLabel={t("common.deleting")}
+            busy={busy}
+            danger
+            error={actionError}
+            onConfirm={confirmDelete}
+            onClose={() => setDeleting(null)}
+          >
+            {t("products.deleteBody", { name: deleting.name })}
+          </ConfirmDialog>
         )}
       </main>
     </div>
