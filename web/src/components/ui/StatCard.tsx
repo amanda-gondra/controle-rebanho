@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { IconCircle } from "./IconCircle.js";
+import { TONE_BORDER, type Tone } from "./tones.js";
 import { useOriginState } from "../../navigation/hooks.js";
 
 // Cartão de indicador (padrão das telas novas): ícone no círculo, rótulo,
@@ -16,16 +17,16 @@ type Props = {
   to?: string;
   linkLabel?: string; // texto do link (para leitor de tela e, se `showLink`, visível)
   showLink?: boolean;
-  tone?: "normal" | "attention";
+  tone?: Tone; // cor pelo significado (tones.ts); âmbar/vermelho também destacam a borda
 };
 
-export function StatCard({ icon, label, value, detail, rule, to, linkLabel, showLink = false, tone = "normal" }: Props) {
+export function StatCard({ icon, label, value, detail, rule, to, linkLabel, showLink = false, tone = "herd" }: Props) {
   const originState = useOriginState();
   const body = (
     <>
       <div className="flex items-start gap-3">
         <span className="max-sm:hidden">
-          <IconCircle tone={tone === "attention" ? "alert" : "green"}>{icon}</IconCircle>
+          <IconCircle tone={tone}>{icon}</IconCircle>
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-xs sm:text-sm text-texto-suave">{label}</p>
@@ -44,7 +45,7 @@ export function StatCard({ icon, label, value, detail, rule, to, linkLabel, show
     </>
   );
   const frame = `bg-card border rounded-xl p-4 sm:p-5 flex flex-col shadow-[0_1px_2px_rgba(44,42,36,0.04)] ${
-    tone === "attention" ? "border-[#E7C3B8]" : "border-borda"
+    TONE_BORDER[tone] ?? "border-borda"
   }`;
   return to ? (
     <Link

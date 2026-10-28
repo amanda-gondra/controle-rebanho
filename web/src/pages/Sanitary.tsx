@@ -24,6 +24,8 @@ import { StatusBadge } from "../components/ui/StatusBadge.js";
 import { Pagination } from "../components/ui/Pagination.js";
 import { PeriodFilter, type Period } from "../components/ui/PeriodFilter.js";
 import { CowIcon } from "../components/ui/CowIcon.js";
+import { IconCircle } from "../components/ui/IconCircle.js";
+import { reminderTone } from "../components/ui/tones.js";
 
 type TypeFilter = ProductType | "ALL";
 const TYPE_VALUES: TypeFilter[] = ["ALL", ...PRODUCT_TYPES];
@@ -156,12 +158,14 @@ export function Sanitary() {
           <div className="grid gap-3 sm:gap-4 grid-cols-2 xl:grid-cols-4 mb-6">
             <StatCard
               icon={<Syringe size={22} />}
+              tone="health"
               label={t("sanitary.kpi.applications")}
               value={summary ? String(summary.applications) : "—"}
               detail={periodText}
             />
             <StatCard
-              icon={<CowIcon size={24} />}
+              icon={<CowIcon size={26} />}
+              tone="health"
               label={t("sanitary.kpi.treated")}
               value={summary ? String(summary.animalsTreated) : "—"}
               detail={summary ? t("sanitary.kpi.treatedDetail", { count: summary.activeAnimals }) : undefined}
@@ -170,7 +174,7 @@ export function Sanitary() {
               icon={<CalendarClock size={22} />}
               label={t("sanitary.kpi.reminders")}
               value={summary ? String(summary.reminders.open) : "—"}
-              tone={summary && summary.reminders.overdue > 0 ? "attention" : "normal"}
+              tone={summary ? reminderTone(summary.reminders.overdue, summary.reminders.open) : "health"}
               detail={
                 summary
                   ? summary.reminders.overdue > 0
@@ -181,6 +185,7 @@ export function Sanitary() {
             />
             <StatCard
               icon={<Package size={22} />}
+              tone="neutral"
               label={t("sanitary.kpi.products")}
               value={summary ? String(summary.products) : "—"}
               detail={t("sanitary.kpi.productsDetail")}
@@ -197,10 +202,18 @@ export function Sanitary() {
             <LoadError compact message={t("sanitary.alertsLoadFailed")} onRetry={loadAlerts} />
           </div>
         ) : (
-          <SectionCard title={t("sanitary.kpi.reminders")} icon={<Bell size={20} />} className="mb-6">
+          <SectionCard
+            title={t("sanitary.kpi.reminders")}
+            icon={
+              <IconCircle size="sm" tone={reminderTone(alerts.filter((app) => app.overdue).length, alerts.length)}>
+                <Bell size={17} />
+              </IconCircle>
+            }
+            className="mb-6"
+          >
             {alerts.length === 0 ? (
               <div className="flex items-center gap-4">
-                <CalendarCheck size={40} aria-hidden="true" className="text-verde shrink-0" />
+                <CalendarCheck size={40} aria-hidden="true" className="text-[#0E7470] shrink-0" />
                 <div>
                   <p className="text-sm text-texto">{t("sanitary.noReminders", { count: alertDays })}</p>
                   <p className="text-sm text-texto-suave">{t("sanitary.noRemindersHelp")}</p>

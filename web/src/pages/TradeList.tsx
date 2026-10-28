@@ -157,18 +157,21 @@ export function TradeList() {
             <div className="grid gap-3 sm:gap-4 grid-cols-2 xl:grid-cols-4 mb-2">
               <StatCard
                 icon={<Handshake size={22} />}
+                tone="neutral"
                 label={t("tradeList.kpi.count")}
                 value={overview ? String(overview.count) : "—"}
                 detail={periodText}
               />
               <StatCard
                 icon={<Tag size={22} />}
+                tone="sale"
                 label={t("tradeList.kpi.sales")}
                 value={overview ? formatMoney(Number(overview.sales.total)) : "—"}
                 detail={overview ? sideDetail(overview.sales, "sales") : undefined}
               />
               <StatCard
                 icon={<ShoppingCart size={22} />}
+                tone="purchase"
                 label={t("tradeList.kpi.purchases")}
                 value={overview ? formatMoney(Number(overview.purchases.total)) : "—"}
                 detail={overview ? sideDetail(overview.purchases, "purchases") : undefined}
@@ -177,7 +180,7 @@ export function TradeList() {
                 icon={<Clock size={22} />}
                 label={t("tradeList.kpi.pending")}
                 value={overview ? String(overview.pending) : "—"}
-                tone={overview && overview.pending > 0 ? "attention" : "normal"}
+                tone={overview && overview.pending > 0 ? "warning" : "neutral"}
                 detail={t("tradeList.kpi.pendingDetail")}
               />
             </div>

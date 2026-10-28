@@ -97,8 +97,8 @@ export function LotList() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               <StatCard icon={<Layers size={20} />} label={t("lots.kpiActive")} value={formatNumber(active.length)} rule={t("lots.kpiActiveHelp")} />
-              <StatCard icon={<CowIcon size={22} />} label={t("lots.kpiAnimals")} value={formatNumber(inLots)} rule={t("lots.kpiAnimalsHelp")} />
-              <StatCard icon={<Archive size={20} />} label={t("lots.kpiArchived")} value={formatNumber(archived)} rule={t("lots.kpiArchivedHelp")} />
+              <StatCard icon={<CowIcon size={28} />} label={t("lots.kpiAnimals")} value={formatNumber(inLots)} rule={t("lots.kpiAnimalsHelp")} />
+              <StatCard icon={<Archive size={20} />} tone="neutral" label={t("lots.kpiArchived")} value={formatNumber(archived)} rule={t("lots.kpiArchivedHelp")} />
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_18rem] gap-5 items-start">

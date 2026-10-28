@@ -15,6 +15,7 @@ import { useOpen, useOriginState } from "../navigation/hooks.js";
 import { StatCard } from "../components/ui/StatCard.js";
 import { SectionCard } from "../components/ui/SectionCard.js";
 import { IconCircle } from "../components/ui/IconCircle.js";
+import { reminderTone } from "../components/ui/tones.js";
 import { EmptyState } from "../components/ui/EmptyState.js";
 import { CowIcon } from "../components/ui/CowIcon.js";
 import { t } from "../i18n/index.js";
@@ -134,7 +135,7 @@ export function Dashboard() {
               <div className="bg-card border border-borda rounded-xl p-5 mb-6 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <IconCircle>
-                    <CowIcon size={22} />
+                    <CowIcon size={28} />
                   </IconCircle>
                   <div>
                     <p className="font-medium text-texto">{t("dashboard.emptyTitle")}</p>
@@ -150,7 +151,7 @@ export function Dashboard() {
             {/* Números principais */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
               <StatCard
-                icon={<CowIcon size={22} />}
+                icon={<CowIcon size={28} />}
                 label={t("dashboard.activeNow")}
                 value={formatNumber(data.herd.active)}
                 rule={t("dashboard.activeRule")}
@@ -160,6 +161,7 @@ export function Dashboard() {
               />
               <StatCard
                 icon={<LogIn size={20} />}
+                tone="entry"
                 label={t("dashboard.entries")}
                 value={formatNumber(data.movements.entriesTotal)}
                 detail={
@@ -171,6 +173,7 @@ export function Dashboard() {
               />
               <StatCard
                 icon={<LogOut size={20} />}
+                tone="exit"
                 label={t("dashboard.exits")}
                 value={formatNumber(data.movements.sold + data.movements.died)}
                 detail={t("dashboard.exitsDetail", { sold: data.movements.sold, died: data.movements.died })}
@@ -182,7 +185,7 @@ export function Dashboard() {
                 value={formatNumber(data.reminders.overdue + data.reminders.upcoming)}
                 detail={t("dashboard.remindersDetail", { overdue: data.reminders.overdue, upcoming: data.reminders.upcoming })}
                 rule={t("dashboard.remindersRule", { days: data.reminders.alertDays })}
-                tone={data.reminders.overdue > 0 ? "attention" : "normal"}
+                tone={reminderTone(data.reminders.overdue, data.reminders.overdue + data.reminders.upcoming)}
                 to="/manejo"
                 linkLabel={t("dashboard.seeReminders")}
                 showLink
@@ -266,7 +269,7 @@ export function Dashboard() {
               title={t("dashboard.weighings")}
               subtitle={t("dashboard.weighingsRule")}
               icon={
-                <IconCircle size="sm">
+                <IconCircle size="sm" tone="weight">
                   <Scale size={17} />
                 </IconCircle>
               }
@@ -355,7 +358,7 @@ function MiniStat(props: { icon: React.ReactNode; label: string; value: string; 
   return (
     <div className="border border-borda rounded-xl p-4">
       <p className="flex items-center gap-2 text-sm text-texto-suave">
-        <IconCircle size="sm">{props.icon}</IconCircle>
+        <IconCircle size="sm" tone="weight">{props.icon}</IconCircle>
         {props.label}
       </p>
       <p className="text-2xl font-semibold text-texto mt-2">{props.value}</p>

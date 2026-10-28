@@ -270,13 +270,14 @@ export function LotDetail() {
       {/* Indicadores */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <StatCard
-          icon={<CowIcon size={22} />}
+          icon={<CowIcon size={28} />}
           label={t("lots.kpiTotal")}
           value={formatNumber(lot.activeCount)}
           detail={t("lots.kpiSexes", { males: summary.males, females: summary.females })}
         />
         <StatCard
           icon={<Scale size={20} />}
+          tone="weight"
           label={t("lots.kpiWeight")}
           value={summary.averageWeightKg === null ? "—" : t("units.kgValue", { value: formatNumber(summary.averageWeightKg) })}
           detail={
@@ -288,6 +289,7 @@ export function LotDetail() {
         />
         <StatCard
           icon={<TrendingUp size={20} />}
+          tone="weight"
           label={t("lots.kpiGain")}
           value={
             summary.gain.averageDailyGainKg === null
@@ -303,6 +305,7 @@ export function LotDetail() {
         />
         <StatCard
           icon={<CalendarDays size={20} />}
+          tone="entry"
           label={t("lots.kpiFormed")}
           value={lot.formedOn ? formatDate(lot.formedOn) : "—"}
           detail={lot.formedOn ? t("lots.kpiDaysAgo", { count: Math.max(0, daysBetween(lot.formedOn, today)) }) : t("lots.noAnimalsYet")}
@@ -483,12 +486,12 @@ export function LotDetail() {
                           {item.animal.tag}
                         </Link>
                         <span className="inline-flex items-center gap-1.5 text-texto">
-                          <LogIn size={15} aria-hidden="true" className="text-verde" />
+                          <LogIn size={15} aria-hidden="true" className="text-[#1D5FA8]" />
                           {t("lots.entered", { date: formatDate(item.startDate) })}
                         </span>
                         {item.endDate ? (
                           <span className="inline-flex items-center gap-1.5 text-texto">
-                            <LogOut size={15} aria-hidden="true" className="text-couro" />
+                            <LogOut size={15} aria-hidden="true" className="text-[#9A4F24]" />
                             {t("lots.left", { date: formatDate(item.endDate) })}
                           </span>
                         ) : (
