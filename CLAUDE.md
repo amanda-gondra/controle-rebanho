@@ -75,15 +75,13 @@ npm run dev:claim-initial-farm  # cria login para a "Fazenda inicial" (dados ant
 - **Regra de negócio testável** sai da rota para uma função pura em `src/services/`
   (ex.: `computeWeightGain`, `classifyReapplication`) e ganha teste no `.test.ts` ao lado.
 
-## Preferências de quem toca o projeto (Amanda)
+## Diretrizes de desenvolvimento
 
-- Código **seguro, limpo, com arquitetura limpa, performático, sem gambiarra**.
-- Aprendendo full-stack: prefere **um arquivo por vez**, com **explicação de cada parte**,
-  com calma. Ao entregar um arquivo para colar, entregar o **arquivo completo**.
+- Código **seguro, limpo, com arquitetura limpa e performático**.
 - Construção **em camadas**: banco → backend → frontend. Uma funcionalidade por vez,
   **completa** (nada de deixar pela metade).
 - Público final são **pecuaristas**: no frontend, nunca mostrar erro cru; usar mensagens
-  amigáveis e estados vazios (ver o mapa de erros na doc do Obsidian).
+  amigáveis e estados vazios.
 
 ## Arquitetura de pastas
 
